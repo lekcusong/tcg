@@ -1,0 +1,1291 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>秘境集卡 · 塔羅收藏所</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=Cinzel+Decorative:wght@700&family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg-void: #120a1e;
+    --bg-panel: #1c1030;
+    --bg-panel-raised: #251540;
+    --gold: #c9a24a;
+    --gold-bright: #e8c468;
+    --violet: #8b6bd1;
+    --cream: #f0e6d6;
+    --muted: #9a8ca8;
+    --line: rgba(201,162,74,0.25);
+    --common: #8a94a6;
+    --uncommon: #4fb286;
+    --rare: #9b6bd1;
+    --legendary-a: #e8c468;
+    --legendary-b: #c8447e;
+    --danger: #c15b5b;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:
+      radial-gradient(ellipse at 20% -10%, rgba(139,107,209,0.18), transparent 55%),
+      radial-gradient(ellipse at 90% 10%, rgba(201,162,74,0.12), transparent 50%),
+      var(--bg-void);
+    color:var(--cream);
+    font-family:'EB Garamond', serif;
+    min-height:100vh;
+  }
+  #app{max-width:920px;margin:0 auto;padding:22px 16px 60px;}
+
+  .brand{
+    display:flex;align-items:center;justify-content:space-between;
+    margin-bottom:18px;flex-wrap:wrap;gap:10px;
+  }
+  .brand h1{
+    font-family:'Cinzel Decorative', serif;
+    font-size:22px;letter-spacing:1px;color:var(--gold-bright);
+    margin:0;
+    text-shadow:0 0 18px rgba(201,162,74,0.35);
+  }
+  .brand .tag{font-size:12px;color:var(--muted);letter-spacing:2px;text-transform:uppercase;font-family:'Space Mono',monospace;}
+  .player-chip{
+    display:flex;align-items:center;gap:10px;
+    background:var(--bg-panel);border:1px solid var(--line);
+    padding:8px 14px;border-radius:999px;font-family:'Space Mono',monospace;font-size:13px;
+  }
+  .player-chip .coin{color:var(--gold-bright);font-weight:700;}
+  .player-chip .name{color:var(--cream);}
+  .player-chip button{
+    background:none;border:none;color:var(--muted);cursor:pointer;font-size:12px;
+    text-decoration:underline;font-family:'EB Garamond',serif;
+  }
+
+  .login-screen{
+    max-width:420px;margin:12vh auto;text-align:center;
+    background:var(--bg-panel);border:1px solid var(--line);border-radius:16px;
+    padding:36px 28px;
+  }
+  .login-screen .sigil{font-size:40px;margin-bottom:6px;filter:drop-shadow(0 0 12px rgba(139,107,209,0.5));}
+  .login-screen h1{font-family:'Cinzel Decorative',serif;color:var(--gold-bright);font-size:24px;margin:0 0 6px;}
+  .login-screen p{color:var(--muted);font-size:15px;margin:0 0 22px;}
+  .login-screen input{
+    width:100%;padding:12px 14px;border-radius:8px;border:1px solid var(--line);
+    background:var(--bg-void);color:var(--cream);font-family:'EB Garamond',serif;font-size:16px;
+    margin-bottom:14px;
+  }
+  .login-screen input:focus{outline:none;border-color:var(--gold);}
+  .btn{
+    display:inline-block;padding:11px 22px;border-radius:8px;border:1px solid var(--gold);
+    background:linear-gradient(180deg, rgba(201,162,74,0.18), rgba(201,162,74,0.06));
+    color:var(--gold-bright);font-family:'Cinzel',serif;font-weight:600;font-size:14px;
+    letter-spacing:0.5px;cursor:pointer;transition:transform .15s ease, box-shadow .15s ease;
+  }
+  .btn:hover{transform:translateY(-1px);box-shadow:0 4px 18px rgba(201,162,74,0.25);}
+  .btn:disabled{opacity:0.4;cursor:not-allowed;transform:none;box-shadow:none;}
+  .btn.secondary{border-color:var(--line);color:var(--muted);background:transparent;}
+  .btn.small{padding:6px 14px;font-size:12px;}
+  .btn.full{width:100%;}
+
+  .tabs{display:flex;gap:6px;margin:20px 0 18px;border-bottom:1px solid var(--line);flex-wrap:wrap;}
+  .tab{
+    padding:9px 16px;font-family:'Cinzel',serif;font-size:13px;letter-spacing:0.5px;
+    color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;
+  }
+  .tab.active{color:var(--gold-bright);border-bottom-color:var(--gold);}
+
+  .panel{background:var(--bg-panel);border:1px solid var(--line);border-radius:14px;padding:20px;margin-bottom:16px;}
+  .panel h2{font-family:'Cinzel',serif;font-size:16px;color:var(--gold-bright);margin:0 0 4px;letter-spacing:0.5px;}
+  .panel .sub{color:var(--muted);font-size:13px;margin:0 0 16px;}
+
+  .draw-cta{text-align:center;padding:28px 20px;}
+  .draw-cta .countdown{font-family:'Space Mono',monospace;color:var(--muted);font-size:13px;margin-top:10px;}
+
+  .card-flip-row{display:flex;justify-content:center;gap:14px;margin:18px 0;flex-wrap:wrap;}
+  .flip-card{width:104px;height:150px;perspective:800px;}
+  .flip-card-inner{
+    position:relative;width:100%;height:100%;transition:transform 0.8s cubic-bezier(.4,.2,.2,1);
+    transform-style:preserve-3d;
+  }
+  .flip-card.flipped .flip-card-inner{transform:rotateY(180deg);}
+  .flip-face{
+    position:absolute;width:100%;height:100%;backface-visibility:hidden;border-radius:10px;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    border:1px solid var(--line);
+  }
+  .flip-back{
+    background:
+      repeating-linear-gradient(45deg, rgba(201,162,74,0.08) 0 6px, transparent 6px 12px),
+      var(--bg-panel-raised);
+    font-size:26px;color:var(--gold);
+  }
+  .flip-front{transform:rotateY(180deg);padding:8px;text-align:center;}
+
+  .card-face{
+    width:100%;height:100%;border-radius:9px;display:flex;flex-direction:column;
+    align-items:center;justify-content:space-between;padding:10px 6px;
+  }
+  .card-face .icon{font-size:30px;margin-top:4px;}
+  .card-face .name{font-family:'Cinzel',serif;font-size:11px;line-height:1.25;color:var(--cream);}
+  .card-face .rarity-tag{
+    font-family:'Space Mono',monospace;font-size:9px;letter-spacing:1px;text-transform:uppercase;
+    padding:2px 8px;border-radius:999px;
+  }
+  .rar-common{background:rgba(138,148,166,0.18);border:1px solid var(--common);color:var(--common);}
+  .rar-uncommon{background:rgba(79,178,134,0.15);border:1px solid var(--uncommon);color:var(--uncommon);}
+  .rar-rare{background:rgba(155,107,209,0.15);border:1px solid var(--rare);color:var(--rare);}
+  .rar-legendary{background:linear-gradient(90deg, rgba(232,196,104,0.2), rgba(200,68,126,0.2));border:1px solid var(--legendary-a);color:var(--legendary-a);}
+
+  .cf-common .card-face{background:linear-gradient(160deg, #26303f, #1c232e);}
+  .cf-uncommon .card-face{background:linear-gradient(160deg, #17332a, #142521);}
+  .cf-rare .card-face{background:linear-gradient(160deg, #2c1f45, #1e1533);}
+  .cf-legendary .card-face{background:linear-gradient(160deg, #3a2a1a, #2a1530);box-shadow:0 0 20px rgba(232,196,104,0.25) inset;}
+
+  .grid{display:grid;grid-template-columns:repeat(auto-fill, minmax(96px, 1fr));gap:10px;}
+  .mini-card{
+    aspect-ratio: 2/3;border-radius:9px;display:flex;flex-direction:column;align-items:center;
+    justify-content:space-between;padding:8px 5px;position:relative;border:1px solid var(--line);
+    cursor:default;
+  }
+  .mini-card.owned .icon{font-size:22px;}
+  .mini-card.locked{opacity:0.35;filter:grayscale(1);}
+  .mini-card .count{
+    position:absolute;top:5px;right:6px;background:rgba(0,0,0,0.4);border-radius:999px;
+    font-family:'Space Mono',monospace;font-size:10px;padding:1px 6px;color:var(--gold-bright);
+  }
+  .mini-card .name{font-family:'Cinzel',serif;font-size:9.5px;text-align:center;line-height:1.2;color:var(--cream);}
+  .mini-card .icon{font-size:18px;}
+
+  .filter-row{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;}
+  .chip-btn{
+    font-family:'Space Mono',monospace;font-size:11px;padding:5px 12px;border-radius:999px;
+    border:1px solid var(--line);color:var(--muted);cursor:pointer;background:transparent;
+  }
+  .chip-btn.active{border-color:var(--gold);color:var(--gold-bright);}
+
+  .stat-row{display:flex;gap:20px;flex-wrap:wrap;margin-bottom:4px;}
+  .stat{font-family:'Space Mono',monospace;font-size:12px;color:var(--muted);}
+  .stat b{color:var(--gold-bright);}
+
+  .listing{
+    border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:10px;
+    display:flex;align-items:center;gap:12px;flex-wrap:wrap;justify-content:space-between;
+    background:var(--bg-panel-raised);
+  }
+  .listing .left{display:flex;align-items:center;gap:10px;}
+  .listing .icon-box{font-size:22px;width:42px;height:42px;border-radius:8px;display:flex;align-items:center;justify-content:center;background:var(--bg-void);}
+  .listing .meta{font-size:13px;}
+  .listing .meta .who{color:var(--muted);font-size:11px;font-family:'Space Mono',monospace;}
+  .listing .right{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
+  .listing .price{font-family:'Space Mono',monospace;color:var(--gold-bright);font-weight:700;}
+  .timer{font-family:'Space Mono',monospace;font-size:11px;color:var(--muted);}
+
+  select, input[type=number], input[type=text]{
+    background:var(--bg-void);border:1px solid var(--line);color:var(--cream);
+    border-radius:7px;padding:8px 10px;font-family:'EB Garamond',serif;font-size:14px;
+  }
+  label{font-size:12px;color:var(--muted);display:block;margin-bottom:4px;font-family:'Space Mono',monospace;letter-spacing:0.5px;}
+  .form-row{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px;align-items:flex-end;}
+  .empty-note{color:var(--muted);font-size:13px;text-align:center;padding:20px 0;font-style:italic;}
+  .toast{
+    position:fixed;bottom:20px;left:50%;transform:translateX(-50%);
+    background:var(--bg-panel-raised);border:1px solid var(--gold);color:var(--gold-bright);
+    padding:10px 20px;border-radius:999px;font-family:'Cinzel',serif;font-size:13px;
+    box-shadow:0 6px 24px rgba(0,0,0,0.4);z-index:999;opacity:0;transition:opacity .3s ease;
+  }
+  .toast.show{opacity:1;}
+  .loading-line{color:var(--muted);font-size:13px;text-align:center;padding:30px;}
+</style>
+</head>
+<body>
+<div id="app"><div class="loading-line">開啟秘境入口中 🔮</div></div>
+
+<script>
+(function(){
+
+// ---------- Supabase 設定 ----------
+// 請把下面兩個值換成你自己 Supabase 專案的 Project URL 和 Publishable key
+// （在 Supabase 後台 Settings → API Keys 頁面可以找到）
+const SUPABASE_URL = 'https://hmkpwrefecwjxnyggcej.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_vs1K1Ao4Gjl2JK5xrK-GpQ_aXsHyty7';
+
+const SB_HEADERS = {
+  apikey: SUPABASE_ANON_KEY,
+  Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+};
+
+// 模仿原本 window.storage 的介面（get/set/list），
+// 底層改用 Supabase 的 kv_store 資料表透過 REST API 讀寫。
+const storage = {
+  async get(key){
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/kv_store?key=eq.${encodeURIComponent(key)}&select=value`,
+      { headers: SB_HEADERS }
+    );
+    if(!res.ok) throw new Error('storage get failed: ' + res.status);
+    const rows = await res.json();
+    if(!rows || rows.length === 0) return null;
+    return { key, value: rows[0].value };
+  },
+  async set(key, value){
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/kv_store`, {
+      method: 'POST',
+      headers: {
+        ...SB_HEADERS,
+        'Content-Type': 'application/json',
+        Prefer: 'resolution=merge-duplicates,return=minimal',
+      },
+      body: JSON.stringify({ key, value, updated_at: new Date().toISOString() }),
+    });
+    if(!res.ok) throw new Error('storage set failed: ' + res.status);
+    return { key, value };
+  },
+  async delete(key){
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/kv_store?key=eq.${encodeURIComponent(key)}`,
+      { method: 'DELETE', headers: SB_HEADERS }
+    );
+    if(!res.ok) throw new Error('storage delete failed: ' + res.status);
+    return { key, deleted: true };
+  },
+  async list(prefix){
+    const pattern = (prefix || '') + '*'; // PostgREST 的 like 用 * 代表 %
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/kv_store?key=like.${encodeURIComponent(pattern)}&select=key`,
+      { headers: SB_HEADERS }
+    );
+    if(!res.ok) throw new Error('storage list failed: ' + res.status);
+    const rows = await res.json();
+    return { keys: rows.map(r=>r.key) };
+  },
+};
+
+// ---------- Deck definition ----------
+const SUITS = [
+  {key:'wands', label:'權杖', icon:'🔥'},
+  {key:'cups', label:'聖杯', icon:'💧'},
+  {key:'swords', label:'寶劍', icon:'⚔'},
+  {key:'pentacles', label:'錢幣', icon:'✦'},
+];
+const RANKS = ['Ace','2','3','4','5','6','7','8','9','10','侍者','騎士','皇后','國王'];
+const MAJOR = [
+  {name:'愚人 The Fool', icon:'🃏', rarity:'rare'},
+  {name:'魔術師 The Magician', icon:'✨', rarity:'rare'},
+  {name:'女祭司 The High Priestess', icon:'🔮', rarity:'rare'},
+  {name:'皇后 The Empress', icon:'🌾', rarity:'rare'},
+  {name:'皇帝 The Emperor', icon:'👑', rarity:'rare'},
+  {name:'教皇 The Hierophant', icon:'🕊', rarity:'rare'},
+  {name:'戀人 The Lovers', icon:'💞', rarity:'rare'},
+  {name:'戰車 The Chariot', icon:'🐎', rarity:'rare'},
+  {name:'力量 Strength', icon:'🦁', rarity:'rare'},
+  {name:'隱者 The Hermit', icon:'🏮', rarity:'rare'},
+  {name:'命運之輪 Wheel of Fortune', icon:'🎡', rarity:'rare'},
+  {name:'正義 Justice', icon:'⚖', rarity:'rare'},
+  {name:'倒吊人 The Hanged Man', icon:'🔄', rarity:'rare'},
+  {name:'死神 Death', icon:'🥀', rarity:'legendary'},
+  {name:'節制 Temperance', icon:'⚗', rarity:'legendary'},
+  {name:'惡魔 The Devil', icon:'⛓', rarity:'legendary'},
+  {name:'高塔 The Tower', icon:'🗼', rarity:'legendary'},
+  {name:'星星 The Star', icon:'⭐', rarity:'legendary'},
+  {name:'月亮 The Moon', icon:'🌙', rarity:'legendary'},
+  {name:'太陽 The Sun', icon:'☀', rarity:'legendary'},
+  {name:'審判 Judgement', icon:'📯', rarity:'legendary'},
+  {name:'世界 The World', icon:'🌍', rarity:'legendary'},
+];
+
+function buildDeck(){
+  const deck = [];
+  SUITS.forEach(suit=>{
+    RANKS.forEach((rank, i)=>{
+      const rarity = i < 10 ? 'common' : 'uncommon';
+      deck.push({
+        id: `${suit.key}_${i}`,
+        name: `${rank} of ${suit.label}`,
+        icon: suit.icon,
+        rarity,
+        arcana:'minor'
+      });
+    });
+  });
+  MAJOR.forEach((m, i)=>{
+    deck.push({id:`major_${i}`, name:m.name, icon:m.icon, rarity:m.rarity, arcana:'major'});
+  });
+  return deck;
+}
+const DECK = buildDeck();
+const DECK_BY_ID = Object.fromEntries(DECK.map(c=>[c.id,c]));
+const RARITY_ORDER = ['common','uncommon','rare','legendary'];
+const RARITY_LABEL = {common:'普通', uncommon:'罕見', rare:'稀有', legendary:'傳說'};
+const DRAW_WEIGHTS = {common:55, uncommon:28, rare:12, legendary:5};
+const DAILY_COINS = 50;
+const START_COINS = 200;
+
+function weightedDraw(){
+  const pools = {};
+  RARITY_ORDER.forEach(r=>pools[r]=DECK.filter(c=>c.rarity===r));
+  const total = Object.values(DRAW_WEIGHTS).reduce((a,b)=>a+b,0);
+  let roll = Math.random()*total;
+  for(const r of RARITY_ORDER){
+    if(roll < DRAW_WEIGHTS[r]){
+      const pool = pools[r];
+      return pool[Math.floor(Math.random()*pool.length)];
+    }
+    roll -= DRAW_WEIGHTS[r];
+  }
+  return pools.common[0];
+}
+
+function todayStr(){
+  const d = new Date();
+  return `${d.getFullYear()}-${d.getMonth()+1}-${d.getDate()}`;
+}
+function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,8); }
+function playerKey(nick){ return `player:${nick.trim().toLowerCase()}`; }
+
+// ---------- State ----------
+let state = {
+  nickname: null,
+  player: null,
+  tab: 'home',
+  drawResults: null,
+  flipped: [false,false,false],
+  filter: 'all',
+  toastTimer: null,
+  tradingWith: null,
+};
+
+async function loadPlayer(nick){
+  try{
+    const res = await storage.get(playerKey(nick));
+    return res ? JSON.parse(res.value) : null;
+  }catch(e){ return null; }
+}
+async function savePlayer(p){
+  await storage.set(playerKey(p.nickname), JSON.stringify(p));
+}
+function newPlayer(nick, passwordHash){
+  return {nickname:nick, passwordHash, coins:START_COINS, cards:{}, friends:[], lastClaim:null, joinedAt:Date.now()};
+}
+
+async function hashPassword(pw){
+  try{
+    const enc = new TextEncoder().encode('lekcus-tarot-salt:' + pw);
+    const buf = await crypto.subtle.digest('SHA-256', enc);
+    return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+  }catch(e){
+    // fallback if crypto.subtle unavailable
+    let h = 0;
+    for(let i=0;i<pw.length;i++){ h = (h*31 + pw.charCodeAt(i)) >>> 0; }
+    return 'fallback-' + h.toString(16);
+  }
+}
+
+function showToast(msg){
+  clearTimeout(state.toastTimer);
+  let t = document.getElementById('toast');
+  if(!t){
+    t = document.createElement('div');
+    t.id='toast'; t.className='toast';
+    document.body.appendChild(t);
+  }
+  t.textContent = msg;
+  t.classList.add('show');
+  state.toastTimer = setTimeout(()=>t.classList.remove('show'), 2200);
+}
+
+// ---------- Boot ----------
+let rememberedNick = null;
+async function boot(){
+  try{
+    rememberedNick = localStorage.getItem('my-nickname') || null;
+  }catch(e){ rememberedNick = null; }
+  // Nickname is pre-filled for convenience, but password is always required —
+  // it is never stored anywhere, so this does not bypass login security.
+  render();
+}
+
+async function doLogin(nick, password){
+  nick = nick.trim();
+  if(!nick){ showToast('請輸入暱稱 ✦'); return; }
+  if(nick.length > 20){ showToast('暱稱請在20字以內'); return; }
+  if(!password || password.length < 4){ showToast('密碼至少需要4個字元'); return; }
+
+  const btn = document.getElementById('login-btn');
+  if(btn){ btn.disabled = true; btn.textContent = '登入中...'; }
+
+  try{
+    const hash = await hashPassword(password);
+    let p = await loadPlayer(nick);
+
+    if(!p){
+      p = newPlayer(nick, hash);
+      await savePlayer(p);
+      showToast(`歡迎加入，${nick}！已為你建立帳號 ✦`);
+    } else if(!p.passwordHash){
+      p.passwordHash = hash;
+      await savePlayer(p);
+      showToast('已為此帳號設定密碼');
+    } else if(p.passwordHash !== hash){
+      showToast('密碼錯誤，請重新輸入 🔒');
+      if(btn){ btn.disabled = false; btn.textContent = '登入 / 建立帳號'; }
+      return;
+    }
+
+    state.nickname = nick;
+    state.player = p;
+    try{ localStorage.setItem('my-nickname', nick); }catch(e){}
+    render();
+  }catch(err){
+    showToast('登入失敗，請檢查網路後再試一次 ⚠');
+    if(btn){ btn.disabled = false; btn.textContent = '登入 / 建立帳號'; }
+    console.error('Login error:', err);
+  }
+}
+
+function doLogout(){
+  state.nickname = null; state.player = null; state.tab='home';
+  try{ localStorage.removeItem('my-nickname'); }catch(e){}
+  render();
+}
+
+async function refreshPlayer(){
+  const p = await loadPlayer(state.nickname);
+  if(p) state.player = p;
+}
+
+// ---------- Daily draw ----------
+function canClaimToday(){
+  return state.player.lastClaim !== todayStr();
+}
+async function claimDaily(){
+  if(!canClaimToday()) return;
+  const drawn = [weightedDraw(), weightedDraw(), weightedDraw()];
+  state.drawResults = drawn;
+  state.flipped = [false,false,false];
+  state.player.coins += DAILY_COINS;
+  drawn.forEach(c=>{
+    state.player.cards[c.id] = (state.player.cards[c.id]||0) + 1;
+  });
+  state.player.lastClaim = todayStr();
+  await savePlayer(state.player);
+  render();
+  setTimeout(()=>{ flipCard(0); }, 300);
+}
+function flipCard(i){
+  const el = document.querySelectorAll('.flip-card')[i];
+  if(el) el.classList.add('flipped');
+  state.flipped[i] = true;
+  if(i < 2) setTimeout(()=>flipCard(i+1), 450);
+}
+
+// ---------- Trading ----------
+async function listTrade(cardId, wantText){
+  const owned = state.player.cards[cardId]||0;
+  if(owned < 1){ showToast('你沒有這張卡'); return; }
+  state.player.cards[cardId] = owned - 1;
+  await savePlayer(state.player);
+  const trade = {
+    id: uid(), seller: state.nickname, cardId, wantText: wantText||'開放交換',
+    status:'open', createdAt: Date.now(), offers: []
+  };
+  await storage.set(`trade:${trade.id}`, JSON.stringify(trade));
+  showToast('已上架交換 🕊');
+  render();
+}
+async function fetchTrades(){
+  try{
+    const list = await storage.list('trade:');
+    if(!list || !list.keys) return [];
+    const items = await Promise.all(list.keys.map(async k=>{
+      try{ const r = await storage.get(k); return r ? JSON.parse(r.value) : null; }
+      catch(e){ return null; }
+    }));
+    return items.filter(Boolean);
+  }catch(e){ return []; }
+}
+async function offerTrade(tradeId, offerCardId){
+  const owned = state.player.cards[offerCardId]||0;
+  if(owned < 1){ showToast('你沒有這張卡'); return; }
+  const r = await storage.get(`trade:${tradeId}`);
+  if(!r){ showToast('此交易已不存在'); return; }
+  const trade = JSON.parse(r.value);
+  if(trade.status !== 'open'){ showToast('此交易已結束'); return; }
+  state.player.cards[offerCardId] = owned - 1;
+  await savePlayer(state.player);
+  trade.offers.push({from: state.nickname, cardId: offerCardId, at: Date.now()});
+  await storage.set(`trade:${tradeId}`, JSON.stringify(trade));
+  showToast('已送出交換提議 ✉');
+  render();
+}
+async function acceptOffer(tradeId, offerIdx){
+  const r = await storage.get(`trade:${tradeId}`);
+  if(!r) return;
+  const trade = JSON.parse(r.value);
+  if(trade.status !== 'open') return;
+  const offer = trade.offers[offerIdx];
+  if(!offer) return;
+  // seller receives offer.cardId, offerer receives trade.cardId
+  state.player.cards[offer.cardId] = (state.player.cards[offer.cardId]||0) + 1;
+  await savePlayer(state.player);
+  const otherPlayer = await loadPlayer(offer.from);
+  if(otherPlayer){
+    otherPlayer.cards[trade.cardId] = (otherPlayer.cards[trade.cardId]||0) + 1;
+    await savePlayer(otherPlayer);
+  }
+  // refund other declined offers' cards
+  for(let i=0;i<trade.offers.length;i++){
+    if(i===offerIdx) continue;
+    const o = trade.offers[i];
+    const op = await loadPlayer(o.from);
+    if(op){ op.cards[o.cardId] = (op.cards[o.cardId]||0)+1; await savePlayer(op); }
+  }
+  trade.status = 'completed';
+  await storage.set(`trade:${tradeId}`, JSON.stringify(trade));
+  showToast('交換成功！🌟');
+  render();
+}
+async function cancelTrade(tradeId){
+  const r = await storage.get(`trade:${tradeId}`);
+  if(!r) return;
+  const trade = JSON.parse(r.value);
+  if(trade.status !== 'open' || trade.seller !== state.nickname) return;
+  state.player.cards[trade.cardId] = (state.player.cards[trade.cardId]||0)+1;
+  await savePlayer(state.player);
+  for(const o of trade.offers){
+    const op = await loadPlayer(o.from);
+    if(op){ op.cards[o.cardId] = (op.cards[o.cardId]||0)+1; await savePlayer(op); }
+  }
+  trade.status = 'cancelled';
+  await storage.set(`trade:${tradeId}`, JSON.stringify(trade));
+  showToast('已取消交換並取回卡片');
+  render();
+}
+
+// ---------- Friends ----------
+function freqKey(id){ return `freq:${id}`; }
+function ftradeKey(id){ return `ftrade:${id}`; }
+
+async function fetchFriendRequests(){
+  try{
+    const list = await storage.list('freq:');
+    if(!list || !list.keys) return [];
+    const items = await Promise.all(list.keys.map(async k=>{
+      try{ const r = await storage.get(k); return r ? JSON.parse(r.value) : null; }
+      catch(e){ return null; }
+    }));
+    return items.filter(Boolean);
+  }catch(e){ return []; }
+}
+
+async function sendFriendRequest(targetNick){
+  targetNick = (targetNick||'').trim();
+  if(!targetNick){ showToast('請輸入好友暱稱 ✦'); return; }
+  if(targetNick.toLowerCase() === state.nickname.toLowerCase()){ showToast('不能加自己為好友'); return; }
+  if((state.player.friends||[]).some(f=>f.toLowerCase()===targetNick.toLowerCase())){ showToast('你們已經是好友了'); return; }
+  const target = await loadPlayer(targetNick);
+  if(!target){ showToast('找不到此占卜師，請確認暱稱是否正確'); return; }
+  const all = await fetchFriendRequests();
+  const dup = all.find(r=>r.status==='pending' && (
+    (r.from===state.nickname && r.to===target.nickname) ||
+    (r.from===target.nickname && r.to===state.nickname)
+  ));
+  if(dup){ showToast('已經有待處理的好友邀請'); return; }
+  const req = {id: uid(), from: state.nickname, to: target.nickname, status:'pending', createdAt: Date.now()};
+  await storage.set(freqKey(req.id), JSON.stringify(req));
+  showToast(`已送出好友邀請給 ${target.nickname} 🕊`);
+  render();
+}
+
+async function respondFriendRequest(reqId, accept){
+  const r = await storage.get(freqKey(reqId));
+  if(!r) return;
+  const req = JSON.parse(r.value);
+  if(req.status !== 'pending' || req.to !== state.nickname) return;
+  req.status = accept ? 'accepted' : 'declined';
+  await storage.set(freqKey(reqId), JSON.stringify(req));
+  if(accept){
+    state.player.friends = state.player.friends || [];
+    if(!state.player.friends.includes(req.from)) state.player.friends.push(req.from);
+    await savePlayer(state.player);
+    const other = await loadPlayer(req.from);
+    if(other){
+      other.friends = other.friends || [];
+      if(!other.friends.includes(state.nickname)) other.friends.push(state.nickname);
+      await savePlayer(other);
+    }
+    showToast(`你與 ${req.from} 已成為好友 ✦`);
+  } else {
+    showToast('已婉拒好友邀請');
+  }
+  render();
+}
+
+async function cancelFriendRequest(reqId){
+  const r = await storage.get(freqKey(reqId));
+  if(!r) return;
+  const req = JSON.parse(r.value);
+  if(req.status !== 'pending' || req.from !== state.nickname) return;
+  req.status = 'cancelled';
+  await storage.set(freqKey(reqId), JSON.stringify(req));
+  showToast('已取消好友邀請');
+  render();
+}
+
+async function removeFriend(friendNick){
+  state.player.friends = (state.player.friends||[]).filter(f=>f!==friendNick);
+  await savePlayer(state.player);
+  const other = await loadPlayer(friendNick);
+  if(other){
+    other.friends = (other.friends||[]).filter(f=>f!==state.nickname);
+    await savePlayer(other);
+  }
+  if(state.tradingWith === friendNick) state.tradingWith = null;
+  showToast(`已將 ${friendNick} 從好友移除`);
+  render();
+}
+
+// ---------- Friend-to-friend direct trading ----------
+async function fetchFriendTrades(){
+  try{
+    const list = await storage.list('ftrade:');
+    if(!list || !list.keys) return [];
+    const items = await Promise.all(list.keys.map(async k=>{
+      try{ const r = await storage.get(k); return r ? JSON.parse(r.value) : null; }
+      catch(e){ return null; }
+    }));
+    return items.filter(Boolean);
+  }catch(e){ return []; }
+}
+
+async function proposeFriendTrade(friendNick, offerCardId, wantCardId){
+  if(!(state.player.friends||[]).includes(friendNick)){ showToast('對方不是你的好友'); return; }
+  const owned = state.player.cards[offerCardId]||0;
+  if(owned < 1){ showToast('你沒有這張卡'); return; }
+  if(!wantCardId){ showToast('請選擇想要交換的卡片'); return; }
+  state.player.cards[offerCardId] = owned - 1;
+  await savePlayer(state.player);
+  const ft = {
+    id: uid(), from: state.nickname, to: friendNick,
+    offerCardId, wantCardId, status:'pending', createdAt: Date.now()
+  };
+  await storage.set(ftradeKey(ft.id), JSON.stringify(ft));
+  showToast(`已向 ${friendNick} 提出交易邀請 🤝`);
+  state.tradingWith = null;
+  render();
+}
+
+async function respondFriendTrade(ftId, accept){
+  const r = await storage.get(ftradeKey(ftId));
+  if(!r) return;
+  const ft = JSON.parse(r.value);
+  if(ft.status !== 'pending' || ft.to !== state.nickname) return;
+  if(accept){
+    const myOwned = state.player.cards[ft.wantCardId]||0;
+    if(myOwned < 1){ showToast('你已經沒有對方想要的那張卡了'); return; }
+    state.player.cards[ft.wantCardId] = myOwned - 1;
+    state.player.cards[ft.offerCardId] = (state.player.cards[ft.offerCardId]||0) + 1;
+    await savePlayer(state.player);
+    const requester = await loadPlayer(ft.from);
+    if(requester){
+      requester.cards[ft.wantCardId] = (requester.cards[ft.wantCardId]||0) + 1;
+      await savePlayer(requester);
+    }
+    ft.status = 'completed';
+    showToast('交易成功！🌟');
+  } else {
+    const requester = await loadPlayer(ft.from);
+    if(requester){
+      requester.cards[ft.offerCardId] = (requester.cards[ft.offerCardId]||0) + 1;
+      await savePlayer(requester);
+    }
+    ft.status = 'declined';
+    showToast('已婉拒交易邀請');
+  }
+  await storage.set(ftradeKey(ftId), JSON.stringify(ft));
+  render();
+}
+
+async function cancelFriendTrade(ftId){
+  const r = await storage.get(ftradeKey(ftId));
+  if(!r) return;
+  const ft = JSON.parse(r.value);
+  if(ft.status !== 'pending' || ft.from !== state.nickname) return;
+  state.player.cards[ft.offerCardId] = (state.player.cards[ft.offerCardId]||0) + 1;
+  await savePlayer(state.player);
+  ft.status = 'cancelled';
+  await storage.set(ftradeKey(ft.id), JSON.stringify(ft));
+  showToast('已取消交易邀請並取回卡片');
+  render();
+}
+
+// ---------- Auctions ----------
+const DURATIONS = [
+  {label:'1 小時', ms: 3600*1000},
+  {label:'6 小時', ms: 6*3600*1000},
+  {label:'24 小時', ms: 24*3600*1000},
+];
+async function listAuction(cardId, startBid, durMs){
+  const owned = state.player.cards[cardId]||0;
+  if(owned < 1){ showToast('你沒有這張卡'); return; }
+  if(!startBid || startBid < 1){ showToast('請輸入有效的起標價'); return; }
+  state.player.cards[cardId] = owned - 1;
+  await savePlayer(state.player);
+  const auction = {
+    id: uid(), seller: state.nickname, cardId, startBid,
+    currentBid: 0, currentBidder: null, createdAt: Date.now(),
+    endsAt: Date.now() + durMs, status:'active'
+  };
+  await storage.set(`auction:${auction.id}`, JSON.stringify(auction));
+  showToast('已建立拍賣 🔨');
+  render();
+}
+async function fetchAuctions(){
+  try{
+    const list = await storage.list('auction:');
+    if(!list || !list.keys) return [];
+    const items = await Promise.all(list.keys.map(async k=>{
+      try{ const r = await storage.get(k); return r ? JSON.parse(r.value) : null; }
+      catch(e){ return null; }
+    }));
+    return items.filter(Boolean);
+  }catch(e){ return []; }
+}
+async function placeBid(auctionId, amount){
+  const r = await storage.get(`auction:${auctionId}`);
+  if(!r){ showToast('拍賣不存在'); return; }
+  const auction = JSON.parse(r.value);
+  if(auction.status !== 'active' || Date.now() > auction.endsAt){ showToast('此拍賣已結束'); return; }
+  const minBid = auction.currentBid > 0 ? auction.currentBid + 1 : auction.startBid;
+  if(amount < minBid){ showToast(`出價至少要 ${minBid} 枚遊戲幣`); return; }
+  if(amount > state.player.coins){ showToast('遊戲幣不足'); return; }
+  if(auction.seller === state.nickname){ showToast('不能競標自己的拍賣'); return; }
+  // refund previous bidder
+  if(auction.currentBidder){
+    const prev = await loadPlayer(auction.currentBidder);
+    if(prev){ prev.coins += auction.currentBid; await savePlayer(prev); }
+  }
+  state.player.coins -= amount;
+  await savePlayer(state.player);
+  auction.currentBid = amount;
+  auction.currentBidder = state.nickname;
+  await storage.set(`auction:${auctionId}`, JSON.stringify(auction));
+  showToast('出價成功！✦');
+  render();
+}
+async function resolveAuction(auction){
+  if(auction.status !== 'active' || Date.now() < auction.endsAt) return;
+  if(auction.currentBidder){
+    const winner = await loadPlayer(auction.currentBidder);
+    if(winner){
+      winner.cards[auction.cardId] = (winner.cards[auction.cardId]||0)+1;
+      await savePlayer(winner);
+    }
+    const seller = await loadPlayer(auction.seller);
+    if(seller){ seller.coins += auction.currentBid; await savePlayer(seller); }
+  } else {
+    const seller = await loadPlayer(auction.seller);
+    if(seller){ seller.cards[auction.cardId] = (seller.cards[auction.cardId]||0)+1; await savePlayer(seller); }
+  }
+  auction.status = 'completed';
+  await storage.set(`auction:${auction.id}`, JSON.stringify(auction));
+}
+async function cancelAuction(auctionId){
+  const r = await storage.get(`auction:${auctionId}`);
+  if(!r) return;
+  const auction = JSON.parse(r.value);
+  if(auction.status !== 'active' || auction.seller !== state.nickname || auction.currentBidder) return;
+  state.player.cards[auction.cardId] = (state.player.cards[auction.cardId]||0)+1;
+  await savePlayer(state.player);
+  auction.status = 'cancelled';
+  await storage.set(`auction:${auctionId}`, JSON.stringify(auction));
+  showToast('已取消拍賣並取回卡片');
+  render();
+}
+
+function fmtCountdown(ms){
+  if(ms <= 0) return '已截標';
+  const h = Math.floor(ms/3600000);
+  const m = Math.floor((ms%3600000)/60000);
+  return `${h}時${m}分`;
+}
+
+function cardMini(cardId, count){
+  const c = DECK_BY_ID[cardId];
+  return `<div class="mini-card cf-${c.rarity} ${count>0?'owned':'locked'}">
+    <div class="icon">${c.icon}</div>
+    <div class="name">${c.name}</div>
+    ${count>0?`<div class="count">x${count}</div>`:''}
+  </div>`;
+}
+
+// ---------- Render ----------
+function el(html){
+  const container = document.getElementById('app');
+  container.innerHTML = html;
+}
+
+function render(){
+  if(!state.nickname || !state.player){
+    el(`
+      <div class="login-screen">
+        <div class="sigil">🔮</div>
+        <h1>秘境集卡</h1>
+        <p>輸入暱稱與密碼，開始每日抽卡、收藏塔羅牌，並與其他占卜師交換或競標稀有卡片。首次輸入的暱稱＋密碼組合會自動建立新帳號。</p>
+        <input id="nick-input" type="text" placeholder="輸入暱稱..." maxlength="20" value="${rememberedNick ? escapeHtml(rememberedNick) : ''}" />
+        <input id="pw-input" type="password" placeholder="輸入密碼（至少4個字元）" />
+        <button class="btn full" id="login-btn">登入 / 建立帳號</button>
+        <p style="font-size:11px;color:var(--muted);margin-top:14px;">⚠ 密碼僅作基本防護用，請勿使用你在其他重要平台也在用的密碼</p>
+      </div>
+    `);
+    const tryLogin = ()=>doLogin(document.getElementById('nick-input').value, document.getElementById('pw-input').value);
+    document.getElementById('login-btn').onclick = tryLogin;
+    document.getElementById('pw-input').addEventListener('keydown', e=>{
+      if(e.key==='Enter') tryLogin();
+    });
+    return;
+  }
+
+  const p = state.player;
+  el(`
+    <div class="brand">
+      <div>
+        <h1>秘境集卡</h1>
+        <div class="tag">Tarot Collection · @lekcus</div>
+      </div>
+      <div class="player-chip">
+        <span class="name">${escapeHtml(p.nickname)}</span>
+        <span class="coin">✦ ${p.coins}</span>
+        <button id="logout-btn">登出</button>
+      </div>
+    </div>
+    <div class="tabs">
+      <div class="tab ${state.tab==='home'?'active':''}" data-tab="home">每日抽卡</div>
+      <div class="tab ${state.tab==='collection'?'active':''}" data-tab="collection">我的收藏</div>
+      <div class="tab ${state.tab==='friends'?'active':''}" data-tab="friends">好友</div>
+      <div class="tab ${state.tab==='trade'?'active':''}" data-tab="trade">交換所</div>
+      <div class="tab ${state.tab==='auction'?'active':''}" data-tab="auction">拍賣行</div>
+    </div>
+    <div id="tab-body"></div>
+  `);
+  document.getElementById('logout-btn').onclick = doLogout;
+  document.querySelectorAll('.tab').forEach(t=>{
+    t.onclick = ()=>{ state.tab = t.dataset.tab; render(); };
+  });
+  renderTab();
+}
+
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+
+function renderTab(){
+  const body = document.getElementById('tab-body');
+  if(state.tab === 'home') return renderHome(body);
+  if(state.tab === 'collection') return renderCollection(body);
+  if(state.tab === 'friends') return renderFriends(body);
+  if(state.tab === 'trade') return renderTrade(body);
+  if(state.tab === 'auction') return renderAuction(body);
+}
+
+function renderHome(body){
+  const p = state.player;
+  const claimed = !canClaimToday();
+  const totalOwned = Object.values(p.cards).reduce((a,b)=>a+b,0);
+  const uniqueOwned = Object.keys(p.cards).filter(k=>p.cards[k]>0).length;
+
+  let html = `<div class="panel draw-cta">
+    <h2>今日的塔羅指引</h2>
+    <p class="sub">每天可免費抽取三張塔羅牌，並獲得 ${DAILY_COINS} 枚遊戲幣</p>`;
+
+  if(state.drawResults && !claimed){
+    // shouldn't happen but guard
+  }
+  if(state.drawResults){
+    html += `<div class="card-flip-row">` + state.drawResults.map((c,i)=>`
+      <div class="flip-card ${state.flipped[i]?'flipped':''}">
+        <div class="flip-card-inner">
+          <div class="flip-face flip-back">🔮</div>
+          <div class="flip-face flip-front cf-${c.rarity}">
+            <div class="card-face">
+              <span class="rarity-tag rar-${c.rarity}">${RARITY_LABEL[c.rarity]}</span>
+              <div class="icon">${c.icon}</div>
+              <div class="name">${c.name}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `).join('') + `</div>`;
+  }
+
+  if(claimed){
+    html += `<button class="btn" disabled>今日已抽取 ✓</button>
+      <div class="countdown">明天再回來抽新的塔羅牌吧 ✦</div>`;
+  } else {
+    html += `<button class="btn" id="draw-btn">抽取今日塔羅 🔮</button>`;
+  }
+  html += `</div>`;
+
+  html += `<div class="panel">
+    <h2>占卜師檔案</h2>
+    <div class="stat-row">
+      <div class="stat">遊戲幣 <b>✦ ${p.coins}</b></div>
+      <div class="stat">收藏張數 <b>${totalOwned}</b></div>
+      <div class="stat">已集齊卡種 <b>${uniqueOwned} / ${DECK.length}</b></div>
+    </div>
+  </div>`;
+
+  body.innerHTML = html;
+  const btn = document.getElementById('draw-btn');
+  if(btn) btn.onclick = claimDaily;
+}
+
+function renderCollection(body){
+  const p = state.player;
+  const rarities = ['all', ...RARITY_ORDER];
+  let filtered = DECK;
+  if(state.filter !== 'all') filtered = DECK.filter(c=>c.rarity===state.filter);
+
+  let html = `<div class="panel">
+    <h2>我的收藏</h2>
+    <p class="sub">共 ${DECK.length} 張塔羅牌，收集齊全的占卜師才是真正的秘境嚮導</p>
+    <div class="filter-row">
+      ${rarities.map(r=>`<div class="chip-btn ${state.filter===r?'active':''}" data-filter="${r}">${r==='all'?'全部':RARITY_LABEL[r]}</div>`).join('')}
+    </div>
+    <div class="grid">
+      ${filtered.map(c=>cardMini(c.id, p.cards[c.id]||0)).join('')}
+    </div>
+  </div>`;
+  body.innerHTML = html;
+  document.querySelectorAll('.chip-btn').forEach(b=>{
+    b.onclick = ()=>{ state.filter = b.dataset.filter; renderTab(); };
+  });
+}
+
+function ownedCardOptions(){
+  return DECK.filter(c=>(state.player.cards[c.id]||0) > 0)
+    .map(c=>`<option value="${c.id}">${c.name} (持有 ${state.player.cards[c.id]})</option>`).join('');
+}
+
+async function renderFriends(body){
+  body.innerHTML = `<div class="loading-line">讀取好友名冊中...</div>`;
+  const [allReqs, allFTrades] = await Promise.all([fetchFriendRequests(), fetchFriendTrades()]);
+  const incomingReqs = allReqs.filter(r=>r.status==='pending' && r.to===state.nickname);
+  const outgoingReqs = allReqs.filter(r=>r.status==='pending' && r.from===state.nickname);
+  const friends = state.player.friends || [];
+  const incomingTrades = allFTrades.filter(t=>t.status==='pending' && t.to===state.nickname);
+  const outgoingTrades = allFTrades.filter(t=>t.status==='pending' && t.from===state.nickname);
+
+  let tradingFriendCards = null;
+  if(state.tradingWith && friends.includes(state.tradingWith)){
+    const fp = await loadPlayer(state.tradingWith);
+    if(fp){
+      tradingFriendCards = DECK.filter(c=>(fp.cards[c.id]||0) > 0)
+        .map(c=>`<option value="${c.id}">${c.name} (對方持有 ${fp.cards[c.id]})</option>`).join('');
+    }
+  }
+
+  let html = `<div class="panel">
+    <h2>新增好友</h2>
+    <p class="sub">輸入對方的暱稱，送出好友邀請</p>
+    <div class="form-row">
+      <div style="flex:1;min-width:160px;"><label>好友暱稱</label><input type="text" id="friend-add-input" placeholder="輸入暱稱..." /></div>
+      <button class="btn" id="friend-add-btn">送出邀請</button>
+    </div>
+  </div>`;
+
+  if(incomingReqs.length > 0 || outgoingReqs.length > 0){
+    html += `<div class="panel">
+      <h2>好友邀請</h2>
+      ${incomingReqs.length>0 ? `<p class="sub">收到的邀請</p>` + incomingReqs.map(r=>`
+        <div class="listing">
+          <div class="left"><div class="icon-box">🔮</div><div class="meta"><div>${escapeHtml(r.from)}</div><div class="who">想加你為好友</div></div></div>
+          <div class="right">
+            <button class="btn small" data-accept-freq="${r.id}">接受</button>
+            <button class="btn small secondary" data-decline-freq="${r.id}">婉拒</button>
+          </div>
+        </div>
+      `).join('') : ''}
+      ${outgoingReqs.length>0 ? `<p class="sub">送出的邀請</p>` + outgoingReqs.map(r=>`
+        <div class="listing">
+          <div class="left"><div class="icon-box">🕊</div><div class="meta"><div>${escapeHtml(r.to)}</div><div class="who">等待對方回應</div></div></div>
+          <div class="right"><button class="btn small secondary" data-cancel-freq="${r.id}">取消邀請</button></div>
+        </div>
+      `).join('') : ''}
+    </div>`;
+  }
+
+  html += `<div class="panel">
+    <h2>我的好友（${friends.length}）</h2>
+    <p class="sub">與好友一對一直接交易卡片，不必公開上架</p>
+    ${friends.length===0 ? '<div class="empty-note">尚未加入任何好友，先送出邀請吧 ✦</div>' : friends.map(f=>`
+      <div class="listing">
+        <div class="left"><div class="icon-box">✦</div><div class="meta"><div>${escapeHtml(f)}</div></div></div>
+        <div class="right">
+          <button class="btn small" data-trade-with="${escapeHtml(f)}">${state.tradingWith===f ? '收合' : '交易'}</button>
+          <button class="btn small secondary" data-remove-friend="${escapeHtml(f)}">移除</button>
+        </div>
+      </div>
+      ${state.tradingWith === f ? `
+        <div class="listing" style="background:var(--bg-void);flex-direction:column;align-items:stretch;">
+          ${ownedCardOptions() ? (tradingFriendCards ? `
+            <div class="form-row">
+              <div><label>你要給出的卡</label><select id="ftrade-offer-select">${ownedCardOptions()}</select></div>
+              <div><label>你想要對方的卡</label><select id="ftrade-want-select">${tradingFriendCards}</select></div>
+              <button class="btn small" id="ftrade-send-btn" data-target="${escapeHtml(f)}">送出交易邀請</button>
+            </div>
+          ` : `<div class="empty-note">${escapeHtml(f)} 目前沒有可交易的卡片</div>`) : `<div class="empty-note">你目前沒有可交易的卡片</div>`}
+        </div>
+      ` : ''}
+    `).join('')}
+  </div>`;
+
+  if(incomingTrades.length > 0 || outgoingTrades.length > 0){
+    html += `<div class="panel">
+      <h2>好友交易邀請</h2>
+      ${incomingTrades.length>0 ? `<p class="sub">收到的交易邀請</p>` + incomingTrades.map(t=>{
+        const offerC = DECK_BY_ID[t.offerCardId];
+        const wantC = DECK_BY_ID[t.wantCardId];
+        return `<div class="listing">
+          <div class="left">
+            <div class="icon-box cf-${offerC.rarity}">${offerC.icon}</div>
+            <div class="meta"><div>${escapeHtml(t.from)} 想用 ${offerC.name}</div><div class="who">交換你的 ${wantC.name}</div></div>
+          </div>
+          <div class="right">
+            <button class="btn small" data-accept-ftrade="${t.id}">接受</button>
+            <button class="btn small secondary" data-decline-ftrade="${t.id}">婉拒</button>
+          </div>
+        </div>`;
+      }).join('') : ''}
+      ${outgoingTrades.length>0 ? `<p class="sub">送出的交易邀請</p>` + outgoingTrades.map(t=>{
+        const offerC = DECK_BY_ID[t.offerCardId];
+        const wantC = DECK_BY_ID[t.wantCardId];
+        return `<div class="listing">
+          <div class="left">
+            <div class="icon-box cf-${offerC.rarity}">${offerC.icon}</div>
+            <div class="meta"><div>提議給 ${escapeHtml(t.to)} ${offerC.name}</div><div class="who">交換對方的 ${wantC.name}</div></div>
+          </div>
+          <div class="right"><button class="btn small secondary" data-cancel-ftrade="${t.id}">取消</button></div>
+        </div>`;
+      }).join('') : ''}
+    </div>`;
+  }
+
+  body.innerHTML = html;
+
+  const addBtn = document.getElementById('friend-add-btn');
+  if(addBtn) addBtn.onclick = ()=>{
+    const val = document.getElementById('friend-add-input').value;
+    sendFriendRequest(val);
+  };
+  document.querySelectorAll('[data-accept-freq]').forEach(b=>{
+    b.onclick = ()=>respondFriendRequest(b.dataset.acceptFreq, true);
+  });
+  document.querySelectorAll('[data-decline-freq]').forEach(b=>{
+    b.onclick = ()=>respondFriendRequest(b.dataset.declineFreq, false);
+  });
+  document.querySelectorAll('[data-cancel-freq]').forEach(b=>{
+    b.onclick = ()=>cancelFriendRequest(b.dataset.cancelFreq);
+  });
+  document.querySelectorAll('[data-trade-with]').forEach(b=>{
+    b.onclick = ()=>{
+      state.tradingWith = state.tradingWith === b.dataset.tradeWith ? null : b.dataset.tradeWith;
+      renderTab();
+    };
+  });
+  document.querySelectorAll('[data-remove-friend]').forEach(b=>{
+    b.onclick = ()=>removeFriend(b.dataset.removeFriend);
+  });
+  const ftSendBtn = document.getElementById('ftrade-send-btn');
+  if(ftSendBtn) ftSendBtn.onclick = ()=>{
+    const offerCardId = document.getElementById('ftrade-offer-select').value;
+    const wantCardId = document.getElementById('ftrade-want-select').value;
+    proposeFriendTrade(ftSendBtn.dataset.target, offerCardId, wantCardId);
+  };
+  document.querySelectorAll('[data-accept-ftrade]').forEach(b=>{
+    b.onclick = ()=>respondFriendTrade(b.dataset.acceptFtrade, true);
+  });
+  document.querySelectorAll('[data-decline-ftrade]').forEach(b=>{
+    b.onclick = ()=>respondFriendTrade(b.dataset.declineFtrade, false);
+  });
+  document.querySelectorAll('[data-cancel-ftrade]').forEach(b=>{
+    b.onclick = ()=>cancelFriendTrade(b.dataset.cancelFtrade);
+  });
+}
+
+async function renderTrade(body){
+  body.innerHTML = `<div class="loading-line">讀取交換所中...</div>`;
+  const trades = (await fetchTrades()).filter(t=>t.status==='open');
+  const myTrades = trades.filter(t=>t.seller===state.nickname);
+  const otherTrades = trades.filter(t=>t.seller!==state.nickname);
+  const owned = ownedCardOptions();
+
+  let html = `<div class="panel">
+    <h2>上架交換</h2>
+    <p class="sub">選一張你持有的卡片，寫下你想交換的內容</p>
+    ${owned ? `
+      <div class="form-row">
+        <div><label>選擇卡片</label><select id="trade-card-select">${owned}</select></div>
+        <div><label>想要交換什麼？</label><input type="text" id="trade-want-input" placeholder="例如：任一張太陽/月亮" /></div>
+        <button class="btn" id="trade-list-btn">上架</button>
+      </div>
+    ` : `<div class="empty-note">你目前沒有可交換的卡片，先去抽卡吧 ✦</div>`}
+  </div>`;
+
+  html += `<div class="panel">
+    <h2>我的交換清單</h2>
+    ${myTrades.length===0 ? '<div class="empty-note">尚未上架任何交換</div>' : myTrades.map(t=>{
+      const c = DECK_BY_ID[t.cardId];
+      return `<div class="listing">
+        <div class="left">
+          <div class="icon-box cf-${c.rarity}">${c.icon}</div>
+          <div class="meta"><div>${c.name}</div><div class="who">想要：${escapeHtml(t.wantText)}</div></div>
+        </div>
+        <div class="right">
+          <button class="btn small secondary" data-cancel-trade="${t.id}">取消</button>
+        </div>
+      </div>
+      ${t.offers.length>0 ? `<div style="margin:-4px 0 14px 14px;">
+        ${t.offers.map((o,idx)=>{
+          const oc = DECK_BY_ID[o.cardId];
+          return `<div class="listing" style="background:var(--bg-void);">
+            <div class="left">
+              <div class="icon-box cf-${oc.rarity}">${oc.icon}</div>
+              <div class="meta"><div>${escapeHtml(o.from)} 提議用 ${oc.name} 交換</div></div>
+            </div>
+            <button class="btn small" data-accept-offer="${t.id}:${idx}">接受</button>
+          </div>`;
+        }).join('')}
+      </div>` : ''}`;
+    }).join('')}
+  </div>`;
+
+  html += `<div class="panel">
+    <h2>公開交換清單</h2>
+    ${otherTrades.length===0 ? '<div class="empty-note">目前沒有其他人上架交換</div>' : otherTrades.map(t=>{
+      const c = DECK_BY_ID[t.cardId];
+      return `<div class="listing">
+        <div class="left">
+          <div class="icon-box cf-${c.rarity}">${c.icon}</div>
+          <div class="meta"><div>${c.name}</div><div class="who">${escapeHtml(t.seller)} 想要：${escapeHtml(t.wantText)}</div></div>
+        </div>
+        <div class="right">
+          ${ownedCardOptions() ? `<select data-offer-select="${t.id}">${ownedCardOptions()}</select>
+          <button class="btn small" data-offer-trade="${t.id}">提議交換</button>` : `<span class="who">你沒有卡可提議</span>`}
+        </div>
+      </div>`;
+    }).join('')}
+  </div>`;
+
+  body.innerHTML = html;
+
+  const listBtn = document.getElementById('trade-list-btn');
+  if(listBtn) listBtn.onclick = ()=>{
+    const cardId = document.getElementById('trade-card-select').value;
+    const want = document.getElementById('trade-want-input').value;
+    listTrade(cardId, want);
+  };
+  document.querySelectorAll('[data-cancel-trade]').forEach(b=>{
+    b.onclick = ()=>cancelTrade(b.dataset.cancelTrade);
+  });
+  document.querySelectorAll('[data-accept-offer]').forEach(b=>{
+    b.onclick = ()=>{
+      const [tid, idx] = b.dataset.acceptOffer.split(':');
+      acceptOffer(tid, parseInt(idx));
+    };
+  });
+  document.querySelectorAll('[data-offer-trade]').forEach(b=>{
+    b.onclick = ()=>{
+      const tid = b.dataset.offerTrade;
+      const sel = document.querySelector(`[data-offer-select="${tid}"]`);
+      offerTrade(tid, sel.value);
+    };
+  });
+}
+
+async function renderAuction(body){
+  body.innerHTML = `<div class="loading-line">讀取拍賣行中...</div>`;
+  let auctions = await fetchAuctions();
+  // resolve expired
+  const expired = auctions.filter(a=>a.status==='active' && Date.now() > a.endsAt);
+  for(const a of expired){ await resolveAuction(a); }
+  if(expired.length) auctions = await fetchAuctions();
+
+  const active = auctions.filter(a=>a.status==='active');
+  const myAuctions = active.filter(a=>a.seller===state.nickname);
+  const otherAuctions = active.filter(a=>a.seller!==state.nickname);
+  const owned = ownedCardOptions();
+
+  let html = `<div class="panel">
+    <h2>建立拍賣</h2>
+    <p class="sub">設定起標價與拍賣時長，讓其他占卜師競標你的稀有卡片</p>
+    ${owned ? `
+      <div class="form-row">
+        <div><label>選擇卡片</label><select id="auc-card-select">${owned}</select></div>
+        <div><label>起標價</label><input type="number" id="auc-start-input" min="1" value="20" style="width:90px;" /></div>
+        <div><label>拍賣時長</label><select id="auc-dur-select">${DURATIONS.map((d,i)=>`<option value="${i}">${d.label}</option>`).join('')}</select></div>
+        <button class="btn" id="auc-list-btn">開始拍賣</button>
+      </div>
+    ` : `<div class="empty-note">你目前沒有可拍賣的卡片</div>`}
+  </div>`;
+
+  html += `<div class="panel">
+    <h2>我的拍賣</h2>
+    ${myAuctions.length===0 ? '<div class="empty-note">尚未建立任何拍賣</div>' : myAuctions.map(a=>{
+      const c = DECK_BY_ID[a.cardId];
+      return `<div class="listing">
+        <div class="left">
+          <div class="icon-box cf-${c.rarity}">${c.icon}</div>
+          <div class="meta"><div>${c.name}</div><div class="who">${a.currentBidder? `目前出價 ✦${a.currentBid} by ${escapeHtml(a.currentBidder)}` : `起標 ✦${a.startBid}，尚無出價`}</div></div>
+        </div>
+        <div class="right">
+          <span class="timer">${fmtCountdown(a.endsAt - Date.now())}</span>
+          ${!a.currentBidder ? `<button class="btn small secondary" data-cancel-auction="${a.id}">取消</button>` : ''}
+        </div>
+      </div>`;
+    }).join('')}
+  </div>`;
+
+  html += `<div class="panel">
+    <h2>公開拍賣</h2>
+    ${otherAuctions.length===0 ? '<div class="empty-note">目前沒有進行中的拍賣</div>' : otherAuctions.map(a=>{
+      const c = DECK_BY_ID[a.cardId];
+      const minBid = a.currentBid > 0 ? a.currentBid+1 : a.startBid;
+      return `<div class="listing">
+        <div class="left">
+          <div class="icon-box cf-${c.rarity}">${c.icon}</div>
+          <div class="meta"><div>${c.name}</div><div class="who">${a.currentBidder? `目前出價 ✦${a.currentBid} by ${escapeHtml(a.currentBidder)}` : `起標 ✦${a.startBid}`} · <span class="timer">${fmtCountdown(a.endsAt-Date.now())}</span></div></div>
+        </div>
+        <div class="right">
+          <input type="number" min="${minBid}" placeholder="${minBid}" style="width:80px;" data-bid-input="${a.id}" />
+          <button class="btn small" data-bid-btn="${a.id}">出價</button>
+        </div>
+      </div>`;
+    }).join('')}
+  </div>`;
+
+  body.innerHTML = html;
+
+  const listBtn = document.getElementById('auc-list-btn');
+  if(listBtn) listBtn.onclick = ()=>{
+    const cardId = document.getElementById('auc-card-select').value;
+    const startBid = parseInt(document.getElementById('auc-start-input').value);
+    const durIdx = parseInt(document.getElementById('auc-dur-select').value);
+    listAuction(cardId, startBid, DURATIONS[durIdx].ms);
+  };
+  document.querySelectorAll('[data-cancel-auction]').forEach(b=>{
+    b.onclick = ()=>cancelAuction(b.dataset.cancelAuction);
+  });
+  document.querySelectorAll('[data-bid-btn]').forEach(b=>{
+    b.onclick = ()=>{
+      const aid = b.dataset.bidBtn;
+      const input = document.querySelector(`[data-bid-input="${aid}"]`);
+      const amount = parseInt(input.value || input.placeholder);
+      placeBid(aid, amount);
+    };
+  });
+}
+
+boot();
+})();
+</script>
+</body>
+</html>
