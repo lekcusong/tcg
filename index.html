@@ -207,6 +207,9 @@
     background:var(--bg-void);border:1px solid var(--line);color:var(--cream);
     border-radius:7px;padding:8px 10px;font-family:'EB Garamond',serif;font-size:14px;
   }
+  @media (max-width: 600px){
+    select, input[type=number], input[type=text]{ font-size:16px; }
+  }
   label{font-size:12px;color:var(--muted);display:block;margin-bottom:4px;font-family:'Space Mono',monospace;letter-spacing:0.5px;}
   .form-row{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px;align-items:flex-end;}
   .empty-note{color:var(--muted);font-size:13px;text-align:center;padding:20px 0;font-style:italic;}
@@ -243,6 +246,7 @@
     position:relative;max-width:340px;width:100%;background:var(--bg-panel-raised);
     border:1px solid var(--gold);border-radius:14px;padding:22px;
     box-shadow:0 20px 60px rgba(0,0,0,0.6);text-align:center;
+    max-height:88vh;overflow-y:auto;-webkit-overflow-scrolling:touch;
   }
   .card-modal-close{
     position:absolute;top:10px;right:10px;width:32px;height:32px;border-radius:50%;
@@ -270,8 +274,28 @@
   .card-modal-qty-row input{
     width:64px;text-align:center;background:var(--bg-void);border:1px solid var(--gold);border-radius:8px;
     color:var(--gold-bright);font-family:'Space Mono',monospace;padding:6px 4px;
+    font-size:16px;
   }
   .mini-card{cursor:pointer;}
+  .farm-grid{display:grid;grid-template-columns:repeat(auto-fill, minmax(200px, 1fr));gap:14px;}
+  .farm-plot{background:var(--bg-panel);border:1px solid var(--line);border-radius:12px;padding:14px;text-align:center;}
+  .farm-plot.ready{border-color:var(--gold);box-shadow:0 0 0 1px rgba(212,175,90,0.25) inset;}
+  .farm-plot.withered{border-color:#7a5a4a;opacity:0.75;}
+  .farm-plot-icon{font-size:32px;margin-bottom:6px;}
+  .farm-plot-name{font-family:'Cinzel',serif;color:var(--gold-bright);font-size:14px;margin-bottom:2px;}
+  .farm-plot-sub{font-size:11px;color:var(--muted);font-family:'Space Mono',monospace;margin-bottom:8px;}
+  .farm-progress{width:100%;height:6px;border-radius:4px;background:rgba(255,255,255,0.08);overflow:hidden;margin-bottom:8px;}
+  .farm-progress-fill{height:100%;background:var(--gold);transition:width .4s linear;}
+  .farm-seed-list{display:flex;flex-direction:column;gap:6px;}
+  .farm-seed-btn{
+    display:flex;align-items:center;justify-content:space-between;gap:8px;
+    background:var(--bg-void);border:1px solid var(--line);border-radius:8px;padding:6px 10px;
+    cursor:pointer;font-size:12px;color:var(--cream);text-align:left;
+  }
+  .farm-seed-btn:hover{border-color:var(--gold);}
+  .farm-seed-btn:disabled{opacity:0.4;cursor:not-allowed;}
+  .farm-seed-btn .fs-name{display:flex;align-items:center;gap:6px;}
+  .farm-seed-btn .fs-cost{color:var(--gold);font-family:'Space Mono',monospace;white-space:nowrap;}
 </style>
 </head>
 <body>
@@ -540,6 +564,222 @@ const PACK_COST = 100;
 const STREAK_BONUS = {3: 30, 7: 100, 14: 250, 30: 600};
 const SELL_PRICES = {common: 10, uncommon: 25, rare: 60, legendary: 150};
 
+// ---------- 占卜花園（種菜系統） ----------
+const FARM_PLOT_COUNT = 4;
+const MAJOR_SEED_UNLOCK_TOTAL = 30; // 收藏總張數達到此門檻才能種傳說種子
+let farmTickInterval = null;
+const SEED_TYPES = {
+  wands: {
+    key:'wands', name:'火苗種子', suitLabel:'Wands · 火', icon:'🔥',
+    cost:12, growMs: 20*60*1000,
+    coinMin:16, coinMax:22, wither:false,
+  },
+  cups: {
+    key:'cups', name:'水波種子', suitLabel:'Cups · 水', icon:'💧',
+    cost:28, growMs: 3*60*60*1000,
+    coinMin:42, coinMax:58, wither:false,
+  },
+  swords: {
+    key:'swords', name:'風刃種子', suitLabel:'Swords · 風', icon:'⚔',
+    cost:20, growMs: 60*60*1000, witherMs: 2*60*60*1000,
+    coinMin:38, coinMax:54, wither:true,
+  },
+  pentacles: {
+    key:'pentacles', name:'大地種子', suitLabel:'Pentacles · 土', icon:'✦',
+    cost:55, growMs: 8*60*60*1000,
+    coinMin:88, coinMax:118, wither:false,
+    bonusCardChance:0.12, bonusCardRarities:['common','uncommon'],
+  },
+  major: {
+    key:'major', name:'秘儀種子', suitLabel:'Major Arcana', icon:'🌟',
+    cost:150, growMs: 24*60*60*1000,
+    coinMin:150, coinMax:200, wither:false,
+    bonusCardChance:0.35, bonusCardRarities:['rare','legendary'],
+    unlockTotal: MAJOR_SEED_UNLOCK_TOTAL,
+  },
+};
+function ensureFarm(p){
+  if(!Array.isArray(p.farm) || p.farm.length !== FARM_PLOT_COUNT){
+    const old = Array.isArray(p.farm) ? p.farm : [];
+    p.farm = Array.from({length:FARM_PLOT_COUNT}, (_,i)=>old[i] || {seed:null, plantedAt:null, readyAt:null, witherAt:null, waterLog:{}, stolenBy:[]});
+  }
+  p.farm.forEach(plot=>{
+    if(!plot.waterLog) plot.waterLog = {};
+    if(!Array.isArray(plot.stolenBy)) plot.stolenBy = [];
+  });
+  return p.farm;
+}
+const WATER_SPEEDUP_RATIO = 0.15; // 好友每澆水一次，縮短當時剩餘時間的 15%
+const WATER_HELPER_REWARD = 3; // 幫忙澆水的好友獲得的小獎勵
+function stealYieldFor(seedKey){
+  const seed = SEED_TYPES[seedKey];
+  if(!seed) return 5;
+  return Math.max(5, Math.round(seed.coinMin * 0.35));
+}
+function plotStatus(plot, now){
+  if(!plot || !plot.seed) return 'empty';
+  if(plot.witherAt && now >= plot.witherAt) return 'withered';
+  if(now >= plot.readyAt) return 'ready';
+  return 'growing';
+}
+function formatDuration(ms){
+  if(ms < 0) ms = 0;
+  const totalSec = Math.floor(ms/1000);
+  const h = Math.floor(totalSec/3600);
+  const m = Math.floor((totalSec%3600)/60);
+  const s = totalSec%60;
+  if(h > 0) return `${h}時${String(m).padStart(2,'0')}分`;
+  if(m > 0) return `${m}分${String(s).padStart(2,'0')}秒`;
+  return `${s}秒`;
+}
+
+async function plantSeed(plotIndex, seedKey){
+  const p = state.player;
+  if(!p) return;
+  const seed = SEED_TYPES[seedKey];
+  if(!seed) return;
+  const farm = ensureFarm(p);
+  const plot = farm[plotIndex];
+  if(!plot || plot.seed){ showToast('這塊地已經種了東西'); return; }
+  if(seed.unlockTotal){
+    const total = playerTotalCards(p);
+    if(total < seed.unlockTotal){ showToast(`收藏滿 ${seed.unlockTotal} 張卡才能種植${seed.name}`); return; }
+  }
+  if((p.coins||0) < seed.cost){ showToast('金幣不足'); return; }
+  p.coins -= seed.cost;
+  const now = Date.now();
+  plot.seed = seedKey;
+  plot.plantedAt = now;
+  plot.readyAt = now + seed.growMs;
+  plot.witherAt = seed.wither ? plot.readyAt + seed.witherMs : null;
+  plot.waterLog = {};
+  plot.stolenBy = [];
+  await savePlayer(p);
+  showToast(`已種下${seed.name}`);
+  render();
+}
+
+async function harvestPlot(plotIndex, opts){
+  opts = opts || {};
+  const p = state.player;
+  if(!p) return null;
+  const farm = ensureFarm(p);
+  const plot = farm[plotIndex];
+  const now = Date.now();
+  const status = plotStatus(plot, now);
+  if(status === 'empty' || status === 'growing') return null;
+
+  const seed = SEED_TYPES[plot.seed];
+  let result = null;
+  if(status === 'withered'){
+    result = {withered:true, seedName: seed ? seed.name : '作物'};
+  } else {
+    const coinGain = Math.floor(Math.random()*(seed.coinMax-seed.coinMin+1)) + seed.coinMin;
+    p.coins = (p.coins||0) + coinGain;
+    let bonusCard = null;
+    if(seed.bonusCardChance && Math.random() < seed.bonusCardChance){
+      const pool = DECK.filter(c=>seed.bonusCardRarities.includes(c.rarity));
+      if(pool.length){
+        const card = pool[Math.floor(Math.random()*pool.length)];
+        p.cards[card.id] = (p.cards[card.id]||0) + 1;
+        bonusCard = card;
+      }
+    }
+    result = {withered:false, seedName: seed.name, coinGain, bonusCard};
+  }
+  plot.seed = null; plot.plantedAt = null; plot.readyAt = null; plot.witherAt = null;
+  plot.waterLog = {}; plot.stolenBy = [];
+  if(!opts.skipSave) await savePlayer(p);
+  return result;
+}
+
+async function harvestOne(plotIndex){
+  const result = await harvestPlot(plotIndex);
+  if(!result) return;
+  if(result.withered){
+    showToast(`${result.seedName}已經枯萎了，白忙一場 🥀`);
+  } else {
+    let msg = `收成${result.seedName}，獲得 ✦${result.coinGain}`;
+    if(result.bonusCard) msg += ` + 額外一張「${result.bonusCard.name}」！`;
+    showToast(msg);
+  }
+  render();
+}
+
+async function harvestAllReady(){
+  const p = state.player;
+  if(!p) return;
+  const farm = ensureFarm(p);
+  const now = Date.now();
+  let coinTotal = 0, harvestedCount = 0, witheredCount = 0;
+  const bonusCards = [];
+  for(let i=0;i<farm.length;i++){
+    const status = plotStatus(farm[i], now);
+    if(status !== 'ready' && status !== 'withered') continue;
+    const result = await harvestPlot(i, {skipSave:true});
+    if(!result) continue;
+    if(result.withered){ witheredCount++; }
+    else{
+      harvestedCount++; coinTotal += result.coinGain;
+      if(result.bonusCard) bonusCards.push(result.bonusCard.name);
+    }
+  }
+  if(harvestedCount===0 && witheredCount===0){ showToast('目前沒有可收成的作物'); return; }
+  await savePlayer(p);
+  let msg = '';
+  if(harvestedCount>0) msg += `收成 ${harvestedCount} 塊地，獲得 ✦${coinTotal}`;
+  if(bonusCards.length) msg += `（額外獲得：${bonusCards.join('、')}）`;
+  if(witheredCount>0) msg += `${msg?'；':''}${witheredCount} 塊地作物枯萎了`;
+  showToast(msg);
+  render();
+}
+
+async function waterFriendPlot(friendNick, plotIndex){
+  if(!state.nickname){ return; }
+  const owner = await loadPlayer(friendNick);
+  if(!owner){ showToast('找不到這位好友的資料'); return; }
+  const farm = ensureFarm(owner);
+  const plot = farm[plotIndex];
+  const now = Date.now();
+  const status = plotStatus(plot, now);
+  if(status !== 'growing'){ showToast('這塊地目前不需要澆水'); return; }
+  if(plot.waterLog[state.nickname]){ showToast('你已經幫這塊地澆過水了'); return; }
+  const remain = plot.readyAt - now;
+  const speedup = Math.floor(remain * WATER_SPEEDUP_RATIO);
+  plot.readyAt = plot.readyAt - speedup;
+  if(plot.witherAt) plot.witherAt = plot.witherAt - speedup;
+  plot.waterLog[state.nickname] = now;
+  await savePlayer(owner);
+
+  state.player.coins = (state.player.coins||0) + WATER_HELPER_REWARD;
+  await savePlayer(state.player);
+
+  showToast(`已幫 ${friendNick} 澆水，縮短了 ${formatDuration(speedup)}，你獲得 ✦${WATER_HELPER_REWARD} 作為謝禮`);
+  render();
+}
+
+async function stealFriendPlot(friendNick, plotIndex){
+  if(!state.nickname){ return; }
+  const owner = await loadPlayer(friendNick);
+  if(!owner){ showToast('找不到這位好友的資料'); return; }
+  const farm = ensureFarm(owner);
+  const plot = farm[plotIndex];
+  const now = Date.now();
+  const status = plotStatus(plot, now);
+  if(status !== 'ready'){ showToast('這塊地目前沒有成熟的作物可以偷'); return; }
+  if(plot.stolenBy.includes(state.nickname)){ showToast('你已經偷過這塊地了'); return; }
+  const gain = stealYieldFor(plot.seed);
+  plot.stolenBy.push(state.nickname);
+  await savePlayer(owner);
+
+  state.player.coins = (state.player.coins||0) + gain;
+  await savePlayer(state.player);
+
+  const seedName = SEED_TYPES[plot.seed] ? SEED_TYPES[plot.seed].name : '作物';
+  showToast(`偷偷順走一點 ${friendNick} 的${seedName}，獲得 ✦${gain}（不影響對方收成）`);
+  render();
+}
+
 function weightedDraw(){
   const pools = {};
   RARITY_ORDER.forEach(r=>pools[r]=DECK.filter(c=>c.rarity===r));
@@ -578,6 +818,7 @@ let state = {
   filter: 'all',
   toastTimer: null,
   tradingWith: null,
+  farmVisiting: null,
 };
 
 async function loadPlayer(nick){
@@ -1234,6 +1475,7 @@ function render(){
       <div class="tab ${state.tab==='collection'?'active':''}" data-tab="collection">我的收藏</div>
       <div class="tab ${state.tab==='friends'?'active':''}" data-tab="friends">好友</div>
       <div class="tab ${state.tab==='auction'?'active':''}" data-tab="auction">拍賣行</div>
+      <div class="tab ${state.tab==='farm'?'active':''}" data-tab="farm">🌱 占卜花園</div>
       <div class="tab ${state.tab==='leaderboard'?'active':''}" data-tab="leaderboard">🏆 排行榜</div>
       ${isGM() ? `<div class="tab ${state.tab==='gm'?'active':''}" data-tab="gm">⚡ GM 管理</div>` : ''}
     </div>
@@ -1244,6 +1486,13 @@ function render(){
     t.onclick = ()=>{ state.tab = t.dataset.tab; render(); };
   });
   renderTab();
+  if(farmTickInterval){ clearInterval(farmTickInterval); farmTickInterval = null; }
+  if(state.tab === 'farm'){
+    farmTickInterval = setInterval(()=>{
+      if(state.tab === 'farm') renderTab();
+      else { clearInterval(farmTickInterval); farmTickInterval = null; }
+    }, 1000);
+  }
 }
 
 function escapeHtml(s){
@@ -1256,6 +1505,7 @@ function renderTab(){
   if(state.tab === 'collection') return renderCollection(body);
   if(state.tab === 'friends') return renderFriends(body);
   if(state.tab === 'auction') return renderAuction(body);
+  if(state.tab === 'farm') return renderFarm(body);
   if(state.tab === 'leaderboard') return renderLeaderboard(body);
   if(state.tab === 'gm' && isGM()) return renderGM(body);
 }
@@ -1595,6 +1845,169 @@ async function renderAuction(body){
   });
 }
 
+async function renderFarm(body){
+  const p = state.player;
+  const farm = ensureFarm(p);
+  const now = Date.now();
+  const total = playerTotalCards(p);
+
+  const anyReady = farm.some(pl=>{
+    const s = plotStatus(pl, now);
+    return s === 'ready' || s === 'withered';
+  });
+
+  let html = `<div class="panel">
+    <h2>🌱 占卜花園</h2>
+    <p class="sub">用金幣種下元素種子，靜待時間發芽 · 花色種子對應塔羅四元素，秘儀種子需收藏滿 ${MAJOR_SEED_UNLOCK_TOTAL} 張才能解鎖 · 別忘了到下方看看好友的花園，互相澆水偷菜 🌿</p>
+    <button class="btn small" id="farm-harvest-all-btn" ${anyReady?'':'disabled'}>收成全部</button>
+  </div>`;
+
+  html += `<div class="farm-grid">`;
+  farm.forEach((plot, i)=>{
+    const status = plotStatus(plot, now);
+    if(status === 'empty'){
+      const seedButtons = Object.values(SEED_TYPES).map(seed=>{
+        const locked = seed.unlockTotal && total < seed.unlockTotal;
+        const affordable = (p.coins||0) >= seed.cost;
+        const disabled = locked || !affordable;
+        const label = locked ? `需收藏 ${seed.unlockTotal} 張` : `成長 ${formatDuration(seed.growMs)}`;
+        return `<button class="farm-seed-btn" data-plant="${i}" data-seed="${seed.key}" ${disabled?'disabled':''}>
+          <span class="fs-name">${seed.icon} ${seed.name}${locked?' 🔒':''}<br/><span style="color:var(--muted);font-size:11px;">${label}</span></span>
+          <span class="fs-cost">✦${seed.cost}</span>
+        </button>`;
+      }).join('');
+      html += `<div class="farm-plot">
+        <div class="farm-plot-icon">🪴</div>
+        <div class="farm-plot-name">空地</div>
+        <div class="farm-plot-sub">選一顆種子種下</div>
+        <div class="farm-seed-list">${seedButtons}</div>
+      </div>`;
+    } else {
+      const seed = SEED_TYPES[plot.seed];
+      if(status === 'withered'){
+        html += `<div class="farm-plot withered">
+          <div class="farm-plot-icon">🥀</div>
+          <div class="farm-plot-name">${seed.name}已枯萎</div>
+          <div class="farm-plot-sub">錯過了最佳收成時機</div>
+          <button class="btn small secondary" data-harvest="${i}">清理地塊</button>
+        </div>`;
+      } else if(status === 'ready'){
+        html += `<div class="farm-plot ready">
+          <div class="farm-plot-icon">${seed.icon}</div>
+          <div class="farm-plot-name">${seed.name}</div>
+          <div class="farm-plot-sub">已成熟，可以收成！</div>
+          <button class="btn small" data-harvest="${i}">收成</button>
+        </div>`;
+      } else {
+        const elapsed = now - plot.plantedAt;
+        const pct = Math.min(100, Math.floor((elapsed / seed.growMs) * 100));
+        const remain = plot.readyAt - now;
+        let witherNote = '';
+        if(plot.witherAt){
+          witherNote = `<div class="farm-plot-sub" style="color:#c98;">成熟後 ${formatDuration(plot.witherAt - plot.readyAt)} 內要收成，否則會枯萎</div>`;
+        }
+        html += `<div class="farm-plot">
+          <div class="farm-plot-icon">${seed.icon}</div>
+          <div class="farm-plot-name">${seed.name}</div>
+          <div class="farm-plot-sub">還需 ${formatDuration(remain)}</div>
+          <div class="farm-progress"><div class="farm-progress-fill" style="width:${pct}%;"></div></div>
+          ${witherNote}
+        </div>`;
+      }
+    }
+  });
+  html += `</div>`;
+
+  // ---------- 好友花園：互相澆水/偷菜 ----------
+  const friends = p.friends || [];
+  html += `<div class="panel">
+    <h2>🌿 好友花園</h2>
+    <p class="sub">幫好友的作物澆水可以加速生長（雙方都有小獎勵），成熟後太久沒收成也可以被好友偷一點走，但不影響本人收成</p>
+    ${friends.length===0 ? '<div class="empty-note">尚未加入任何好友，先到「好友」分頁加人吧 ✦</div>' : friends.map(f=>`
+      <div class="listing">
+        <div class="left"><div class="icon-box">✦</div><div class="meta"><div>${escapeHtml(f)}</div></div></div>
+        <div class="right"><button class="btn small" data-visit-farm="${escapeHtml(f)}">${state.farmVisiting===f ? '收合' : '查看花園'}</button></div>
+      </div>
+    `).join('')}
+  </div>`;
+
+  let visitingFarm = null, visitingPlayer = null;
+  if(state.farmVisiting && friends.includes(state.farmVisiting)){
+    visitingPlayer = await loadPlayer(state.farmVisiting);
+    if(visitingPlayer) visitingFarm = ensureFarm(visitingPlayer);
+  }
+  if(state.farmVisiting && visitingFarm){
+    const vnow = Date.now();
+    html += `<div class="panel">
+      <h2>${escapeHtml(state.farmVisiting)} 的花園</h2>
+      <div class="farm-grid">`;
+    visitingFarm.forEach((plot, i)=>{
+      const status = plotStatus(plot, vnow);
+      if(status === 'empty'){
+        html += `<div class="farm-plot">
+          <div class="farm-plot-icon">🪴</div>
+          <div class="farm-plot-name">空地</div>
+          <div class="farm-plot-sub">還沒有種東西</div>
+        </div>`;
+      } else {
+        const seed = SEED_TYPES[plot.seed];
+        if(status === 'withered'){
+          html += `<div class="farm-plot withered">
+            <div class="farm-plot-icon">🥀</div>
+            <div class="farm-plot-name">${seed.name}已枯萎</div>
+            <div class="farm-plot-sub">錯過了最佳收成時機</div>
+          </div>`;
+        } else if(status === 'ready'){
+          const stolen = plot.stolenBy.includes(state.nickname);
+          html += `<div class="farm-plot ready">
+            <div class="farm-plot-icon">${seed.icon}</div>
+            <div class="farm-plot-name">${seed.name}</div>
+            <div class="farm-plot-sub">已成熟，還沒收成</div>
+            <button class="btn small secondary" data-steal-plot="${i}" data-steal-friend="${escapeHtml(state.farmVisiting)}" ${stolen?'disabled':''}>${stolen?'已偷過':`🌾 偷一點（+✦${stealYieldFor(plot.seed)}）`}</button>
+          </div>`;
+        } else {
+          const elapsed = vnow - plot.plantedAt;
+          const pct = Math.min(100, Math.floor((elapsed / seed.growMs) * 100));
+          const remain = plot.readyAt - vnow;
+          const watered = !!plot.waterLog[state.nickname];
+          html += `<div class="farm-plot">
+            <div class="farm-plot-icon">${seed.icon}</div>
+            <div class="farm-plot-name">${seed.name}</div>
+            <div class="farm-plot-sub">還需 ${formatDuration(remain)}</div>
+            <div class="farm-progress"><div class="farm-progress-fill" style="width:${pct}%;"></div></div>
+            <button class="btn small" data-water-plot="${i}" data-water-friend="${escapeHtml(state.farmVisiting)}" ${watered?'disabled':''}>${watered?'已澆過水':'🚿 幫忙澆水'}</button>
+          </div>`;
+        }
+      }
+    });
+    html += `</div></div>`;
+  }
+
+  body.innerHTML = html;
+
+  const harvestAllBtn = document.getElementById('farm-harvest-all-btn');
+  if(harvestAllBtn) harvestAllBtn.onclick = harvestAllReady;
+  document.querySelectorAll('[data-plant]').forEach(btn=>{
+    btn.onclick = ()=>plantSeed(parseInt(btn.dataset.plant,10), btn.dataset.seed);
+  });
+  document.querySelectorAll('[data-harvest]').forEach(btn=>{
+    btn.onclick = ()=>harvestOne(parseInt(btn.dataset.harvest,10));
+  });
+  document.querySelectorAll('[data-visit-farm]').forEach(btn=>{
+    btn.onclick = ()=>{
+      const f = btn.dataset.visitFarm;
+      state.farmVisiting = state.farmVisiting===f ? null : f;
+      render();
+    };
+  });
+  document.querySelectorAll('[data-water-plot]').forEach(btn=>{
+    btn.onclick = ()=>waterFriendPlot(btn.dataset.waterFriend, parseInt(btn.dataset.waterPlot,10));
+  });
+  document.querySelectorAll('[data-steal-plot]').forEach(btn=>{
+    btn.onclick = ()=>stealFriendPlot(btn.dataset.stealFriend, parseInt(btn.dataset.stealPlot,10));
+  });
+}
+
 async function renderLeaderboard(body){
   body.innerHTML = `<div class="loading-line">讀取排行榜中...</div>`;
   const allPlayers = await fetchAllPlayers();
@@ -1610,7 +2023,7 @@ async function renderLeaderboard(body){
 
   let html = `<div class="panel">
     <h2>🏆 收藏排行榜</h2>
-    <p class="sub">依收藏卡牌總張數排名（不含 GM）</p>
+    <p class="sub">依收藏卡牌總張數排名</p>
     ${byCards.length===0 ? '<div class="empty-note">目前尚無玩家資料</div>' : byCards.map((pl,i)=>`
       <div class="listing">
         <div class="left"><div class="icon-box">${medal(i)}</div><div class="meta"><div>${escapeHtml(pl.nickname)}${isMe(pl.nickname)?' <span style="color:var(--gold-bright);">(你)</span>':''}</div></div></div>
@@ -1621,7 +2034,7 @@ async function renderLeaderboard(body){
 
   html += `<div class="panel">
     <h2>💰 財富排行榜</h2>
-    <p class="sub">依持有金幣排名（不含 GM）</p>
+    <p class="sub">依持有金幣排名</p>
     ${byCoins.length===0 ? '<div class="empty-note">目前尚無玩家資料</div>' : byCoins.map((pl,i)=>`
       <div class="listing">
         <div class="left"><div class="icon-box">${medal(i)}</div><div class="meta"><div>${escapeHtml(pl.nickname)}${isMe(pl.nickname)?' <span style="color:var(--gold-bright);">(你)</span>':''}</div></div></div>
