@@ -564,7 +564,7 @@ const START_COINS = 200;
 const STREAK_BONUS = {3: 30, 7: 100, 14: 250, 30: 600};
 const SELL_PRICES = {common: 10, uncommon: 25, rare: 60, legendary: 150};
 
-// ---------- 拉霸機 ----------
+// ---------- 三牌共鳴 ----------
 const DEFAULT_SLOT_SETTINGS = {
   cost: 50,
   multCommon: 2,
@@ -869,7 +869,7 @@ async function savePlayer(p){
   await storage.set(playerKey(p.nickname), JSON.stringify(p));
 }
 function newPlayer(nick, passwordHash){
-  return {nickname:nick, passwordHash, coins:START_COINS, cards:{}, friends:[], lastClaim:null, streak:0, joinedAt:Date.now()};
+  return {nickname:nick, passwordHash, coins:START_COINS, cards:{}, friends:[], lastClaim:null, streak:0, joinedAt:Date.now(), slotSpend:0};
 }
 
 async function hashPassword(pw){
@@ -1140,15 +1140,16 @@ function flipCard(i){
   }
 }
 
-// ---------- Slot machine (拉霸機) ----------
+// ---------- Slot machine (三牌共鳴) ----------
 let lastSeenBroadcastTs = Date.now();
 async function pullSlot(){
-  if(state.player.coins < SLOT_SETTINGS.cost){ showToast('金幣不足，無法拉霸'); return; }
+  if(state.player.coins < SLOT_SETTINGS.cost){ showToast('金幣不足，無法共鳴'); return; }
   const drawn = [weightedDraw(), weightedDraw(), weightedDraw()];
   state.drawResults = drawn;
   state.drawSource = 'slot';
   state.flipped = [false,false,false];
   state.player.coins -= SLOT_SETTINGS.cost;
+  state.player.slotSpend = (state.player.slotSpend||0) + SLOT_SETTINGS.cost;
   drawn.forEach(c=>{
     state.player.cards[c.id] = (state.player.cards[c.id]||0) + 1;
   });
@@ -1163,23 +1164,23 @@ async function pullSlot(){
     winAmount = SLOT_JACKPOT;
     state.player.coins += winAmount;
     winTier = 'jackpot';
-    winMsg = `🎰💥 頭獎 JACKPOT！贏得整個獎池 ✦${winAmount}！`;
+    winMsg = `✨💫 命運共鳴！贏得整個獎池 ✦${winAmount}！`;
     await saveSlotJackpot(SLOT_SETTINGS.jackpotBase);
   } else if(allSame && rarities[0] === 'rare'){
     winAmount = SLOT_SETTINGS.cost * SLOT_SETTINGS.multRare;
     state.player.coins += winAmount;
     winTier = 'rare';
-    winMsg = `🎰 三張稀有！獲得 ✦${winAmount} 金幣`;
+    winMsg = `✨ 三張稀有共鳴！獲得 ✦${winAmount} 金幣`;
   } else if(allSame && rarities[0] === 'uncommon'){
     winAmount = SLOT_SETTINGS.cost * SLOT_SETTINGS.multUncommon;
     state.player.coins += winAmount;
     winTier = 'uncommon';
-    winMsg = `🎰 三張罕見！獲得 ✦${winAmount} 金幣`;
+    winMsg = `✨ 三張罕見共鳴！獲得 ✦${winAmount} 金幣`;
   } else if(allSame && rarities[0] === 'common'){
     winAmount = SLOT_SETTINGS.cost * SLOT_SETTINGS.multCommon;
     state.player.coins += winAmount;
     winTier = 'common';
-    winMsg = `🎰 三張普通！獲得 ✦${winAmount} 金幣`;
+    winMsg = `✨ 三張普通共鳴！獲得 ✦${winAmount} 金幣`;
   } else {
     const contrib = Math.round(SLOT_SETTINGS.cost * SLOT_SETTINGS.contribRate / 100);
     await saveSlotJackpot(SLOT_JACKPOT + contrib);
@@ -1206,8 +1207,8 @@ function initWinBroadcastPoll(){
       const w = JSON.parse(r.value);
       if(w.ts > lastSeenBroadcastTs && w.nickname && w.nickname.toLowerCase() !== state.nickname.toLowerCase()){
         lastSeenBroadcastTs = w.ts;
-        const tierLabel = w.tier === 'jackpot' ? '頭獎 JACKPOT' : `三張${RARITY_LABEL[w.tier]||''}`;
-        showToast(`🎰 ${w.nickname} 拉出${tierLabel}，贏得 ✦${w.amount} 金幣！`);
+        const tierLabel = w.tier === 'jackpot' ? '命運共鳴' : `三張${RARITY_LABEL[w.tier]||''}共鳴`;
+        showToast(`✨ ${w.nickname} 觸發了${tierLabel}，贏得 ✦${w.amount} 金幣！`);
       }
     }catch(e){ /* ignore */ }
   }, 15000);
@@ -1538,7 +1539,7 @@ function render(){
       <div class="login-screen">
         <div class="sigil">🔮</div>
         <h1>秘境集卡</h1>
-        <p>輸入暱稱與密碼，開始每日抽卡、收藏塔羅牌，玩玩拉霸機試試手氣，並與好友互相交換或競標稀有卡片。首次輸入的暱稱＋密碼組合會自動建立新帳號。</p>
+        <p>輸入暱稱與密碼，開始每日抽卡、收藏塔羅牌，玩玩三牌共鳴試試手氣，並與好友互相交換或競標稀有卡片。首次輸入的暱稱＋密碼組合會自動建立新帳號。</p>
         <input id="nick-input" type="text" placeholder="輸入暱稱..." maxlength="20" value="${rememberedNick ? escapeHtml(rememberedNick) : ''}" />
         <input id="pw-input" type="password" placeholder="輸入密碼（至少4個字元）" />
         <button class="btn full" id="login-btn">登入 / 建立帳號</button>
@@ -1660,10 +1661,10 @@ function renderHome(body){
   html += `</div>`;
 
   html += `<div class="panel">
-    <h2>🎰 塔羅拉霸機</h2>
+    <h2>✨ 三牌共鳴</h2>
     <p class="sub">花費 ✦${SLOT_SETTINGS.cost} 拉一次，抽到的 3 張牌都會直接進收藏；三張稀有度相同才會中獎，三張傳說直接卷走整個獎池！</p>
     <div class="countdown" style="margin-bottom:10px;">目前獎池：<b style="color:var(--gold-bright);">✦ ${SLOT_JACKPOT}</b></div>
-    <button class="btn" id="slot-btn" ${p.coins < SLOT_SETTINGS.cost ? 'disabled' : ''}>拉霸一次（✦ ${SLOT_SETTINGS.cost}）</button>
+    <button class="btn" id="slot-btn" ${p.coins < SLOT_SETTINGS.cost ? 'disabled' : ''}>共鳴一次（✦ ${SLOT_SETTINGS.cost}）</button>
   </div>`;
 
   html += `<div class="panel">
@@ -2115,6 +2116,8 @@ async function renderLeaderboard(body){
     .sort((a,b)=>b.total-a.total).slice(0,20);
   const byCoins = players.map(pl=>({nickname:pl.nickname, coins: pl.coins||0}))
     .sort((a,b)=>b.coins-a.coins).slice(0,20);
+  const bySlotSpend = players.map(pl=>({nickname:pl.nickname, spend: pl.slotSpend||0}))
+    .sort((a,b)=>b.spend-a.spend).slice(0,20);
 
   const medal = i => i===0?'🥇':i===1?'🥈':i===2?'🥉':`#${i+1}`;
   const isMe = nick => state.nickname && nick.toLowerCase()===state.nickname.toLowerCase();
@@ -2137,6 +2140,17 @@ async function renderLeaderboard(body){
       <div class="listing">
         <div class="left"><div class="icon-box">${medal(i)}</div><div class="meta"><div>${escapeHtml(pl.nickname)}${isMe(pl.nickname)?' <span style="color:var(--gold-bright);">(你)</span>':''}</div></div></div>
         <div class="right"><span class="price">✦ ${pl.coins}</span></div>
+      </div>
+    `).join('')}
+  </div>`;
+
+  html += `<div class="panel">
+    <h2>✨ 三牌共鳴消費排行榜</h2>
+    <p class="sub">依三牌共鳴累計花費金幣排名</p>
+    ${bySlotSpend.length===0 ? '<div class="empty-note">目前尚無玩家資料</div>' : bySlotSpend.map((pl,i)=>`
+      <div class="listing">
+        <div class="left"><div class="icon-box">${medal(i)}</div><div class="meta"><div>${escapeHtml(pl.nickname)}${isMe(pl.nickname)?' <span style="color:var(--gold-bright);">(你)</span>':''}</div></div></div>
+        <div class="right"><span class="price">✦ ${pl.spend}</span></div>
       </div>
     `).join('')}
   </div>`;
@@ -2198,7 +2212,7 @@ async function renderGM(body){
 
   html += `<div class="panel">
     <h2>抽卡機率設定</h2>
-    <p class="sub">調整四個稀有度的相對權重，會影響「所有玩家」之後的每日抽卡與拉霸結果。建議四項總和維持在 100 左右方便理解百分比，但不強制。</p>
+    <p class="sub">調整四個稀有度的相對權重，會影響「所有玩家」之後的每日抽卡與三牌共鳴結果。建議四項總和維持在 100 左右方便理解百分比，但不強制。</p>
     <div class="form-row">
       <div><label>普通</label><input type="number" id="gm-w-common" value="${DRAW_WEIGHTS.common}" min="0" style="width:70px;" /></div>
       <div><label>罕見</label><input type="number" id="gm-w-uncommon" value="${DRAW_WEIGHTS.uncommon}" min="0" style="width:70px;" /></div>
@@ -2212,7 +2226,7 @@ async function renderGM(body){
   </div>`;
 
   html += `<div class="panel">
-    <h2>🎰 拉霸機設定</h2>
+    <h2>✨ 三牌共鳴設定</h2>
     <p class="sub">目前獎池：<b style="color:var(--gold-bright);">✦ ${SLOT_JACKPOT}</b> · 中頭獎（三張傳說）會直接卷走全部獎池</p>
     <div class="form-row">
       <div><label>每次花費</label><input type="number" id="gm-slot-cost" value="${SLOT_SETTINGS.cost}" min="1" style="width:80px;" /></div>
@@ -2225,7 +2239,7 @@ async function renderGM(body){
       <div><label>頭獎後獎池重置為</label><input type="number" id="gm-slot-jackpot-base" value="${SLOT_SETTINGS.jackpotBase}" min="0" style="width:100px;" /></div>
     </div>
     <div class="form-row">
-      <button class="btn small" id="gm-slot-save-btn">儲存拉霸設定</button>
+      <button class="btn small" id="gm-slot-save-btn">儲存共鳴設定</button>
       <button class="btn small secondary" id="gm-slot-reset-btn">還原預設值</button>
     </div>
     <div class="form-row" style="margin-top:6px;">
@@ -2295,13 +2309,13 @@ async function renderGM(body){
     };
     if(Object.values(s).some(v=>isNaN(v) || v < 0)){ showToast('請輸入有效的非負數字'); return; }
     await saveSlotSettings(s);
-    showToast('拉霸機設定已更新，即時對所有玩家生效 ⚡');
+    showToast('三牌共鳴設定已更新，即時對所有玩家生效 ⚡');
     renderTab();
   };
   const slotResetBtn = document.getElementById('gm-slot-reset-btn');
   if(slotResetBtn) slotResetBtn.onclick = async ()=>{
     await saveSlotSettings({...DEFAULT_SLOT_SETTINGS});
-    showToast('已還原為預設拉霸設定');
+    showToast('已還原為預設共鳴設定');
     renderTab();
   };
   const slotJackpotSetBtn = document.getElementById('gm-slot-jackpot-set-btn');
