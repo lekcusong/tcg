@@ -561,9 +561,46 @@ async function saveDrawWeights(newWeights){
 }
 const DAILY_COINS = 50;
 const START_COINS = 200;
-const PACK_COST = 100;
 const STREAK_BONUS = {3: 30, 7: 100, 14: 250, 30: 600};
 const SELL_PRICES = {common: 10, uncommon: 25, rare: 60, legendary: 150};
+
+// ---------- 拉霸機 ----------
+const DEFAULT_SLOT_SETTINGS = {
+  cost: 50,
+  multCommon: 2,
+  multUncommon: 5,
+  multRare: 15,
+  contribRate: 10,   // 百分比，未中獎時投入獎池
+  jackpotBase: 200,  // 中頭獎後獎池重置的保底金額
+};
+let SLOT_SETTINGS = {...DEFAULT_SLOT_SETTINGS};
+let SLOT_JACKPOT = DEFAULT_SLOT_SETTINGS.jackpotBase;
+async function loadSlotConfig(){
+  try{
+    const r = await storage.get('config:slot_settings');
+    if(r){
+      const s = JSON.parse(r.value);
+      Object.keys(DEFAULT_SLOT_SETTINGS).forEach(k=>{
+        if(typeof s[k] === 'number' && s[k] >= 0) SLOT_SETTINGS[k] = s[k];
+      });
+    }
+  }catch(e){ /* keep defaults */ }
+  try{
+    const r2 = await storage.get('config:slot_jackpot');
+    if(r2){
+      const v = parseFloat(r2.value);
+      if(!isNaN(v) && v >= 0) SLOT_JACKPOT = v;
+    }
+  }catch(e){ /* keep default */ }
+}
+async function saveSlotSettings(newSettings){
+  SLOT_SETTINGS = {...newSettings};
+  await storage.set('config:slot_settings', JSON.stringify(SLOT_SETTINGS));
+}
+async function saveSlotJackpot(newValue){
+  SLOT_JACKPOT = newValue;
+  await storage.set('config:slot_jackpot', JSON.stringify(SLOT_JACKPOT));
+}
 
 // ---------- 占卜花園（種菜系統） ----------
 const FARM_PLOT_COUNT = 4;
@@ -917,7 +954,7 @@ function openCardModal(cardId){
     const cardChance = pool.length ? (rarityChance / pool.length) * 100 : 0;
     bodyHtml += `
       <div class="card-modal-locked-note">
-        尚未擁有此卡 · 開一次卡包約有 <span class="odds">${cardChance.toFixed(2)}%</span> 機率抽到
+        尚未擁有此卡 · 每次抽卡約有 <span class="odds">${cardChance.toFixed(2)}%</span> 機率抽到
       </div>
     `;
   }
@@ -1008,6 +1045,8 @@ async function boot(){
   initCardModal();
   render();
   loadDrawWeights().catch(()=>{});
+  loadSlotConfig().catch(()=>{});
+  initWinBroadcastPoll();
 }
 
 async function doLogin(nick, password){
@@ -1101,20 +1140,77 @@ function flipCard(i){
   }
 }
 
-// ---------- Card packs ----------
-async function buyPack(){
-  if(state.player.coins < PACK_COST){ showToast('金幣不足，無法開啟卡包'); return; }
+// ---------- Slot machine (拉霸機) ----------
+let lastSeenBroadcastTs = Date.now();
+async function pullSlot(){
+  if(state.player.coins < SLOT_SETTINGS.cost){ showToast('金幣不足，無法拉霸'); return; }
   const drawn = [weightedDraw(), weightedDraw(), weightedDraw()];
   state.drawResults = drawn;
-  state.drawSource = 'pack';
+  state.drawSource = 'slot';
   state.flipped = [false,false,false];
-  state.player.coins -= PACK_COST;
+  state.player.coins -= SLOT_SETTINGS.cost;
   drawn.forEach(c=>{
     state.player.cards[c.id] = (state.player.cards[c.id]||0) + 1;
   });
+
+  const rarities = drawn.map(c=>c.rarity);
+  const allSame = rarities.every(r=>r===rarities[0]);
+  let winMsg = null;
+  let winAmount = 0;
+  let winTier = null;
+
+  if(allSame && rarities[0] === 'legendary'){
+    winAmount = SLOT_JACKPOT;
+    state.player.coins += winAmount;
+    winTier = 'jackpot';
+    winMsg = `🎰💥 頭獎 JACKPOT！贏得整個獎池 ✦${winAmount}！`;
+    await saveSlotJackpot(SLOT_SETTINGS.jackpotBase);
+  } else if(allSame && rarities[0] === 'rare'){
+    winAmount = SLOT_SETTINGS.cost * SLOT_SETTINGS.multRare;
+    state.player.coins += winAmount;
+    winTier = 'rare';
+    winMsg = `🎰 三張稀有！獲得 ✦${winAmount} 金幣`;
+  } else if(allSame && rarities[0] === 'uncommon'){
+    winAmount = SLOT_SETTINGS.cost * SLOT_SETTINGS.multUncommon;
+    state.player.coins += winAmount;
+    winTier = 'uncommon';
+    winMsg = `🎰 三張罕見！獲得 ✦${winAmount} 金幣`;
+  } else if(allSame && rarities[0] === 'common'){
+    winAmount = SLOT_SETTINGS.cost * SLOT_SETTINGS.multCommon;
+    state.player.coins += winAmount;
+    winTier = 'common';
+    winMsg = `🎰 三張普通！獲得 ✦${winAmount} 金幣`;
+  } else {
+    const contrib = Math.round(SLOT_SETTINGS.cost * SLOT_SETTINGS.contribRate / 100);
+    await saveSlotJackpot(SLOT_JACKPOT + contrib);
+  }
+
   await savePlayer(state.player);
   render();
   setTimeout(()=>{ flipCard(0); }, 300);
+
+  if(winMsg){
+    setTimeout(()=>showToast(winMsg), 1700);
+    storage.set('config:latest_win', JSON.stringify({
+      nickname: state.nickname, tier: winTier, amount: winAmount, ts: Date.now()
+    })).catch(()=>{});
+    lastSeenBroadcastTs = Date.now();
+  }
+}
+function initWinBroadcastPoll(){
+  setInterval(async ()=>{
+    if(!state.nickname) return;
+    try{
+      const r = await storage.get('config:latest_win');
+      if(!r) return;
+      const w = JSON.parse(r.value);
+      if(w.ts > lastSeenBroadcastTs && w.nickname && w.nickname.toLowerCase() !== state.nickname.toLowerCase()){
+        lastSeenBroadcastTs = w.ts;
+        const tierLabel = w.tier === 'jackpot' ? '頭獎 JACKPOT' : `三張${RARITY_LABEL[w.tier]||''}`;
+        showToast(`🎰 ${w.nickname} 拉出${tierLabel}，贏得 ✦${w.amount} 金幣！`);
+      }
+    }catch(e){ /* ignore */ }
+  }, 15000);
 }
 
 // ---------- Friends ----------
@@ -1442,7 +1538,7 @@ function render(){
       <div class="login-screen">
         <div class="sigil">🔮</div>
         <h1>秘境集卡</h1>
-        <p>輸入暱稱與密碼，開始每日抽卡、收藏塔羅牌，花費遊戲幣開啟卡包，並與好友互相交換或競標稀有卡片。首次輸入的暱稱＋密碼組合會自動建立新帳號。</p>
+        <p>輸入暱稱與密碼，開始每日抽卡、收藏塔羅牌，玩玩拉霸機試試手氣，並與好友互相交換或競標稀有卡片。首次輸入的暱稱＋密碼組合會自動建立新帳號。</p>
         <input id="nick-input" type="text" placeholder="輸入暱稱..." maxlength="20" value="${rememberedNick ? escapeHtml(rememberedNick) : ''}" />
         <input id="pw-input" type="password" placeholder="輸入密碼（至少4個字元）" />
         <button class="btn full" id="login-btn">登入 / 建立帳號</button>
@@ -1564,9 +1660,10 @@ function renderHome(body){
   html += `</div>`;
 
   html += `<div class="panel">
-    <h2>卡包商店</h2>
-    <p class="sub">花費 ${PACK_COST} 枚遊戲幣即可開啟一包卡包（可重複購買，不限次數）</p>
-    <button class="btn" id="pack-btn" ${p.coins < PACK_COST ? 'disabled' : ''}>開啟卡包 🎴（✦ ${PACK_COST}）</button>
+    <h2>🎰 塔羅拉霸機</h2>
+    <p class="sub">花費 ✦${SLOT_SETTINGS.cost} 拉一次，抽到的 3 張牌都會直接進收藏；三張稀有度相同才會中獎，三張傳說直接卷走整個獎池！</p>
+    <div class="countdown" style="margin-bottom:10px;">目前獎池：<b style="color:var(--gold-bright);">✦ ${SLOT_JACKPOT}</b></div>
+    <button class="btn" id="slot-btn" ${p.coins < SLOT_SETTINGS.cost ? 'disabled' : ''}>拉霸一次（✦ ${SLOT_SETTINGS.cost}）</button>
   </div>`;
 
   html += `<div class="panel">
@@ -1582,8 +1679,8 @@ function renderHome(body){
   body.innerHTML = html;
   const btn = document.getElementById('draw-btn');
   if(btn) btn.onclick = claimDaily;
-  const packBtn = document.getElementById('pack-btn');
-  if(packBtn) packBtn.onclick = buyPack;
+  const slotBtn = document.getElementById('slot-btn');
+  if(slotBtn) slotBtn.onclick = pullSlot;
 }
 
 function renderCollection(body){
@@ -2101,7 +2198,7 @@ async function renderGM(body){
 
   html += `<div class="panel">
     <h2>抽卡機率設定</h2>
-    <p class="sub">調整四個稀有度的相對權重，會影響「所有玩家」之後的每日抽卡與卡包開啟結果。建議四項總和維持在 100 左右方便理解百分比，但不強制。</p>
+    <p class="sub">調整四個稀有度的相對權重，會影響「所有玩家」之後的每日抽卡與拉霸結果。建議四項總和維持在 100 左右方便理解百分比，但不強制。</p>
     <div class="form-row">
       <div><label>普通</label><input type="number" id="gm-w-common" value="${DRAW_WEIGHTS.common}" min="0" style="width:70px;" /></div>
       <div><label>罕見</label><input type="number" id="gm-w-uncommon" value="${DRAW_WEIGHTS.uncommon}" min="0" style="width:70px;" /></div>
@@ -2111,6 +2208,29 @@ async function renderGM(body){
     <div class="form-row">
       <button class="btn small" id="gm-weights-save-btn">儲存機率設定</button>
       <button class="btn small secondary" id="gm-weights-reset-btn">還原預設值</button>
+    </div>
+  </div>`;
+
+  html += `<div class="panel">
+    <h2>🎰 拉霸機設定</h2>
+    <p class="sub">目前獎池：<b style="color:var(--gold-bright);">✦ ${SLOT_JACKPOT}</b> · 中頭獎（三張傳說）會直接卷走全部獎池</p>
+    <div class="form-row">
+      <div><label>每次花費</label><input type="number" id="gm-slot-cost" value="${SLOT_SETTINGS.cost}" min="1" style="width:80px;" /></div>
+      <div><label>三普通倍率</label><input type="number" id="gm-slot-mult-common" value="${SLOT_SETTINGS.multCommon}" min="0" style="width:70px;" /></div>
+      <div><label>三罕見倍率</label><input type="number" id="gm-slot-mult-uncommon" value="${SLOT_SETTINGS.multUncommon}" min="0" style="width:70px;" /></div>
+      <div><label>三稀有倍率</label><input type="number" id="gm-slot-mult-rare" value="${SLOT_SETTINGS.multRare}" min="0" style="width:70px;" /></div>
+    </div>
+    <div class="form-row">
+      <div><label>未中獎抽成 %（存入獎池）</label><input type="number" id="gm-slot-contrib" value="${SLOT_SETTINGS.contribRate}" min="0" max="100" style="width:80px;" /></div>
+      <div><label>頭獎後獎池重置為</label><input type="number" id="gm-slot-jackpot-base" value="${SLOT_SETTINGS.jackpotBase}" min="0" style="width:100px;" /></div>
+    </div>
+    <div class="form-row">
+      <button class="btn small" id="gm-slot-save-btn">儲存拉霸設定</button>
+      <button class="btn small secondary" id="gm-slot-reset-btn">還原預設值</button>
+    </div>
+    <div class="form-row" style="margin-top:6px;">
+      <div><label>直接設定獎池金額</label><input type="number" id="gm-slot-jackpot-set" placeholder="例如 500" min="0" style="width:100px;" /></div>
+      <button class="btn small" id="gm-slot-jackpot-set-btn">設定獎池</button>
     </div>
   </div>`;
 
@@ -2161,6 +2281,35 @@ async function renderGM(body){
   if(weightsResetBtn) weightsResetBtn.onclick = async ()=>{
     await saveDrawWeights({...DEFAULT_DRAW_WEIGHTS});
     showToast('已還原為預設機率');
+    renderTab();
+  };
+  const slotSaveBtn = document.getElementById('gm-slot-save-btn');
+  if(slotSaveBtn) slotSaveBtn.onclick = async ()=>{
+    const s = {
+      cost: parseFloat(document.getElementById('gm-slot-cost').value),
+      multCommon: parseFloat(document.getElementById('gm-slot-mult-common').value),
+      multUncommon: parseFloat(document.getElementById('gm-slot-mult-uncommon').value),
+      multRare: parseFloat(document.getElementById('gm-slot-mult-rare').value),
+      contribRate: parseFloat(document.getElementById('gm-slot-contrib').value),
+      jackpotBase: parseFloat(document.getElementById('gm-slot-jackpot-base').value),
+    };
+    if(Object.values(s).some(v=>isNaN(v) || v < 0)){ showToast('請輸入有效的非負數字'); return; }
+    await saveSlotSettings(s);
+    showToast('拉霸機設定已更新，即時對所有玩家生效 ⚡');
+    renderTab();
+  };
+  const slotResetBtn = document.getElementById('gm-slot-reset-btn');
+  if(slotResetBtn) slotResetBtn.onclick = async ()=>{
+    await saveSlotSettings({...DEFAULT_SLOT_SETTINGS});
+    showToast('已還原為預設拉霸設定');
+    renderTab();
+  };
+  const slotJackpotSetBtn = document.getElementById('gm-slot-jackpot-set-btn');
+  if(slotJackpotSetBtn) slotJackpotSetBtn.onclick = async ()=>{
+    const v = parseFloat(document.getElementById('gm-slot-jackpot-set').value);
+    if(isNaN(v) || v < 0){ showToast('請輸入有效的非負數字'); return; }
+    await saveSlotJackpot(v);
+    showToast(`獎池已設定為 ✦${v}`);
     renderTab();
   };
 }
