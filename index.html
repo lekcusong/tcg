@@ -113,12 +113,13 @@
   .fortune-card .fc-text{font-size:13px;color:var(--cream);line-height:1.6;}
 
   .card-flip-row{display:flex;justify-content:center;gap:14px;margin:18px 0;flex-wrap:wrap;}
-  .flip-card{width:104px;height:150px;perspective:800px;}
+  .flip-card{width:104px;aspect-ratio:2/3;perspective:800px;}
   .flip-card-inner{
     position:relative;width:100%;height:100%;transition:transform 0.8s cubic-bezier(.4,.2,.2,1);
     transform-style:preserve-3d;
   }
   .flip-card.flipped .flip-card-inner{transform:rotateY(180deg);}
+  .flip-card.flipped{cursor:pointer;}
   .flip-face{
     position:absolute;width:100%;height:100%;backface-visibility:hidden;border-radius:10px;
     display:flex;flex-direction:column;align-items:center;justify-content:center;
@@ -315,6 +316,22 @@
   }
   .card-modal-img{width:100%;border-radius:10px;display:block;margin-bottom:14px;box-shadow:0 8px 24px rgba(0,0,0,0.5);}
   .card-modal-img.locked-img{filter:grayscale(1) brightness(0.55);}
+  .card-modal-box.legendary-modal{
+    animation: legendary-pulse 1.6s ease-in-out infinite;
+    border-color:var(--legendary-a);
+  }
+  .card-modal-img.legendary-img{
+    border:2px solid var(--legendary-a);
+    box-shadow:0 0 20px rgba(232,196,104,0.55), 0 0 40px rgba(200,68,126,0.3);
+  }
+  .legendary-modal-badge{
+    font-family:'Cinzel',serif;font-size:13px;letter-spacing:1px;color:var(--legendary-a);
+    margin-bottom:6px;animation: legendary-badge-fade 1.4s ease-in-out infinite;
+  }
+  @keyframes legendary-badge-fade{
+    0%,100%{ opacity:0.55; }
+    50%{ opacity:1; }
+  }
   .card-modal-icon{font-size:64px;margin-bottom:14px;}
   .card-modal-icon.locked-img{filter:grayscale(1) brightness(0.6);opacity:0.6;}
   .card-modal-name{font-family:'Cinzel',serif;font-size:18px;color:var(--gold-bright);margin-bottom:4px;}
@@ -996,9 +1013,11 @@ function openCardModal(cardId){
   const owned = (state.player && state.player.cards[cardId]) || 0;
   const price = SELL_PRICES[c.rarity] || 0;
   const content = document.getElementById('card-modal-content');
+  const isLegendaryReveal = c.rarity === 'legendary' && owned > 0;
 
   let bodyHtml = `
-    ${c.image ? `<img src="${c.image}" alt="${escapeHtml(c.name)}" class="card-modal-img${owned>0?'':' locked-img'}" />` : `<div class="card-modal-icon${owned>0?'':' locked-img'}">${c.icon}</div>`}
+    ${c.image ? `<img src="${c.image}" alt="${escapeHtml(c.name)}" class="card-modal-img${owned>0?'':' locked-img'}${isLegendaryReveal?' legendary-img':''}" />` : `<div class="card-modal-icon${owned>0?'':' locked-img'}">${c.icon}</div>`}
+    ${isLegendaryReveal ? `<div class="legendary-modal-badge">✨ 傳說卡 ✨</div>` : ''}
     <div class="card-modal-name">${owned>0 ? escapeHtml(c.name) : '？？？'}</div>
     <div class="card-modal-rarity">${RARITY_LABEL[c.rarity]}</div>
   `;
@@ -1050,6 +1069,9 @@ function openCardModal(cardId){
   }
 
   document.getElementById('card-modal').style.display = 'flex';
+  const modalBox = document.querySelector('.card-modal-box');
+  if(modalBox) modalBox.classList.toggle('legendary-modal', isLegendaryReveal);
+  if(isLegendaryReveal) playLegendaryRevealFx();
 
   const qtyInput = document.getElementById('sell-qty-input');
   const qtyTotal = document.getElementById('sell-qty-total');
@@ -1700,7 +1722,7 @@ function renderHome(body){
 
   if(state.drawResults){
     html += `<div class="card-flip-row">` + state.drawResults.map((c,i)=>`
-      <div class="flip-card ${state.flipped[i]?'flipped':''}">
+      <div class="flip-card ${state.flipped[i]?'flipped':''}" data-card-id="${c.id}" data-idx="${i}">
         <div class="flip-card-inner">
           <div class="flip-face flip-back">🔮</div>
           <div class="flip-face flip-front cf-${c.rarity}">
@@ -1759,6 +1781,17 @@ function renderHome(body){
   if(btn) btn.onclick = claimDaily;
   const slotBtn = document.getElementById('slot-btn');
   if(slotBtn) slotBtn.onclick = pullSlot;
+
+  if(state.drawResults){
+    COLLECTION_MODAL_LIST = state.drawResults.map(c=>c.id);
+    document.querySelectorAll('.flip-card').forEach(el=>{
+      el.onclick = ()=>{
+        const idx = Number(el.dataset.idx);
+        if(!state.flipped[idx]) return; // 還沒翻開，先別讓玩家看到內容
+        openCardModal(el.dataset.cardId);
+      };
+    });
+  }
 }
 
 function renderCollection(body){
