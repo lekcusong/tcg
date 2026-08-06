@@ -137,7 +137,6 @@
     width:100%;height:100%;border-radius:9px;display:flex;flex-direction:column;
     align-items:center;justify-content:space-between;padding:10px 6px;position:relative;
   }
-  .card-face.has-art{background-size:contain;background-repeat:no-repeat;background-position:center;background-color:rgba(0,0,0,0.35);overflow:hidden;}
   .card-face.has-art::before{
     content:'';position:absolute;inset:0;border-radius:9px;
     background:linear-gradient(180deg, rgba(10,8,16,0.05) 0%, rgba(10,8,16,0.1) 55%, rgba(10,8,16,0.72) 100%);
@@ -158,6 +157,10 @@
   .cf-uncommon .card-face{background:linear-gradient(160deg, #17332a, #142521);}
   .cf-rare .card-face{background:linear-gradient(160deg, #2c1f45, #1e1533);}
   .cf-legendary .card-face{background:linear-gradient(160deg, #3a2a1a, #2a1530);box-shadow:0 0 20px rgba(185,140,240,0.25) inset;}
+
+  /* 這條規則故意放在稀有度背景設定之後，確保「有美術圖」時的顯示方式(完整不裁切)
+     一定會蓋掉上面幾條稀有度預設漸層背景的設定，兩者優先權相同時後寫的才會生效 */
+  .card-face.has-art{background-size:contain;background-repeat:no-repeat;background-position:center;background-color:rgba(0,0,0,0.35);overflow:hidden;}
 
   /* ---- Legendary reveal effects ---- */
   @keyframes legendary-pulse{
