@@ -1464,6 +1464,9 @@ function notifText(n){
   const seed = n.seedName || '作物';
   if(n.type==='water') return `${n.from} 幫你的${seed}澆了水，縮短了 ${formatDuration(n.speedup||0)}`;
   if(n.type==='steal') return `${n.from} 偷偷順走了一點你的${seed}（不影響你的收成）`;
+  if(n.type==='auction_sold') return `${n.from} 以 ${n.price} 枚金幣${n.viaBuyout?'一口價直接購買了':'買走了'}你的『${n.cardName}』`;
+  if(n.type==='auction_unsold') return `你的『${n.cardName}』拍賣流標了，已退回你的收藏`;
+  if(n.type==='auction_outbid') return `你在『${n.cardName}』的出價已被 ${n.from} 超過（目前 ${n.price} 枚金幣）`;
   return `${n.from} 在你的花園留下了紀錄`;
 }
 function initNotifPoll(){
@@ -1653,14 +1656,19 @@ const DURATIONS = [
   {label:'6 小時', ms: 6*3600*1000},
   {label:'24 小時', ms: 24*3600*1000},
 ];
-async function listAuction(cardId, startBid, durMs){
+async function listAuction(cardId, startBid, buyoutPrice, durMs){
   const owned = state.player.cards[cardId]||0;
   if(owned < 1){ showToast('你沒有這張卡'); return; }
-  if(!startBid || startBid < 1){ showToast('請輸入有效的起標價'); return; }
+  const hasStart = startBid && startBid >= 1;
+  const hasBuyout = buyoutPrice && buyoutPrice >= 1;
+  if(!hasStart && !hasBuyout){ showToast('起標價與一口價至少要填一個'); return; }
+  if(hasStart && hasBuyout && buyoutPrice <= startBid){ showToast('一口價必須高於起標價'); return; }
   state.player.cards[cardId] = owned - 1;
   await savePlayer(state.player);
   const auction = {
-    id: uid(), seller: state.nickname, cardId, startBid,
+    id: uid(), seller: state.nickname, cardId,
+    startBid: hasStart ? startBid : null,
+    buyoutPrice: hasBuyout ? buyoutPrice : null,
     currentBid: 0, currentBidder: null, createdAt: Date.now(),
     endsAt: Date.now() + durMs, status:'active'
   };
@@ -1684,14 +1692,18 @@ async function placeBid(auctionId, amount){
   if(!r){ showToast('拍賣不存在'); return; }
   const auction = JSON.parse(r.value);
   if(auction.status !== 'active' || Date.now() > auction.endsAt){ showToast('此拍賣已結束'); return; }
+  if(!auction.startBid){ showToast('這個拍賣沒有開放競標，只能直接購買'); return; }
   const minBid = auction.currentBid > 0 ? auction.currentBid + 1 : auction.startBid;
   if(amount < minBid){ showToast(`出價至少要 ${minBid} 枚遊戲幣`); return; }
+  if(auction.buyoutPrice && amount >= auction.buyoutPrice){ showToast(`出價已達一口價，請直接使用「直接購買」`); return; }
   if(amount > state.player.coins){ showToast('遊戲幣不足'); return; }
   if(auction.seller === state.nickname){ showToast('不能競標自己的拍賣'); return; }
   // refund previous bidder
   if(auction.currentBidder){
     const prev = await loadPlayer(auction.currentBidder);
     if(prev){ prev.coins += auction.currentBid; await savePlayer(prev); }
+    const cardName = (DECK_BY_ID[auction.cardId] && DECK_BY_ID[auction.cardId].name) || '未知卡片';
+    await createNotification(auction.currentBidder, state.nickname, 'auction_outbid', {cardName, price: amount});
   }
   state.player.coins -= amount;
   await savePlayer(state.player);
@@ -1701,8 +1713,39 @@ async function placeBid(auctionId, amount){
   showToast('出價成功！✦');
   render();
 }
+async function buyoutAuction(auctionId){
+  const r = await storage.get(`auction:${auctionId}`);
+  if(!r){ showToast('拍賣不存在'); return; }
+  const auction = JSON.parse(r.value);
+  if(auction.status !== 'active' || Date.now() > auction.endsAt){ showToast('此拍賣已結束'); return; }
+  if(!auction.buyoutPrice){ showToast('這個拍賣沒有開放直接購買'); return; }
+  if(auction.seller === state.nickname){ showToast('不能購買自己的拍賣'); return; }
+  const price = auction.buyoutPrice;
+  if(price > state.player.coins){ showToast('遊戲幣不足'); return; }
+  const cardName = (DECK_BY_ID[auction.cardId] && DECK_BY_ID[auction.cardId].name) || '未知卡片';
+  // refund previous bidder if any (they got beaten by a buyout)
+  if(auction.currentBidder){
+    const prev = await loadPlayer(auction.currentBidder);
+    if(prev){ prev.coins += auction.currentBid; await savePlayer(prev); }
+    await createNotification(auction.currentBidder, state.nickname, 'auction_outbid', {cardName, price});
+  }
+  state.player.coins -= price;
+  state.player.cards[auction.cardId] = (state.player.cards[auction.cardId]||0)+1;
+  await savePlayer(state.player);
+  const seller = await loadPlayer(auction.seller);
+  if(seller){ seller.coins += price; await savePlayer(seller); }
+  auction.status = 'completed';
+  auction.currentBid = price;
+  auction.currentBidder = state.nickname;
+  auction.viaBuyout = true;
+  await storage.set(`auction:${auctionId}`, JSON.stringify(auction));
+  await createNotification(auction.seller, state.nickname, 'auction_sold', {cardName, price, viaBuyout:true});
+  showToast('購買成功！✦');
+  render();
+}
 async function resolveAuction(auction){
   if(auction.status !== 'active' || Date.now() < auction.endsAt) return;
+  const cardName = (DECK_BY_ID[auction.cardId] && DECK_BY_ID[auction.cardId].name) || '未知卡片';
   if(auction.currentBidder){
     const winner = await loadPlayer(auction.currentBidder);
     if(winner){
@@ -1711,9 +1754,11 @@ async function resolveAuction(auction){
     }
     const seller = await loadPlayer(auction.seller);
     if(seller){ seller.coins += auction.currentBid; await savePlayer(seller); }
+    await createNotification(auction.seller, auction.currentBidder, 'auction_sold', {cardName, price: auction.currentBid});
   } else {
     const seller = await loadPlayer(auction.seller);
     if(seller){ seller.cards[auction.cardId] = (seller.cards[auction.cardId]||0)+1; await savePlayer(seller); }
+    await createNotification(auction.seller, 'system', 'auction_unsold', {cardName});
   }
   auction.status = 'completed';
   await storage.set(`auction:${auction.id}`, JSON.stringify(auction));
@@ -2029,7 +2074,7 @@ async function renderFriends(body){
       <h2>${t('gardenNotifHeader')}${unreadNotifCount>0?` <span style="color:#e0455f;font-size:12px;">(${unreadNotifCount})</span>`:''}</h2>
       ${recentNotifs.map(n=>`
         <div class="listing">
-          <div class="left"><div class="icon-box">${n.type==='steal'?'🌾':'🚿'}</div><div class="meta"><div>${escapeHtml(notifText(n))}</div><div class="who">${timeAgo(n.createdAt)}</div></div></div>
+          <div class="left"><div class="icon-box">${n.type==='steal'?'🌾':n.type==='water'?'🚿':n.type.startsWith('auction')?'💰':'🔔'}</div><div class="meta"><div>${escapeHtml(notifText(n))}</div><div class="who">${timeAgo(n.createdAt)}</div></div></div>
         </div>
       `).join('')}
     </div>`;
@@ -2189,11 +2234,12 @@ async function renderAuction(body){
 
   let html = `<div class="panel">
     <h2>${t('createAuctionHeader')}</h2>
-    <p class="sub">設定起標價與拍賣時長，讓其他占卜師競標你的稀有卡片</p>
+    <p class="sub">設定起標價、一口價（至少填一個），讓其他占卜師競標或直接購買你的稀有卡片</p>
     ${owned ? `
       <div class="form-row">
         <div><label>選擇卡片</label><select id="auc-card-select">${owned}</select></div>
-        <div><label>起標價</label><input type="number" id="auc-start-input" min="1" value="20" style="width:90px;" /></div>
+        <div><label>起標價（選填）</label><input type="number" id="auc-start-input" min="1" placeholder="不填=不開放競標" style="width:130px;" /></div>
+        <div><label>一口價（選填）</label><input type="number" id="auc-buyout-input" min="1" placeholder="不填=無法直接購買" style="width:130px;" /></div>
         <div><label>拍賣時長</label><select id="auc-dur-select">${DURATIONS.map((d,i)=>`<option value="${i}">${d.label}</option>`).join('')}</select></div>
         <button class="btn" id="auc-list-btn">開始拍賣</button>
       </div>
@@ -2204,10 +2250,15 @@ async function renderAuction(body){
     <h2>${t('myAuctionsHeader')}</h2>
     ${myAuctions.length===0 ? '<div class="empty-note">尚未建立任何拍賣</div>' : myAuctions.map(a=>{
       const c = DECK_BY_ID[a.cardId];
+      let statusLine;
+      if(a.currentBidder){ statusLine = `目前出價 ✦${a.currentBid} by ${escapeHtml(a.currentBidder)}`; }
+      else if(a.startBid && a.buyoutPrice){ statusLine = `起標 ✦${a.startBid} · 一口價 ✦${a.buyoutPrice}，尚無出價`; }
+      else if(a.startBid){ statusLine = `起標 ✦${a.startBid}，尚無出價`; }
+      else { statusLine = `直接購買價 ✦${a.buyoutPrice}`; }
       return `<div class="listing">
         <div class="left">
           <div class="icon-box cf-${c.rarity}">${iconBoxInner(c)}</div>
-          <div class="meta"><div>${c.name}</div><div class="who">${a.currentBidder? `目前出價 ✦${a.currentBid} by ${escapeHtml(a.currentBidder)}` : `起標 ✦${a.startBid}，尚無出價`}</div></div>
+          <div class="meta"><div>${c.name}</div><div class="who">${statusLine}</div></div>
         </div>
         <div class="right">
           <span class="timer">${fmtCountdown(a.endsAt - Date.now())}</span>
@@ -2222,14 +2273,20 @@ async function renderAuction(body){
     ${otherAuctions.length===0 ? '<div class="empty-note">目前沒有進行中的拍賣</div>' : otherAuctions.map(a=>{
       const c = DECK_BY_ID[a.cardId];
       const minBid = a.currentBid > 0 ? a.currentBid+1 : a.startBid;
+      const priceLine = a.currentBidder
+        ? `目前出價 ✦${a.currentBid} by ${escapeHtml(a.currentBidder)}`
+        : a.startBid ? `起標 ✦${a.startBid}` : `固定價格上架`;
       return `<div class="listing">
         <div class="left">
           <div class="icon-box cf-${c.rarity}">${iconBoxInner(c)}</div>
-          <div class="meta"><div>${c.name}</div><div class="who">${a.currentBidder? `目前出價 ✦${a.currentBid} by ${escapeHtml(a.currentBidder)}` : `起標 ✦${a.startBid}`} · <span class="timer">${fmtCountdown(a.endsAt-Date.now())}</span></div></div>
+          <div class="meta"><div>${c.name}</div><div class="who">${priceLine} · <span class="timer">${fmtCountdown(a.endsAt-Date.now())}</span></div></div>
         </div>
         <div class="right">
-          <input type="number" min="${minBid}" placeholder="${minBid}" style="width:80px;" data-bid-input="${a.id}" />
-          <button class="btn small" data-bid-btn="${a.id}">出價</button>
+          ${a.startBid ? `
+            <input type="number" min="${minBid}" placeholder="${minBid}" style="width:80px;" data-bid-input="${a.id}" />
+            <button class="btn small" data-bid-btn="${a.id}">出價</button>
+          ` : ''}
+          ${a.buyoutPrice ? `<button class="btn small" data-buyout-btn="${a.id}">直接購買 ✦${a.buyoutPrice}</button>` : ''}
         </div>
       </div>`;
     }).join('')}
@@ -2240,9 +2297,10 @@ async function renderAuction(body){
   const listBtn = document.getElementById('auc-list-btn');
   if(listBtn) listBtn.onclick = ()=>{
     const cardId = document.getElementById('auc-card-select').value;
-    const startBid = parseInt(document.getElementById('auc-start-input').value);
+    const startBid = parseInt(document.getElementById('auc-start-input').value) || null;
+    const buyoutPrice = parseInt(document.getElementById('auc-buyout-input').value) || null;
     const durIdx = parseInt(document.getElementById('auc-dur-select').value);
-    listAuction(cardId, startBid, DURATIONS[durIdx].ms);
+    listAuction(cardId, startBid, buyoutPrice, DURATIONS[durIdx].ms);
   };
   document.querySelectorAll('[data-cancel-auction]').forEach(b=>{
     b.onclick = ()=>cancelAuction(b.dataset.cancelAuction);
@@ -2254,6 +2312,9 @@ async function renderAuction(body){
       const amount = parseInt(input.value || input.placeholder);
       placeBid(aid, amount);
     };
+  });
+  document.querySelectorAll('[data-buyout-btn]').forEach(b=>{
+    b.onclick = ()=>buyoutAuction(b.dataset.buyoutBtn);
   });
 }
 
