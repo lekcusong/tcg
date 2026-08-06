@@ -289,6 +289,15 @@
     box-shadow:0 4px 16px rgba(0,0,0,0.4);transition:transform .2s ease;
   }
   .bgm-toggle:hover{transform:scale(1.08);}
+  .lang-toggle{
+    position:fixed;bottom:20px;right:76px;z-index:998;
+    height:48px;padding:0 14px;border-radius:999px;
+    background:var(--bg-panel-raised);border:1px solid var(--gold);
+    color:var(--gold-bright);font-size:13px;font-family:'Cinzel',serif;font-weight:600;
+    cursor:pointer;display:flex;align-items:center;justify-content:center;
+    box-shadow:0 4px 16px rgba(0,0,0,0.4);transition:transform .2s ease;
+  }
+  .lang-toggle:hover{transform:scale(1.08);}
   .bgm-credit{
     position:fixed;bottom:76px;right:20px;z-index:998;
     font-size:10px;color:var(--muted);max-width:170px;text-align:right;
@@ -385,6 +394,7 @@
   <source src="bgm.mp3" type="audio/mpeg">
 </audio>
 <button id="bgm-toggle" class="bgm-toggle" title="播放背景音樂">🔇</button>
+<button id="lang-toggle" class="lang-toggle" title="Switch language / 切換語言">EN</button>
 <div class="bgm-credit">🎵 Background Music</div>
 
 <div id="card-modal" class="card-modal-overlay" style="display:none;">
@@ -739,6 +749,16 @@ function plotStatus(plot, now){
   if(now >= plot.readyAt) return 'ready';
   return 'growing';
 }
+function timeAgo(ts){
+  const diff = Date.now() - ts;
+  if(diff < 0) return '剛剛';
+  const min = Math.floor(diff/60000);
+  if(min < 1) return '剛剛';
+  if(min < 60) return `${min} 分鐘前`;
+  const hr = Math.floor(min/60);
+  if(hr < 24) return `${hr} 小時前`;
+  return `${Math.floor(hr/24)} 天前`;
+}
 function formatDuration(ms){
   if(ms < 0) ms = 0;
   const totalSec = Math.floor(ms/1000);
@@ -871,6 +891,9 @@ async function waterFriendPlot(friendNick, plotIndex){
   state.player.coins = (state.player.coins||0) + WATER_HELPER_REWARD;
   await savePlayer(state.player);
 
+  const wateredSeedName = SEED_TYPES[plot.seed] ? SEED_TYPES[plot.seed].name : '作物';
+  await createNotification(friendNick, state.nickname, 'water', {plotIndex, seedName: wateredSeedName, speedup});
+
   showToast(`已幫 ${friendNick} 澆水，縮短了 ${formatDuration(speedup)}，你獲得 ✦${WATER_HELPER_REWARD} 作為謝禮`);
   render();
 }
@@ -893,6 +916,8 @@ async function stealFriendPlot(friendNick, plotIndex){
   await savePlayer(state.player);
 
   const seedName = SEED_TYPES[plot.seed] ? SEED_TYPES[plot.seed].name : '作物';
+  await createNotification(friendNick, state.nickname, 'steal', {plotIndex, seedName, amount: gain});
+
   showToast(`偷偷順走一點 ${friendNick} 的${seedName}，獲得 ✦${gain}（不影響對方收成）`);
   render();
 }
@@ -987,6 +1012,66 @@ function playLegendaryRevealFx(){
 
 // ---------- Boot ----------
 let rememberedNick = null;
+let appLang = 'zh';
+try{ appLang = localStorage.getItem('app-lang') || 'zh'; }catch(e){}
+
+// ---------- i18n ----------
+const T = {
+  appName: {zh:'秘境集卡', en:'Mystic Tarot Collection'},
+  loginIntro: {zh:'輸入暱稱與密碼，開始每日抽卡、收藏塔羅牌，玩玩三牌共鳴試試手氣，並與好友互相交換或競標稀有卡片。首次輸入的暱稱＋密碼組合會自動建立新帳號。', en:'Enter a nickname and password to start drawing daily tarot cards, building your collection, trying your luck at Three-Card Resonance, and trading or bidding on rare cards with friends. A new account is created automatically the first time you use a nickname + password combo.'},
+  nickPlaceholder: {zh:'輸入暱稱...', en:'Enter nickname...'},
+  pwPlaceholder: {zh:'輸入密碼（至少4個字元）', en:'Enter password (min 4 characters)'},
+  loginBtn: {zh:'登入 / 建立帳號', en:'Log In / Create Account'},
+  loggingIn: {zh:'登入中...', en:'Logging in...'},
+  pwWarning: {zh:'⚠ 密碼僅作基本防護用，請勿使用你在其他重要平台也在用的密碼', en:"⚠ This password only offers basic protection - avoid reusing a password from other important accounts."},
+  igFollow: {zh:'✦ 追蹤', en:'✦ Follow'},
+  igFollowSuffix: {zh:'看更多塔羅插畫', en:'for more tarot art'},
+  logout: {zh:'登出', en:'Log Out'},
+  tabHome: {zh:'每日抽卡', en:'Daily Draw'},
+  tabCollection: {zh:'我的收藏', en:'My Collection'},
+  tabFriends: {zh:'好友', en:'Friends'},
+  tabAuction: {zh:'拍賣行', en:'Auction House'},
+  tabFarm: {zh:'🌱 占卜花園', en:'🌱 Tarot Garden'},
+  tabLeaderboard: {zh:'🏆 排行榜', en:'🏆 Leaderboard'},
+  tabGM: {zh:'⚡ GM 管理', en:'⚡ GM Panel'},
+  homeHeader: {zh:'今日的塔羅指引', en:"Today's Tarot Guidance"},
+  slotHeader: {zh:'✨ 三牌共鳴', en:'✨ Three-Card Resonance'},
+  profileHeader: {zh:'占卜師檔案', en:'Diviner Profile'},
+  collectionHeader: {zh:'我的收藏', en:'My Collection'},
+  gardenNotifHeader: {zh:'花園通知', en:'Garden Notifications'},
+  addFriendHeader: {zh:'新增好友', en:'Add Friend'},
+  addFriendSub: {zh:'輸入對方的暱稱，送出好友邀請', en:"Enter their nickname to send a friend request"},
+  friendNickLabel: {zh:'好友暱稱', en:'Friend nickname'},
+  sendInviteBtn: {zh:'送出邀請', en:'Send Request'},
+  friendRequestsHeader: {zh:'好友邀請', en:'Friend Requests'},
+  myFriendsHeader: {zh:'我的好友', en:'My Friends'},
+  friendTradeHeader: {zh:'好友交易邀請', en:'Friend Trade Requests'},
+  createAuctionHeader: {zh:'建立拍賣', en:'Create Auction'},
+  myAuctionsHeader: {zh:'我的拍賣', en:'My Auctions'},
+  publicAuctionsHeader: {zh:'公開拍賣', en:'Public Auctions'},
+  gardenHeader: {zh:'🌱 占卜花園', en:'🌱 Tarot Garden'},
+  friendGardenHeader: {zh:'🌿 好友花園', en:"🌿 Friends' Gardens"},
+  leaderCollectionHeader: {zh:'🏆 收藏排行榜', en:'🏆 Collection Leaderboard'},
+  leaderWealthHeader: {zh:'💰 財富排行榜', en:'💰 Wealth Leaderboard'},
+  leaderSlotHeader: {zh:'✨ 三牌共鳴消費排行榜', en:'✨ Resonance Spending Leaderboard'},
+  gmHeader: {zh:'⚡ GM 管理控制台', en:'⚡ GM Console'},
+  allPlayersHeader: {zh:'所有玩家', en:'All Players'},
+  grantCoinsHeader: {zh:'發放金幣', en:'Grant Coins'},
+  grantCardsHeader: {zh:'發放卡片', en:'Grant Cards'},
+  drawWeightsHeader: {zh:'抽卡機率設定', en:'Draw Rate Settings'},
+  slotSettingsHeader: {zh:'✨ 三牌共鳴設定', en:'✨ Resonance Settings'},
+  remove: {zh:'移除', en:'Remove'},
+};
+function t(key){
+  const entry = T[key];
+  if(!entry) return key;
+  return entry[appLang] || entry.zh;
+}
+function toggleLang(){
+  appLang = appLang === 'zh' ? 'en' : 'zh';
+  try{ localStorage.setItem('app-lang', appLang); }catch(e){}
+  render();
+}
 // ---------- Background music ----------
 function initBgm(){
   const audio = document.getElementById('bgm-audio');
@@ -1004,6 +1089,20 @@ function initBgm(){
       btn.textContent = '🔊';
       playing = true;
     }
+  };
+}
+
+function updateLangToggleBtn(){
+  const btn = document.getElementById('lang-toggle');
+  if(btn) btn.textContent = appLang === 'zh' ? 'EN' : '中文';
+}
+function initLangToggle(){
+  const btn = document.getElementById('lang-toggle');
+  if(!btn) return;
+  updateLangToggleBtn();
+  btn.onclick = ()=>{
+    toggleLang();
+    updateLangToggleBtn();
   };
 }
 
@@ -1134,11 +1233,13 @@ async function boot(){
   // Nickname is pre-filled for convenience, but password is always required —
   // it is never stored anywhere, so this does not bypass login security.
   initBgm();
+  initLangToggle();
   initCardModal();
   render();
   loadDrawWeights().catch(()=>{});
   loadSlotConfig().catch(()=>{});
   initWinBroadcastPoll();
+  initNotifPoll();
 }
 
 async function doLogin(nick, password){
@@ -1172,6 +1273,13 @@ async function doLogin(nick, password){
     state.player = p;
     try{ localStorage.setItem('my-nickname', nick); }catch(e){}
     render();
+    fetchNotifications().then(notifs=>{
+      const unread = notifs.filter(n=>!n.read);
+      notifUnreadCount = unread.length;
+      unread.forEach(n=>notifBadgeSeenIds.add(n.id));
+      const badge = document.getElementById('notif-badge');
+      if(badge){ badge.style.display = notifUnreadCount>0 ? 'inline-flex' : 'none'; badge.textContent = notifUnreadCount>9?'9+':String(notifUnreadCount); }
+    }).catch(()=>{});
   }catch(err){
     showToast('登入失敗，請檢查網路後再試一次 ⚠');
     if(btn){ btn.disabled = false; btn.textContent = '登入 / 建立帳號'; }
@@ -1244,6 +1352,8 @@ function flipCard(i){
 
 // ---------- Slot machine (三牌共鳴) ----------
 let lastSeenBroadcastTs = Date.now();
+let notifUnreadCount = 0;
+let notifBadgeSeenIds = new Set();
 async function pullSlot(){
   if(state.player.coins < SLOT_SETTINGS.cost){ showToast('金幣不足，無法共鳴'); return; }
   const drawn = [weightedDraw(), weightedDraw(), weightedDraw()];
@@ -1319,6 +1429,57 @@ function initWinBroadcastPoll(){
 // ---------- Friends ----------
 function freqKey(id){ return `freq:${id}`; }
 function ftradeKey(id){ return `ftrade:${id}`; }
+function notifKey(id){ return `notif:${id}`; }
+
+// ---------- Notifications (e.g. a friend watered/stole from your plot) ----------
+async function fetchNotifications(){
+  try{
+    const list = await storage.list('notif:');
+    if(!list || !list.keys) return [];
+    const items = await Promise.all(list.keys.map(async k=>{
+      try{ const r = await storage.get(k); return r ? JSON.parse(r.value) : null; }
+      catch(e){ return null; }
+    }));
+    return items.filter(Boolean).filter(n=>n.to===state.nickname).sort((a,b)=>b.createdAt-a.createdAt);
+  }catch(e){ return []; }
+}
+async function createNotification(to, from, type, extra){
+  if(to === from) return; // don't notify yourself
+  const n = {id: uid(), to, from, type, read:false, createdAt: Date.now(), ...extra};
+  try{ await storage.set(notifKey(n.id), JSON.stringify(n)); }catch(e){ /* best effort */ }
+}
+async function markNotificationRead(notifId){
+  try{
+    const r = await storage.get(notifKey(notifId));
+    if(!r) return;
+    const n = JSON.parse(r.value);
+    n.read = true;
+    await storage.set(notifKey(notifId), JSON.stringify(n));
+  }catch(e){ /* ignore */ }
+}
+async function markAllNotificationsRead(notifs){
+  await Promise.all(notifs.filter(n=>!n.read).map(n=>markNotificationRead(n.id)));
+}
+function notifText(n){
+  const seed = n.seedName || '作物';
+  if(n.type==='water') return `${n.from} 幫你的${seed}澆了水，縮短了 ${formatDuration(n.speedup||0)}`;
+  if(n.type==='steal') return `${n.from} 偷偷順走了一點你的${seed}（不影響你的收成）`;
+  return `${n.from} 在你的花園留下了紀錄`;
+}
+function initNotifPoll(){
+  setInterval(async ()=>{
+    if(!state.nickname) return;
+    try{
+      const notifs = await fetchNotifications();
+      const unread = notifs.filter(n=>!n.read);
+      const newOnes = unread.filter(n=>!notifBadgeSeenIds.has(n.id));
+      newOnes.forEach(n=>{ notifBadgeSeenIds.add(n.id); showToast(`🔔 ${notifText(n)}`); });
+      notifUnreadCount = unread.length;
+      const badge = document.getElementById('notif-badge');
+      if(badge){ badge.style.display = notifUnreadCount>0 ? 'inline-flex' : 'none'; badge.textContent = notifUnreadCount>9?'9+':String(notifUnreadCount); }
+    }catch(e){ /* ignore */ }
+  }, 12000);
+}
 
 async function fetchFriendRequests(){
   try{
@@ -1640,13 +1801,13 @@ function render(){
     el(`
       <div class="login-screen">
         <div class="sigil">🔮</div>
-        <h1>秘境集卡</h1>
-        <p>輸入暱稱與密碼，開始每日抽卡、收藏塔羅牌，玩玩三牌共鳴試試手氣，並與好友互相交換或競標稀有卡片。首次輸入的暱稱＋密碼組合會自動建立新帳號。</p>
-        <input id="nick-input" type="text" placeholder="輸入暱稱..." maxlength="20" value="${rememberedNick ? escapeHtml(rememberedNick) : ''}" />
-        <input id="pw-input" type="password" placeholder="輸入密碼（至少4個字元）" />
-        <button class="btn full" id="login-btn">登入 / 建立帳號</button>
-        <p style="font-size:11px;color:var(--muted);margin-top:14px;">⚠ 密碼僅作基本防護用，請勿使用你在其他重要平台也在用的密碼</p>
-        <p style="font-size:12px;color:var(--muted);margin-top:8px;">✦ 追蹤 <a href="https://www.instagram.com/lekcusong" target="_blank" rel="noopener" class="ig-link">@lekcusong</a> 看更多塔羅插畫</p>
+        <h1>${t('appName')}</h1>
+        <p>${t('loginIntro')}</p>
+        <input id="nick-input" type="text" placeholder="${t('nickPlaceholder')}" maxlength="20" value="${rememberedNick ? escapeHtml(rememberedNick) : ''}" />
+        <input id="pw-input" type="password" placeholder="${t('pwPlaceholder')}" />
+        <button class="btn full" id="login-btn">${t('loginBtn')}</button>
+        <p style="font-size:11px;color:var(--muted);margin-top:14px;">${t('pwWarning')}</p>
+        <p style="font-size:12px;color:var(--muted);margin-top:8px;">${t('igFollow')} <a href="https://www.instagram.com/lekcusong" target="_blank" rel="noopener" class="ig-link">@lekcusong</a> ${t('igFollowSuffix')}</p>
       </div>
     `);
     const tryLogin = ()=>doLogin(document.getElementById('nick-input').value, document.getElementById('pw-input').value);
@@ -1661,29 +1822,42 @@ function render(){
   el(`
     <div class="brand">
       <div>
-        <h1>秘境集卡</h1>
+        <h1>${t('appName')}</h1>
         <div class="tag">Tarot Collection · <a href="https://www.instagram.com/lekcusong" target="_blank" rel="noopener" class="ig-link">@lekcusong</a></div>
       </div>
       <div class="player-chip">
         <span class="name">${escapeHtml(p.nickname)}</span>
         <span class="coin">✦ ${p.coins}</span>
-        <button id="logout-btn">登出</button>
+        <button id="notif-bell-btn" style="position:relative;">🔔<span id="notif-badge" style="display:${notifUnreadCount>0?'inline-flex':'none'};position:absolute;top:-4px;right:-4px;background:#e0455f;color:#fff;border-radius:999px;font-size:10px;line-height:1;padding:2px 5px;">${notifUnreadCount>9?'9+':notifUnreadCount}</span></button>
+        <button id="logout-btn">${t('logout')}</button>
       </div>
     </div>
     <div class="tabs">
-      <div class="tab ${state.tab==='home'?'active':''}" data-tab="home">每日抽卡</div>
-      <div class="tab ${state.tab==='collection'?'active':''}" data-tab="collection">我的收藏</div>
-      <div class="tab ${state.tab==='friends'?'active':''}" data-tab="friends">好友</div>
-      <div class="tab ${state.tab==='auction'?'active':''}" data-tab="auction">拍賣行</div>
-      <div class="tab ${state.tab==='farm'?'active':''}" data-tab="farm">🌱 占卜花園</div>
-      <div class="tab ${state.tab==='leaderboard'?'active':''}" data-tab="leaderboard">🏆 排行榜</div>
-      ${isGM() ? `<div class="tab ${state.tab==='gm'?'active':''}" data-tab="gm">⚡ GM 管理</div>` : ''}
+      <div class="tab ${state.tab==='home'?'active':''}" data-tab="home">${t('tabHome')}</div>
+      <div class="tab ${state.tab==='collection'?'active':''}" data-tab="collection">${t('tabCollection')}</div>
+      <div class="tab ${state.tab==='friends'?'active':''}" data-tab="friends">${t('tabFriends')}</div>
+      <div class="tab ${state.tab==='auction'?'active':''}" data-tab="auction">${t('tabAuction')}</div>
+      <div class="tab ${state.tab==='farm'?'active':''}" data-tab="farm">${t('tabFarm')}</div>
+      <div class="tab ${state.tab==='leaderboard'?'active':''}" data-tab="leaderboard">${t('tabLeaderboard')}</div>
+      ${isGM() ? `<div class="tab ${state.tab==='gm'?'active':''}" data-tab="gm">${t('tabGM')}</div>` : ''}
     </div>
     <div id="tab-body"></div>
   `);
   document.getElementById('logout-btn').onclick = doLogout;
+  const bellBtn = document.getElementById('notif-bell-btn');
+  if(bellBtn){ bellBtn.onclick = async ()=>{ state.tab = 'friends'; await refreshPlayer(); render(); }; }
   document.querySelectorAll('.tab').forEach(t=>{
-    t.onclick = ()=>{ state.tab = t.dataset.tab; render(); };
+    t.onclick = async ()=>{
+      state.tab = t.dataset.tab;
+      // Re-pull our own player record from storage before rendering: friend
+      // requests/trades accepted by *other* players are written straight into
+      // our storage record by their client, but our in-memory state.player
+      // only reflects what we last loaded/saved ourselves. Without this
+      // refresh the tab can show stale data, and worse, a later savePlayer()
+      // from this session could overwrite those external changes.
+      await refreshPlayer();
+      render();
+    };
   });
   renderTab();
   if(farmTickInterval){ clearInterval(farmTickInterval); farmTickInterval = null; }
@@ -1720,7 +1894,7 @@ function renderHome(body){
   const nextMilestone = milestones.find(m=>m > streak);
 
   let html = `<div class="panel draw-cta">
-    <h2>今日的塔羅指引</h2>
+    <h2>${t('homeHeader')}</h2>
     <p class="sub">每天可免費抽取三張塔羅牌，並獲得 ${DAILY_COINS} 枚遊戲幣</p>`;
 
   if(state.drawResults){
@@ -1763,14 +1937,14 @@ function renderHome(body){
   html += `</div>`;
 
   html += `<div class="panel">
-    <h2>✨ 三牌共鳴</h2>
+    <h2>${t('slotHeader')}</h2>
     <p class="sub">花費 ✦${SLOT_SETTINGS.cost} 拉一次，抽到的 3 張牌都會直接進收藏；三張稀有度相同才會中獎，三張史詩直接卷走整個獎池！</p>
     <div class="countdown" style="margin-bottom:10px;">目前獎池：<b style="color:var(--gold-bright);">✦ ${SLOT_JACKPOT}</b></div>
     <button class="btn" id="slot-btn" ${p.coins < SLOT_SETTINGS.cost ? 'disabled' : ''}>共鳴一次（✦ ${SLOT_SETTINGS.cost}）</button>
   </div>`;
 
   html += `<div class="panel">
-    <h2>占卜師檔案</h2>
+    <h2>${t('profileHeader')}</h2>
     <div class="stat-row">
       <div class="stat">遊戲幣 <b>✦ ${p.coins}</b></div>
       <div class="stat">收藏張數 <b>${totalOwned}</b></div>
@@ -1805,7 +1979,7 @@ function renderCollection(body){
   COLLECTION_MODAL_LIST = filtered.map(c=>c.id);
 
   let html = `<div class="panel">
-    <h2>我的收藏</h2>
+    <h2>${t('collectionHeader')}</h2>
     <p class="sub">共 ${DECK.length} 張塔羅牌，收集齊全的占卜師才是真正的秘境嚮導 · 點擊已持有的卡片可直接出售：普通 ✦${SELL_PRICES.common} · 罕見 ✦${SELL_PRICES.uncommon} · 稀有 ✦${SELL_PRICES.rare} · 史詩 ✦${SELL_PRICES.legendary}</p>
     <div class="filter-row">
       ${rarities.map(r=>`<div class="chip-btn ${state.filter===r?'active':''}" data-filter="${r}">${r==='all'?'全部':RARITY_LABEL[r]}</div>`).join('')}
@@ -1830,10 +2004,12 @@ function ownedCardOptions(){
 
 async function renderFriends(body){
   body.innerHTML = `<div class="loading-line">讀取好友名冊中...</div>`;
-  const [allReqs, allFTrades] = await Promise.all([fetchFriendRequests(), fetchFriendTrades()]);
+  await refreshPlayer();
+  const [allReqs, allFTrades, notifs] = await Promise.all([fetchFriendRequests(), fetchFriendTrades(), fetchNotifications()]);
   const incomingReqs = allReqs.filter(r=>r.status==='pending' && r.to===state.nickname);
   const outgoingReqs = allReqs.filter(r=>r.status==='pending' && r.from===state.nickname);
   const friends = state.player.friends || [];
+  const recentNotifs = notifs.slice(0, 15);
   const incomingTrades = allFTrades.filter(t=>t.status==='pending' && t.to===state.nickname);
   const outgoingTrades = allFTrades.filter(t=>t.status==='pending' && t.from===state.nickname);
 
@@ -1846,18 +2022,30 @@ async function renderFriends(body){
     }
   }
 
-  let html = `<div class="panel">
-    <h2>新增好友</h2>
-    <p class="sub">輸入對方的暱稱，送出好友邀請</p>
+  let html = '';
+  const unreadNotifCount = notifs.filter(n=>!n.read).length;
+  if(recentNotifs.length > 0){
+    html += `<div class="panel">
+      <h2>${t('gardenNotifHeader')}${unreadNotifCount>0?` <span style="color:#e0455f;font-size:12px;">(${unreadNotifCount})</span>`:''}</h2>
+      ${recentNotifs.map(n=>`
+        <div class="listing">
+          <div class="left"><div class="icon-box">${n.type==='steal'?'🌾':'🚿'}</div><div class="meta"><div>${escapeHtml(notifText(n))}</div><div class="who">${timeAgo(n.createdAt)}</div></div></div>
+        </div>
+      `).join('')}
+    </div>`;
+  }
+  html += `<div class="panel">
+    <h2>${t('addFriendHeader')}</h2>
+    <p class="sub">${t('addFriendSub')}</p>
     <div class="form-row">
-      <div style="flex:1;min-width:160px;"><label>好友暱稱</label><input type="text" id="friend-add-input" placeholder="輸入暱稱..." /></div>
-      <button class="btn" id="friend-add-btn">送出邀請</button>
+      <div style="flex:1;min-width:160px;"><label>${t('friendNickLabel')}</label><input type="text" id="friend-add-input" placeholder="${t('nickPlaceholder')}" /></div>
+      <button class="btn" id="friend-add-btn">${t('sendInviteBtn')}</button>
     </div>
   </div>`;
 
   if(incomingReqs.length > 0 || outgoingReqs.length > 0){
     html += `<div class="panel">
-      <h2>好友邀請</h2>
+      <h2>${t('friendRequestsHeader')}</h2>
       ${incomingReqs.length>0 ? `<p class="sub">收到的邀請</p>` + incomingReqs.map(r=>`
         <div class="listing">
           <div class="left"><div class="icon-box">🔮</div><div class="meta"><div>${escapeHtml(r.from)}</div><div class="who">想加你為好友</div></div></div>
@@ -1877,14 +2065,14 @@ async function renderFriends(body){
   }
 
   html += `<div class="panel">
-    <h2>我的好友（${friends.length}）</h2>
+    <h2>${t('myFriendsHeader')} (${friends.length})</h2>
     <p class="sub">與好友一對一直接交易卡片，不必公開上架</p>
     ${friends.length===0 ? '<div class="empty-note">尚未加入任何好友，先送出邀請吧 ✦</div>' : friends.map(f=>`
       <div class="listing">
         <div class="left"><div class="icon-box">✦</div><div class="meta"><div>${escapeHtml(f)}</div></div></div>
         <div class="right">
           <button class="btn small" data-trade-with="${escapeHtml(f)}">${state.tradingWith===f ? '收合' : '交易'}</button>
-          <button class="btn small secondary" data-remove-friend="${escapeHtml(f)}">移除</button>
+          <button class="btn small secondary" data-remove-friend="${escapeHtml(f)}">${t('remove')}</button>
         </div>
       </div>
       ${state.tradingWith === f ? `
@@ -1903,7 +2091,7 @@ async function renderFriends(body){
 
   if(incomingTrades.length > 0 || outgoingTrades.length > 0){
     html += `<div class="panel">
-      <h2>好友交易邀請</h2>
+      <h2>${t('friendTradeHeader')}</h2>
       ${incomingTrades.length>0 ? `<p class="sub">收到的交易邀請</p>` + incomingTrades.map(t=>{
         const offerC = DECK_BY_ID[t.offerCardId];
         const wantC = DECK_BY_ID[t.wantCardId];
@@ -1972,6 +2160,18 @@ async function renderFriends(body){
   document.querySelectorAll('[data-cancel-ftrade]').forEach(b=>{
     b.onclick = ()=>cancelFriendTrade(b.dataset.cancelFtrade);
   });
+
+  // Viewing this tab counts as having seen the notifications: mark them
+  // read and clear the header badge (without a full re-render, so we don't
+  // interrupt anything the user is doing on this screen).
+  if(unreadNotifCount > 0){
+    markAllNotificationsRead(notifs).then(()=>{
+      notifUnreadCount = 0;
+      notifs.forEach(n=>notifBadgeSeenIds.add(n.id));
+      const badge = document.getElementById('notif-badge');
+      if(badge) badge.style.display = 'none';
+    });
+  }
 }
 
 async function renderAuction(body){
@@ -1988,7 +2188,7 @@ async function renderAuction(body){
   const owned = ownedCardOptions();
 
   let html = `<div class="panel">
-    <h2>建立拍賣</h2>
+    <h2>${t('createAuctionHeader')}</h2>
     <p class="sub">設定起標價與拍賣時長，讓其他占卜師競標你的稀有卡片</p>
     ${owned ? `
       <div class="form-row">
@@ -2001,7 +2201,7 @@ async function renderAuction(body){
   </div>`;
 
   html += `<div class="panel">
-    <h2>我的拍賣</h2>
+    <h2>${t('myAuctionsHeader')}</h2>
     ${myAuctions.length===0 ? '<div class="empty-note">尚未建立任何拍賣</div>' : myAuctions.map(a=>{
       const c = DECK_BY_ID[a.cardId];
       return `<div class="listing">
@@ -2018,7 +2218,7 @@ async function renderAuction(body){
   </div>`;
 
   html += `<div class="panel">
-    <h2>公開拍賣</h2>
+    <h2>${t('publicAuctionsHeader')}</h2>
     ${otherAuctions.length===0 ? '<div class="empty-note">目前沒有進行中的拍賣</div>' : otherAuctions.map(a=>{
       const c = DECK_BY_ID[a.cardId];
       const minBid = a.currentBid > 0 ? a.currentBid+1 : a.startBid;
@@ -2069,7 +2269,7 @@ async function renderFarm(body){
   });
 
   let html = `<div class="panel">
-    <h2>🌱 占卜花園</h2>
+    <h2>${t('gardenHeader')}</h2>
     <p class="sub">用金幣種下元素種子，靜待時間發芽 · 花色種子對應塔羅四元素，秘儀種子需收藏滿 ${MAJOR_SEED_UNLOCK_TOTAL} 張才能解鎖 · 別忘了到下方看看好友的花園，互相澆水偷菜 🌿</p>
     <button class="btn small" id="farm-harvest-all-btn" ${anyReady?'':'disabled'}>收成全部</button>
   </div>`;
@@ -2133,7 +2333,7 @@ async function renderFarm(body){
   // ---------- 好友花園：互相澆水/偷菜 ----------
   const friends = p.friends || [];
   html += `<div class="panel">
-    <h2>🌿 好友花園</h2>
+    <h2>${t('friendGardenHeader')}</h2>
     <p class="sub">幫好友的作物澆水可以加速生長（雙方都有小獎勵），成熟後太久沒收成也可以被好友偷一點走，但不影響本人收成</p>
     ${friends.length===0 ? '<div class="empty-note">尚未加入任何好友，先到「好友」分頁加人吧 ✦</div>' : friends.map(f=>`
       <div class="listing">
@@ -2236,7 +2436,7 @@ async function renderLeaderboard(body){
   const isMe = nick => state.nickname && nick.toLowerCase()===state.nickname.toLowerCase();
 
   let html = `<div class="panel">
-    <h2>🏆 收藏排行榜</h2>
+    <h2>${t('leaderCollectionHeader')}</h2>
     <p class="sub">依收藏卡牌總張數排名</p>
     ${byCards.length===0 ? '<div class="empty-note">目前尚無玩家資料</div>' : byCards.map((pl,i)=>`
       <div class="listing">
@@ -2247,7 +2447,7 @@ async function renderLeaderboard(body){
   </div>`;
 
   html += `<div class="panel">
-    <h2>💰 財富排行榜</h2>
+    <h2>${t('leaderWealthHeader')}</h2>
     <p class="sub">依持有金幣排名</p>
     ${byCoins.length===0 ? '<div class="empty-note">目前尚無玩家資料</div>' : byCoins.map((pl,i)=>`
       <div class="listing">
@@ -2258,7 +2458,7 @@ async function renderLeaderboard(body){
   </div>`;
 
   html += `<div class="panel">
-    <h2>✨ 三牌共鳴消費排行榜</h2>
+    <h2>${t('leaderSlotHeader')}</h2>
     <p class="sub">依三牌共鳴累計花費金幣排名</p>
     ${bySlotSpend.length===0 ? '<div class="empty-note">目前尚無玩家資料</div>' : bySlotSpend.map((pl,i)=>`
       <div class="listing">
@@ -2279,7 +2479,7 @@ async function renderGM(body){
   const allPlayers = (await fetchAllPlayers()).sort((a,b)=>(b.coins||0)-(a.coins||0));
 
   let html = `<div class="panel">
-    <h2>⚡ GM 管理控制台</h2>
+    <h2>${t('gmHeader')}</h2>
     <p class="sub">僅 GM 帳號可見，發放內容會直接寫入目標玩家的資料</p>
     <div class="form-row">
       <div style="flex:1;min-width:160px;"><label>目標玩家暱稱</label><input type="text" id="gm-target-input" placeholder="輸入暱稱..." value="${gmLookupResult ? escapeHtml(gmLookupResult.nickname) : ''}" /></div>
@@ -2293,7 +2493,7 @@ async function renderGM(body){
   </div>`;
 
   html += `<div class="panel">
-    <h2>所有玩家</h2>
+    <h2>${t('allPlayersHeader')}</h2>
     <p class="sub">共 ${allPlayers.length} 位玩家 · 暱稱 / 金幣 / 收藏張數 / 好友數</p>
     ${allPlayers.length === 0 ? '<div class="empty-note">尚無玩家資料</div>' : allPlayers.map(pl=>{
       const total = playerTotalCards(pl);
@@ -2307,7 +2507,7 @@ async function renderGM(body){
   </div>`;
 
   html += `<div class="panel">
-    <h2>發放金幣</h2>
+    <h2>${t('grantCoinsHeader')}</h2>
     <div class="form-row">
       <div><label>金幣數量（可輸入負數扣除）</label><input type="number" id="gm-coin-amount" placeholder="例如 500" /></div>
       <button class="btn small" id="gm-coin-btn">發放金幣</button>
@@ -2315,7 +2515,7 @@ async function renderGM(body){
   </div>`;
 
   html += `<div class="panel">
-    <h2>發放卡片</h2>
+    <h2>${t('grantCardsHeader')}</h2>
     <div class="form-row">
       <div style="flex:1;min-width:160px;"><label>卡片</label><select id="gm-card-select">${cardOptions}</select></div>
       <div><label>數量</label><input type="number" id="gm-card-qty" value="1" min="1" style="width:70px;" /></div>
@@ -2324,7 +2524,7 @@ async function renderGM(body){
   </div>`;
 
   html += `<div class="panel">
-    <h2>抽卡機率設定</h2>
+    <h2>${t('drawWeightsHeader')}</h2>
     <p class="sub">調整四個稀有度的相對權重，會影響「所有玩家」之後的每日抽卡與三牌共鳴結果。建議四項總和維持在 100 左右方便理解百分比，但不強制。</p>
     <div class="form-row">
       <div><label>普通</label><input type="number" id="gm-w-common" value="${DRAW_WEIGHTS.common}" min="0" style="width:70px;" /></div>
@@ -2339,7 +2539,7 @@ async function renderGM(body){
   </div>`;
 
   html += `<div class="panel">
-    <h2>✨ 三牌共鳴設定</h2>
+    <h2>${t('slotSettingsHeader')}</h2>
     <p class="sub">目前獎池：<b style="color:var(--gold-bright);">✦ ${SLOT_JACKPOT}</b> · 中頭獎（三張史詩）會直接卷走全部獎池</p>
     <div class="form-row">
       <div><label>每次花費</label><input type="number" id="gm-slot-cost" value="${SLOT_SETTINGS.cost}" min="1" style="width:80px;" /></div>
