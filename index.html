@@ -2230,8 +2230,10 @@ function el(html){
   container.innerHTML = html;
 }
 
-function render(){
+async function render(){
   const scrollY = window.scrollY;
+  const prevTabBodyEl = document.getElementById('tab-body');
+  const prevTabHtml = prevTabBodyEl ? prevTabBodyEl.innerHTML : '';
   if(!state.nickname || !state.player){
     el(`
       <div class="login-screen">
@@ -2278,7 +2280,7 @@ function render(){
       <div class="tab ${state.tab==='leaderboard'?'active':''}" data-tab="leaderboard">${t('tabLeaderboard')}</div>
       ${isGM() ? `<div class="tab ${state.tab==='gm'?'active':''}" data-tab="gm">${t('tabGM')}</div>` : ''}
     </div>
-    <div id="tab-body"></div>
+    <div id="tab-body">${prevTabHtml}</div>
   `);
   document.getElementById('logout-btn').onclick = doLogout;
   const bellBtn = document.getElementById('notif-bell-btn');
@@ -2297,7 +2299,8 @@ function render(){
       render();
     };
   });
-  renderTab();
+  const tabPromise = renderTab();
+  await tabPromise;
   window.scrollTo(0, scrollY);
   if(farmTickInterval){ clearInterval(farmTickInterval); farmTickInterval = null; }
   if(state.tab === 'farm'){
