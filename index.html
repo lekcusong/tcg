@@ -695,6 +695,80 @@ async function saveSlotJackpot(newValue){
   await storage.set('config:slot_jackpot', JSON.stringify(SLOT_JACKPOT));
 }
 
+// ---------- 每日任務 ----------
+const QUEST_DEFS = [
+  {key:'checkin', nameZh:'完成每日簽到', nameEn:'Complete daily check-in', target:1, icon:'🔮'},
+  {key:'slot', nameZh:'玩一次三牌共鳴', nameEn:'Play Resonance once', target:1, icon:'✨'},
+  {key:'plant', nameZh:'種下一顆種子', nameEn:'Plant a seed', target:1, icon:'🌱'},
+  {key:'harvest', nameZh:'收成一次花園', nameEn:'Harvest a plot', target:1, icon:'🌾'},
+  {key:'water', nameZh:'幫好友澆水一次', nameEn:"Water a friend's plot", target:1, icon:'🚿'},
+  {key:'sell', nameZh:'出售一張卡片', nameEn:'Sell a card', target:1, icon:'💰'},
+  {key:'auction', nameZh:'上架或出價一次拍賣', nameEn:'List or bid on an auction', target:1, icon:'🔨'},
+];
+const QUEST_BY_KEY = Object.fromEntries(QUEST_DEFS.map(q=>[q.key,q]));
+const DEFAULT_QUEST_SETTINGS = {
+  rewards: {checkin:10, slot:10, plant:10, harvest:10, water:5, sell:5, auction:10},
+  completionBonus: 20,
+};
+let QUEST_SETTINGS = JSON.parse(JSON.stringify(DEFAULT_QUEST_SETTINGS));
+async function loadQuestSettings(){
+  try{
+    const r = await storage.get('config:quest_settings');
+    if(r){
+      const s = JSON.parse(r.value);
+      QUEST_DEFS.forEach(q=>{
+        if(s.rewards && typeof s.rewards[q.key] === 'number' && s.rewards[q.key] >= 0) QUEST_SETTINGS.rewards[q.key] = s.rewards[q.key];
+      });
+      if(typeof s.completionBonus === 'number' && s.completionBonus >= 0) QUEST_SETTINGS.completionBonus = s.completionBonus;
+    }
+  }catch(e){ /* keep defaults */ }
+}
+async function saveQuestSettings(newSettings){
+  QUEST_SETTINGS = JSON.parse(JSON.stringify(newSettings));
+  await storage.set('config:quest_settings', JSON.stringify(QUEST_SETTINGS));
+}
+function ensureDailyQuests(p){
+  const today = todayStr();
+  if(!p.daily || p.daily.date !== today){
+    p.daily = {date: today, progress:{}, claimed:[]};
+  }
+  if(!p.daily.progress) p.daily.progress = {};
+  if(!p.daily.claimed) p.daily.claimed = [];
+  return p.daily;
+}
+function bumpQuest(p, key, amount){
+  const daily = ensureDailyQuests(p);
+  const def = QUEST_BY_KEY[key];
+  if(!def) return;
+  const cur = daily.progress[key] || 0;
+  daily.progress[key] = Math.min(def.target, cur + (amount||1));
+}
+async function claimQuest(questKey){
+  const p = state.player;
+  const daily = ensureDailyQuests(p);
+  const def = QUEST_BY_KEY[questKey];
+  if(!def) return;
+  if(daily.claimed.includes(questKey)) return;
+  const progress = daily.progress[questKey] || 0;
+  if(progress < def.target) return;
+  daily.claimed.push(questKey);
+  const reward = QUEST_SETTINGS.rewards[questKey] || 0;
+  p.coins = (p.coins||0) + reward;
+  let bonusAwarded = false;
+  if(QUEST_DEFS.every(q=>daily.claimed.includes(q.key)) && !daily.bonusClaimed){
+    daily.bonusClaimed = true;
+    p.coins += QUEST_SETTINGS.completionBonus;
+    bonusAwarded = true;
+  }
+  await savePlayer(p);
+  if(bonusAwarded){
+    showToast(tt(`已領取「${def.nameZh}」✦${reward}，並完成今日全部任務，額外獲得 ✦${QUEST_SETTINGS.completionBonus} 🎉`, `Claimed "${def.nameEn}" for ✦${reward} - and completed all daily quests for a bonus ✦${QUEST_SETTINGS.completionBonus} 🎉`));
+  } else {
+    showToast(tt(`已領取「${def.nameZh}」✦${reward}`, `Claimed "${def.nameEn}" for ✦${reward}`));
+  }
+  render();
+}
+
 // ---------- 占卜花園（種菜系統） ----------
 const FARM_PLOT_COUNT = 4;
 const MAJOR_SEED_UNLOCK_TOTAL = 30; // 收藏總張數達到此門檻才能種傳說種子
@@ -799,6 +873,7 @@ async function plantSeed(plotIndex, seedKey){
   plot.witherAt = seed.wither ? plot.readyAt + seed.witherMs : null;
   plot.waterLog = {};
   plot.stolenBy = [];
+  bumpQuest(p, 'plant', 1);
   await savePlayer(p);
   showToast(tt(`已種下${seedName(seed)}`, `Planted ${seedName(seed)}`));
   render();
@@ -831,6 +906,7 @@ async function harvestPlot(plotIndex, opts){
       }
     }
     result = {withered:false, seedName: seedName(seed), coinGain, bonusCard};
+    bumpQuest(p, 'harvest', 1);
   }
   plot.seed = null; plot.plantedAt = null; plot.readyAt = null; plot.witherAt = null;
   plot.waterLog = {}; plot.stolenBy = [];
@@ -897,13 +973,16 @@ async function waterFriendPlot(friendNick, plotIndex){
   await savePlayer(owner);
 
   state.player.coins = (state.player.coins||0) + WATER_HELPER_REWARD;
+  bumpQuest(state.player, 'water', 1);
   await savePlayer(state.player);
 
   const wateredSeedName = seedName(SEED_TYPES[plot.seed]);
   await createNotification(friendNick, state.nickname, 'water', {plotIndex, seedName: wateredSeedName, speedup});
 
   showToast(tt(`已幫 ${friendNick} 澆水，縮短了 ${formatDuration(speedup)}，你獲得 ✦${WATER_HELPER_REWARD} 作為謝禮`, `Watered ${friendNick}'s plot, cutting ${formatDuration(speedup)} off the timer. You received ✦${WATER_HELPER_REWARD} as thanks`));
-  render();
+  const coinEl = document.getElementById('player-coin');
+  if(coinEl) coinEl.textContent = `✦ ${state.player.coins}`;
+  await renderTab();
 }
 
 async function stealFriendPlot(friendNick, plotIndex){
@@ -927,7 +1006,9 @@ async function stealFriendPlot(friendNick, plotIndex){
   await createNotification(friendNick, state.nickname, 'steal', {plotIndex, seedName: stolenSeedName, amount: gain});
 
   showToast(tt(`偷偷順走一點 ${friendNick} 的${stolenSeedName}，獲得 ✦${gain}（不影響對方收成）`, `Sneaked a bit of ${friendNick}'s ${stolenSeedName}, gaining ✦${gain} (doesn't affect their harvest)`));
-  render();
+  const coinEl = document.getElementById('player-coin');
+  if(coinEl) coinEl.textContent = `✦ ${state.player.coins}`;
+  await renderTab();
 }
 
 function weightedDraw(){
@@ -1069,6 +1150,10 @@ const T = {
   drawWeightsHeader: {zh:'抽卡機率設定', en:'Draw Rate Settings'},
   slotSettingsHeader: {zh:'✨ 三牌共鳴設定', en:'✨ Resonance Settings'},
   remove: {zh:'移除', en:'Remove'},
+  questHeader: {zh:'每日任務', en:'Daily Quests'},
+  questClaim: {zh:'領取', en:'Claim'},
+  questClaimed: {zh:'已領取 ✓', en:'Claimed ✓'},
+  questAllDone: {zh:'今日任務全數完成！', en:'All daily quests complete!'},
 };
 function t(key){
   const entry = T[key];
@@ -1222,6 +1307,7 @@ async function sellCard(cardId, qty){
   if(!ok) return;
   state.player.cards[cardId] = owned - qty;
   state.player.coins = (state.player.coins||0) + total;
+  bumpQuest(state.player, 'sell', 1);
   await savePlayer(state.player);
   closeCardModal();
   showToast(tt(`已出售 ${c.name} x${qty}，獲得 ✦${total} 枚金幣`, `Sold ${c.name} x${qty} for ✦${total} coins`));
@@ -1251,6 +1337,7 @@ async function boot(){
   render();
   loadDrawWeights().catch(()=>{});
   loadSlotConfig().catch(()=>{});
+  loadQuestSettings().catch(()=>{});
   initWinBroadcastPoll();
   initNotifPoll();
 }
@@ -1332,6 +1419,7 @@ async function claimDaily(){
     state.player.cards[c.id] = (state.player.cards[c.id]||0) + 1;
   });
   state.player.lastClaim = todayStr();
+  bumpQuest(state.player, 'checkin', 1);
   await savePlayer(state.player);
   render();
   setTimeout(()=>{ flipCard(0); }, 300);
@@ -1375,6 +1463,7 @@ async function pullSlot(){
   state.flipped = [false,false,false];
   state.player.coins -= SLOT_SETTINGS.cost;
   state.player.slotSpend = (state.player.slotSpend||0) + SLOT_SETTINGS.cost;
+  bumpQuest(state.player, 'slot', 1);
   drawn.forEach(c=>{
     state.player.cards[c.id] = (state.player.cards[c.id]||0) + 1;
   });
@@ -1475,6 +1564,7 @@ async function markAllNotificationsRead(notifs){
 }
 function notifText(n){
   const seed = n.seedName || tt('作物','crop');
+  if(n.type==='friend_request') return tt(`${n.from} 想加你為好友`, `${n.from} wants to be your friend`);
   if(n.type==='water') return tt(`${n.from} 幫你的${seed}澆了水，縮短了 ${formatDuration(n.speedup||0)}`, `${n.from} watered your ${seed}, cutting ${formatDuration(n.speedup||0)} off the timer`);
   if(n.type==='steal') return tt(`${n.from} 偷偷順走了一點你的${seed}（不影響你的收成）`, `${n.from} sneaked a bit of your ${seed} (doesn't affect your harvest)`);
   if(n.type==='auction_sold') return tt(`${n.from} 以 ${n.price} 枚金幣${n.viaBuyout?'一口價直接購買了':'買走了'}你的『${n.cardName}』`, `${n.from} ${n.viaBuyout?'bought':'won'} your "${n.cardName}" for ✦${n.price}`);
@@ -1537,6 +1627,7 @@ async function sendFriendRequest(targetNick){
   if(dup){ showToast(tt('已經有待處理的好友邀請','There is already a pending friend request')); return; }
   const req = {id: uid(), from: state.nickname, to: target.nickname, status:'pending', createdAt: Date.now()};
   await storage.set(freqKey(req.id), JSON.stringify(req));
+  await createNotification(target.nickname, state.nickname, 'friend_request', {});
   showToast(tt(`已送出好友邀請給 ${target.nickname} 🕊`, `Friend request sent to ${target.nickname} 🕊`));
   render();
 }
@@ -1677,6 +1768,7 @@ async function listAuction(cardId, startBid, buyoutPrice, durMs){
   if(!hasStart && !hasBuyout){ showToast(tt('起標價與一口價至少要填一個','Please fill in either a starting bid or a buyout price')); return; }
   if(hasStart && hasBuyout && buyoutPrice <= startBid){ showToast(tt('一口價必須高於起標價','Buyout price must be higher than the starting bid')); return; }
   state.player.cards[cardId] = owned - 1;
+  bumpQuest(state.player, 'auction', 1);
   await savePlayer(state.player);
   const auction = {
     id: uid(), seller: state.nickname, cardId,
@@ -1723,6 +1815,7 @@ async function placeBid(auctionId, amount){
   }
   if(amount > state.player.coins){ showToast(tt('遊戲幣不足','Not enough coins')); return; }
   state.player.coins -= amount;
+  bumpQuest(state.player, 'auction', 1);
   await savePlayer(state.player);
   auction.currentBid = amount;
   auction.currentBidder = state.nickname;
@@ -1753,6 +1846,7 @@ async function buyoutAuction(auctionId){
   if(price > state.player.coins){ showToast(tt('遊戲幣不足','Not enough coins')); return; }
   state.player.coins -= price;
   state.player.cards[auction.cardId] = (state.player.cards[auction.cardId]||0)+1;
+  bumpQuest(state.player, 'auction', 1);
   await savePlayer(state.player);
   const seller = await loadPlayer(auction.seller);
   if(seller){ seller.coins += price; await savePlayer(seller); }
@@ -1864,6 +1958,7 @@ function el(html){
 }
 
 function render(){
+  const scrollY = window.scrollY;
   if(!state.nickname || !state.player){
     el(`
       <div class="login-screen">
@@ -1882,6 +1977,7 @@ function render(){
     document.getElementById('pw-input').addEventListener('keydown', e=>{
       if(e.key==='Enter') tryLogin();
     });
+    window.scrollTo(0, scrollY);
     return;
   }
 
@@ -1894,7 +1990,7 @@ function render(){
       </div>
       <div class="player-chip">
         <span class="name">${escapeHtml(p.nickname)}</span>
-        <span class="coin">✦ ${p.coins}</span>
+        <span class="coin" id="player-coin">✦ ${p.coins}</span>
         <button id="notif-bell-btn" style="position:relative;">🔔<span id="notif-badge" style="display:${notifUnreadCount>0?'inline-flex':'none'};position:absolute;top:-4px;right:-4px;background:#e0455f;color:#fff;border-radius:999px;font-size:10px;line-height:1;padding:2px 5px;">${notifUnreadCount>9?'9+':notifUnreadCount}</span></button>
         <button id="logout-btn">${t('logout')}</button>
       </div>
@@ -1927,6 +2023,7 @@ function render(){
     };
   });
   renderTab();
+  window.scrollTo(0, scrollY);
   if(farmTickInterval){ clearInterval(farmTickInterval); farmTickInterval = null; }
   if(state.tab === 'farm'){
     farmTickInterval = setInterval(()=>{
@@ -2003,6 +2100,23 @@ function renderHome(body){
   html += `<div class="countdown">${tt(`連續簽到 <b style="color:var(--gold-bright);">${streak}</b> 天${nextMilestone ? ` · 再簽到 ${nextMilestone - streak} 天可額外獲得 ${STREAK_BONUS[nextMilestone]} 枚金幣 🔥` : ''}`, `<b style="color:var(--gold-bright);">${streak}</b>-day streak${nextMilestone ? ` · ${nextMilestone - streak} more day(s) for a bonus ${STREAK_BONUS[nextMilestone]} coins 🔥` : ''}`)}</div>`;
   html += `</div>`;
 
+  const daily = ensureDailyQuests(p);
+  const allDone = QUEST_DEFS.every(q=>daily.claimed.includes(q.key));
+  html += `<div class="panel">
+    <h2>${t('questHeader')}</h2>
+    ${allDone ? `<p class="sub" style="color:var(--gold-bright);">🎉 ${t('questAllDone')}</p>` : ''}
+    ${QUEST_DEFS.map(q=>{
+      const progress = daily.progress[q.key] || 0;
+      const done = progress >= q.target;
+      const claimedQ = daily.claimed.includes(q.key);
+      const reward = QUEST_SETTINGS.rewards[q.key] || 0;
+      return `<div class="listing">
+        <div class="left"><div class="icon-box">${q.icon}</div><div class="meta"><div>${tt(q.nameZh, q.nameEn)}</div><div class="who">${progress}/${q.target} · ✦${reward}</div></div></div>
+        <div class="right">${claimedQ ? `<span style="color:var(--muted);font-size:13px;">${t('questClaimed')}</span>` : `<button class="btn small" data-claim-quest="${q.key}" ${done?'':'disabled'}>${t('questClaim')}</button>`}</div>
+      </div>`;
+    }).join('')}
+  </div>`;
+
   html += `<div class="panel">
     <h2>${t('slotHeader')}</h2>
     <p class="sub">${tt(`花費 ✦${SLOT_SETTINGS.cost} 拉一次，抽到的 3 張牌都會直接進收藏；三張稀有度相同才會中獎，三張史詩直接卷走整個獎池！`, `Spend ✦${SLOT_SETTINGS.cost} per pull - all 3 drawn cards go straight into your collection; matching all 3 rarities wins, and three Epics take the whole jackpot!`)}</p>
@@ -2025,6 +2139,9 @@ function renderHome(body){
   if(btn) btn.onclick = claimDaily;
   const slotBtn = document.getElementById('slot-btn');
   if(slotBtn) slotBtn.onclick = pullSlot;
+  document.querySelectorAll('[data-claim-quest]').forEach(b=>{
+    b.onclick = ()=>claimQuest(b.dataset.claimQuest);
+  });
 
   if(state.drawResults){
     COLLECTION_MODAL_LIST = state.drawResults.map(c=>c.id);
@@ -2076,7 +2193,14 @@ async function renderFriends(body){
   const incomingReqs = allReqs.filter(r=>r.status==='pending' && r.to===state.nickname);
   const outgoingReqs = allReqs.filter(r=>r.status==='pending' && r.from===state.nickname);
   const friends = state.player.friends || [];
-  const recentNotifs = notifs.slice(0, 15);
+  const NOTIF_PAGE_SIZE = 6;
+  const NOTIF_MAX_PAGES = 5;
+  const notifsCapped = notifs.slice(0, NOTIF_PAGE_SIZE * NOTIF_MAX_PAGES);
+  const notifTotalPages = Math.max(1, Math.ceil(notifsCapped.length / NOTIF_PAGE_SIZE));
+  if(!state.notifPage || state.notifPage < 1) state.notifPage = 1;
+  if(state.notifPage > notifTotalPages) state.notifPage = notifTotalPages;
+  const notifPageStart = (state.notifPage - 1) * NOTIF_PAGE_SIZE;
+  const recentNotifs = notifsCapped.slice(notifPageStart, notifPageStart + NOTIF_PAGE_SIZE);
   const incomingTrades = allFTrades.filter(t=>t.status==='pending' && t.to===state.nickname);
   const outgoingTrades = allFTrades.filter(t=>t.status==='pending' && t.from===state.nickname);
 
@@ -2096,9 +2220,16 @@ async function renderFriends(body){
       <h2>${t('gardenNotifHeader')}${unreadNotifCount>0?` <span style="color:#e0455f;font-size:12px;">(${unreadNotifCount})</span>`:''}</h2>
       ${recentNotifs.map(n=>`
         <div class="listing">
-          <div class="left"><div class="icon-box">${n.type==='steal'?'🌾':n.type==='water'?'🚿':n.type.startsWith('auction')?'💰':'🔔'}</div><div class="meta"><div>${escapeHtml(notifText(n))}</div><div class="who">${timeAgo(n.createdAt)}</div></div></div>
+          <div class="left"><div class="icon-box">${n.type==='friend_request'?'🕊':n.type==='steal'?'🌾':n.type==='water'?'🚿':n.type.startsWith('auction')?'💰':'🔔'}</div><div class="meta"><div>${escapeHtml(notifText(n))}</div><div class="who">${timeAgo(n.createdAt)}</div></div></div>
         </div>
       `).join('')}
+      ${notifTotalPages > 1 ? `
+        <div class="form-row" style="justify-content:center;margin-top:8px;gap:6px;">
+          <button class="btn small secondary" id="notif-page-prev" ${state.notifPage<=1?'disabled':''}>‹</button>
+          ${Array.from({length:notifTotalPages}, (_,i)=>i+1).map(pn=>`<button class="btn small${pn===state.notifPage?'':' secondary'}" data-notif-page="${pn}">${pn}</button>`).join('')}
+          <button class="btn small secondary" id="notif-page-next" ${state.notifPage>=notifTotalPages?'disabled':''}>›</button>
+        </div>
+      ` : ''}
     </div>`;
   }
   html += `<div class="panel">
@@ -2227,6 +2358,13 @@ async function renderFriends(body){
   document.querySelectorAll('[data-cancel-ftrade]').forEach(b=>{
     b.onclick = ()=>cancelFriendTrade(b.dataset.cancelFtrade);
   });
+  document.querySelectorAll('[data-notif-page]').forEach(b=>{
+    b.onclick = ()=>{ state.notifPage = Number(b.dataset.notifPage); renderTab(); };
+  });
+  const notifPrevBtn = document.getElementById('notif-page-prev');
+  if(notifPrevBtn) notifPrevBtn.onclick = ()=>{ state.notifPage = Math.max(1, state.notifPage - 1); renderTab(); };
+  const notifNextBtn = document.getElementById('notif-page-next');
+  if(notifNextBtn) notifNextBtn.onclick = ()=>{ state.notifPage = state.notifPage + 1; renderTab(); };
 
   // Viewing this tab counts as having seen the notifications: mark them
   // read and clear the header badge (without a full re-render, so we don't
@@ -2684,6 +2822,21 @@ async function renderGM(body){
     </div>
   </div>`;
 
+  html += `<div class="panel">
+    <h2>${tt('每日任務獎勵設定','Daily Quest Rewards')}</h2>
+    <p class="sub">${tt('調整每個每日任務的金幣獎勵，以及全部完成時的額外獎勵','Adjust the coin reward for each daily quest, and the bonus for completing all of them')}</p>
+    <div class="form-row">
+      ${QUEST_DEFS.map(q=>`<div><label>${tt(q.nameZh, q.nameEn)}</label><input type="number" id="gm-quest-${q.key}" value="${QUEST_SETTINGS.rewards[q.key]}" min="0" style="width:80px;" /></div>`).join('')}
+    </div>
+    <div class="form-row">
+      <div><label>${tt('全部完成額外獎勵','Completion bonus')}</label><input type="number" id="gm-quest-bonus" value="${QUEST_SETTINGS.completionBonus}" min="0" style="width:100px;" /></div>
+    </div>
+    <div class="form-row">
+      <button class="btn small" id="gm-quest-save-btn">${tt('儲存任務獎勵','Save Quest Rewards')}</button>
+      <button class="btn small secondary" id="gm-quest-reset-btn">${tt('還原預設值','Reset to Default')}</button>
+    </div>
+  </div>`;
+
   body.innerHTML = html;
 
   const lookupBtn = document.getElementById('gm-lookup-btn');
@@ -2760,6 +2913,28 @@ async function renderGM(body){
     if(isNaN(v) || v < 0){ showToast(tt('請輸入有效的非負數字','Please enter a valid non-negative number')); return; }
     await saveSlotJackpot(v);
     showToast(tt(`獎池已設定為 ✦${v}`, `Jackpot pool set to ✦${v}`));
+    renderTab();
+  };
+  const questSaveBtn = document.getElementById('gm-quest-save-btn');
+  if(questSaveBtn) questSaveBtn.onclick = async ()=>{
+    const rewards = {};
+    let invalid = false;
+    QUEST_DEFS.forEach(q=>{
+      const v = parseFloat(document.getElementById(`gm-quest-${q.key}`).value);
+      if(isNaN(v) || v < 0) invalid = true;
+      rewards[q.key] = v;
+    });
+    const bonus = parseFloat(document.getElementById('gm-quest-bonus').value);
+    if(isNaN(bonus) || bonus < 0) invalid = true;
+    if(invalid){ showToast(tt('請輸入有效的非負數字','Please enter a valid non-negative number')); return; }
+    await saveQuestSettings({rewards, completionBonus: bonus});
+    showToast(tt('每日任務獎勵已更新，即時對所有玩家生效 ⚡','Daily quest rewards updated, effective immediately for all players ⚡'));
+    renderTab();
+  };
+  const questResetBtn = document.getElementById('gm-quest-reset-btn');
+  if(questResetBtn) questResetBtn.onclick = async ()=>{
+    await saveQuestSettings(JSON.parse(JSON.stringify(DEFAULT_QUEST_SETTINGS)));
+    showToast(tt('已還原為預設任務獎勵','Reverted to default quest rewards'));
     renderTab();
   };
 }
