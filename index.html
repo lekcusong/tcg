@@ -1117,6 +1117,7 @@ const T = {
   igFollowSuffix: {zh:'看更多塔羅插畫', en:'for more tarot art'},
   logout: {zh:'登出', en:'Log Out'},
   tabHome: {zh:'每日抽卡', en:'Daily Draw'},
+  tabResonance: {zh:'✨ 三牌共鳴', en:'✨ Resonance'},
   tabCollection: {zh:'我的收藏', en:'My Collection'},
   tabFriends: {zh:'好友', en:'Friends'},
   tabAuction: {zh:'拍賣行', en:'Auction House'},
@@ -1997,6 +1998,7 @@ function render(){
     </div>
     <div class="tabs">
       <div class="tab ${state.tab==='home'?'active':''}" data-tab="home">${t('tabHome')}</div>
+      <div class="tab ${state.tab==='resonance'?'active':''}" data-tab="resonance">${t('tabResonance')}</div>
       <div class="tab ${state.tab==='collection'?'active':''}" data-tab="collection">${t('tabCollection')}</div>
       <div class="tab ${state.tab==='friends'?'active':''}" data-tab="friends">${t('tabFriends')}</div>
       <div class="tab ${state.tab==='auction'?'active':''}" data-tab="auction">${t('tabAuction')}</div>
@@ -2040,6 +2042,7 @@ function escapeHtml(s){
 function renderTab(){
   const body = document.getElementById('tab-body');
   if(state.tab === 'home') return renderHome(body);
+  if(state.tab === 'resonance') return renderResonance(body);
   if(state.tab === 'collection') return renderCollection(body);
   if(state.tab === 'friends') return renderFriends(body);
   if(state.tab === 'auction') return renderAuction(body);
@@ -2061,7 +2064,8 @@ function renderHome(body){
     <h2>${t('homeHeader')}</h2>
     <p class="sub">${tt(`每天可免費抽取三張塔羅牌，並獲得 ${DAILY_COINS} 枚遊戲幣`, `Draw three free tarot cards every day and earn ${DAILY_COINS} coins`)}</p>`;
 
-  if(state.drawResults){
+  const showDrawResults = state.drawResults && state.drawSource === 'daily';
+  if(showDrawResults){
     html += `<div class="card-flip-row">` + state.drawResults.map((c,i)=>`
       <div class="flip-card ${state.flipped[i]?'flipped':''}" data-card-id="${c.id}" data-idx="${i}">
         <div class="flip-card-inner">
@@ -2077,18 +2081,16 @@ function renderHome(body){
       </div>
     `).join('') + `</div>`;
 
-    if(state.drawSource === 'daily'){
-      const allFlipped = state.flipped && state.flipped.every(f=>f);
-      html += `<div class="fortune-panel${allFlipped?' show':''}" id="fortune-panel">
-        <div class="sub" style="margin-bottom:8px;">🔮 ${t('homeHeader')}</div>
-        ${state.drawResults.map(c=>`
-          <div class="fortune-card">
-            <div class="fc-name">${c.name}</div>
-            <div class="fc-text">${cardMeaning(c)}</div>
-          </div>
-        `).join('')}
-      </div>`;
-    }
+    const allFlipped = state.flipped && state.flipped.every(f=>f);
+    html += `<div class="fortune-panel${allFlipped?' show':''}" id="fortune-panel">
+      <div class="sub" style="margin-bottom:8px;">🔮 ${t('homeHeader')}</div>
+      ${state.drawResults.map(c=>`
+        <div class="fortune-card">
+          <div class="fc-name">${c.name}</div>
+          <div class="fc-text">${cardMeaning(c)}</div>
+        </div>
+      `).join('')}
+    </div>`;
   }
 
   if(claimed){
@@ -2118,13 +2120,6 @@ function renderHome(body){
   </div>`;
 
   html += `<div class="panel">
-    <h2>${t('slotHeader')}</h2>
-    <p class="sub">${tt(`花費 ✦${SLOT_SETTINGS.cost} 拉一次，抽到的 3 張牌都會直接進收藏；三張稀有度相同才會中獎，三張史詩直接卷走整個獎池！`, `Spend ✦${SLOT_SETTINGS.cost} per pull - all 3 drawn cards go straight into your collection; matching all 3 rarities wins, and three Epics take the whole jackpot!`)}</p>
-    <div class="countdown" style="margin-bottom:10px;">${tt(`目前獎池：<b style="color:var(--gold-bright);">✦ ${SLOT_JACKPOT}</b>`, `Current jackpot: <b style="color:var(--gold-bright);">✦ ${SLOT_JACKPOT}</b>`)}</div>
-    <button class="btn" id="slot-btn" ${p.coins < SLOT_SETTINGS.cost ? 'disabled' : ''}>${tt(`共鳴一次（✦ ${SLOT_SETTINGS.cost}）`, `Resonate once (✦ ${SLOT_SETTINGS.cost})`)}</button>
-  </div>`;
-
-  html += `<div class="panel">
     <h2>${t('profileHeader')}</h2>
     <div class="stat-row">
       <div class="stat">${tt('遊戲幣','Coins')} <b>✦ ${p.coins}</b></div>
@@ -2137,13 +2132,56 @@ function renderHome(body){
   body.innerHTML = html;
   const btn = document.getElementById('draw-btn');
   if(btn) btn.onclick = claimDaily;
-  const slotBtn = document.getElementById('slot-btn');
-  if(slotBtn) slotBtn.onclick = pullSlot;
   document.querySelectorAll('[data-claim-quest]').forEach(b=>{
     b.onclick = ()=>claimQuest(b.dataset.claimQuest);
   });
 
-  if(state.drawResults){
+  if(showDrawResults){
+    COLLECTION_MODAL_LIST = state.drawResults.map(c=>c.id);
+    document.querySelectorAll('.flip-card').forEach(el=>{
+      el.onclick = ()=>{
+        const idx = Number(el.dataset.idx);
+        if(!state.flipped[idx]) return; // 還沒翻開，先別讓玩家看到內容
+        openCardModal(el.dataset.cardId);
+      };
+    });
+  }
+}
+
+function renderResonance(body){
+  const p = state.player;
+
+  let html = `<div class="panel draw-cta">
+    <h2>${t('slotHeader')}</h2>
+    <p class="sub">${tt(`花費 ✦${SLOT_SETTINGS.cost} 拉一次，抽到的 3 張牌都會直接進收藏；三張稀有度相同才會中獎，三張史詩直接卷走整個獎池！`, `Spend ✦${SLOT_SETTINGS.cost} per pull - all 3 drawn cards go straight into your collection; matching all 3 rarities wins, and three Epics take the whole jackpot!`)}</p>`;
+
+  const showDrawResults = state.drawResults && state.drawSource === 'slot';
+  if(showDrawResults){
+    html += `<div class="card-flip-row">` + state.drawResults.map((c,i)=>`
+      <div class="flip-card ${state.flipped[i]?'flipped':''}" data-card-id="${c.id}" data-idx="${i}">
+        <div class="flip-card-inner">
+          <div class="flip-face flip-back">🔮</div>
+          <div class="flip-face flip-front cf-${c.rarity}">
+            <div class="card-face${cardArtClass(c)}"${cardArtAttr(c)}>
+              <span class="rarity-tag rar-${c.rarity}">${RARITY_LABEL[c.rarity]}</span>
+              ${c.image ? '' : `<div class="icon">${c.icon}</div>`}
+              <div class="name">${c.name}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `).join('') + `</div>`;
+  }
+
+  html += `<div class="countdown" style="margin-bottom:10px;">${tt(`目前獎池：<b style="color:var(--gold-bright);">✦ ${SLOT_JACKPOT}</b>`, `Current jackpot: <b style="color:var(--gold-bright);">✦ ${SLOT_JACKPOT}</b>`)}</div>
+    <button class="btn" id="slot-btn" ${p.coins < SLOT_SETTINGS.cost ? 'disabled' : ''}>${tt(`共鳴一次（✦ ${SLOT_SETTINGS.cost}）`, `Resonate once (✦ ${SLOT_SETTINGS.cost})`)}</button>
+  </div>`;
+
+  body.innerHTML = html;
+  const slotBtn = document.getElementById('slot-btn');
+  if(slotBtn) slotBtn.onclick = pullSlot;
+
+  if(showDrawResults){
     COLLECTION_MODAL_LIST = state.drawResults.map(c=>c.id);
     document.querySelectorAll('.flip-card').forEach(el=>{
       el.onclick = ()=>{
