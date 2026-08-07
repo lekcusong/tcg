@@ -399,6 +399,14 @@
   .farm-seed-btn:disabled{opacity:0.4;cursor:not-allowed;}
   .farm-seed-btn .fs-name{display:flex;align-items:center;gap:6px;}
   .farm-seed-btn .fs-cost{color:var(--gold);font-family:'Space Mono',monospace;white-space:nowrap;}
+  .chat-box{max-height:380px;overflow-y:auto;display:flex;flex-direction:column;gap:10px;padding-right:4px;margin-bottom:4px;}
+  .chat-msg{background:var(--bg-panel-raised);border:1px solid var(--line);border-radius:10px;padding:8px 12px;}
+  .chat-msg.mine{border-color:var(--gold);}
+  .chat-msg-head{display:flex;align-items:center;gap:8px;margin-bottom:3px;}
+  .chat-msg-name{font-family:'Cinzel',serif;font-size:12px;color:var(--gold-bright);}
+  .chat-msg-time{font-size:10px;color:var(--muted);font-family:'Space Mono',monospace;}
+  .chat-msg-del{margin-left:auto;background:none;border:none;color:var(--danger);cursor:pointer;font-size:12px;}
+  .chat-msg-text{font-size:13px;color:var(--cream);line-height:1.5;white-space:pre-wrap;word-break:break-word;}
 </style>
 </head>
 <body>
@@ -416,6 +424,12 @@
     <button class="card-modal-close" id="card-modal-close">✕</button>
     <div id="card-modal-nav-slot"></div>
     <div id="card-modal-content"></div>
+  </div>
+</div>
+
+<div id="announce-modal" class="card-modal-overlay" style="display:none;">
+  <div class="card-modal-box">
+    <div id="announce-modal-content"></div>
   </div>
 </div>
 
@@ -1370,6 +1384,7 @@ const T = {
   tabAuction: {zh:'拍賣行', en:'Auction House'},
   tabFarm: {zh:'🌱 占卜花園', en:'🌱 Tarot Garden'},
   tabLeaderboard: {zh:'🏆 排行榜', en:'🏆 Leaderboard'},
+  tabChat: {zh:'💬 聊天頻道', en:'💬 Chat'},
   tabGM: {zh:'⚡ GM 管理', en:'⚡ GM Panel'},
   homeHeader: {zh:'今日的塔羅指引', en:"Today's Tarot Guidance"},
   slotHeader: {zh:'✨ 三牌共鳴', en:'✨ Three-Card Resonance'},
@@ -1573,6 +1588,42 @@ function initCardModal(){
   overlay.onclick = (e)=>{ if(e.target === overlay) closeCardModal(); };
 }
 
+// ---------- Announcement / GM message shown on login ----------
+async function fetchAnnouncement(){
+  try{
+    const r = await storage.get('config:announcement');
+    if(!r) return null;
+    return JSON.parse(r.value);
+  }catch(e){ return null; }
+}
+async function saveAnnouncement(title, body){
+  const ann = {title, body, updatedAt: Date.now(), updatedBy: state.nickname};
+  await storage.set('config:announcement', JSON.stringify(ann));
+  return ann;
+}
+async function clearAnnouncement(){
+  try{ await storage.delete('config:announcement'); }catch(e){ /* ignore */ }
+}
+function showAnnounceModal(ann){
+  const content = document.getElementById('announce-modal-content');
+  const overlay = document.getElementById('announce-modal');
+  if(!content || !overlay) return;
+  content.innerHTML = `
+    <div style="font-size:32px;margin-bottom:8px;">📜</div>
+    <div class="card-modal-name" style="margin-bottom:10px;">${escapeHtml(ann.title || tt('公告','Announcement'))}</div>
+    <div style="font-size:14px;line-height:1.7;color:var(--cream);white-space:pre-wrap;text-align:left;margin-bottom:16px;">${escapeHtml(ann.body || '')}</div>
+    <div style="font-size:11px;color:var(--muted);font-family:'Space Mono',monospace;margin-bottom:14px;">${timeAgo(ann.updatedAt)}</div>
+    <button class="btn full" id="announce-modal-ok-btn">${tt('知道了','Got it')}</button>
+  `;
+  overlay.style.display = 'flex';
+  const okBtn = document.getElementById('announce-modal-ok-btn');
+  if(okBtn) okBtn.onclick = async ()=>{
+    overlay.style.display = 'none';
+    const p = state.player;
+    if(p){ p.lastSeenAnnouncementAt = ann.updatedAt; await savePlayer(p); }
+  };
+}
+
 async function boot(){
   try{
     rememberedNick = localStorage.getItem('my-nickname') || null;
@@ -1589,6 +1640,7 @@ async function boot(){
   loadSeedPrices().catch(()=>{});
   initWinBroadcastPoll();
   initNotifPoll();
+  initChatPoll();
 }
 
 async function doLogin(nick, password){
@@ -1628,6 +1680,11 @@ async function doLogin(nick, password){
       unread.forEach(n=>notifBadgeSeenIds.add(n.id));
       const badge = document.getElementById('notif-badge');
       if(badge){ badge.style.display = notifUnreadCount>0 ? 'inline-flex' : 'none'; badge.textContent = notifUnreadCount>9?'9+':String(notifUnreadCount); }
+    }).catch(()=>{});
+    fetchAnnouncement().then(ann=>{
+      if(ann && ann.body && ann.updatedAt && (!p.lastSeenAnnouncementAt || ann.updatedAt > p.lastSeenAnnouncementAt)){
+        showAnnounceModal(ann);
+      }
     }).catch(()=>{});
   }catch(err){
     showToast(tt('登入失敗，請檢查網路後再試一次 ⚠','Login failed, please check your connection and try again ⚠'));
@@ -1834,6 +1891,60 @@ function initNotifPoll(){
       if(badge){ badge.style.display = notifUnreadCount>0 ? 'inline-flex' : 'none'; badge.textContent = notifUnreadCount>9?'9+':String(notifUnreadCount); }
     }catch(e){ /* ignore */ }
   }, 12000);
+}
+
+// ---------- Chat channel ----------
+function chatKey(id){ return `chat:${id}`; }
+const CHAT_MAX_MESSAGES = 200;
+let lastChatFingerprint = null;
+async function fetchChatMessages(){
+  try{
+    const list = await storage.list('chat:');
+    if(!list || !list.keys) return [];
+    const items = await Promise.all(list.keys.map(async k=>{
+      try{ const r = await storage.get(k); return r ? JSON.parse(r.value) : null; }
+      catch(e){ return null; }
+    }));
+    return items.filter(Boolean).sort((a,b)=>a.createdAt-b.createdAt);
+  }catch(e){ return []; }
+}
+async function pruneChatMessages(all){
+  if(all.length <= CHAT_MAX_MESSAGES) return;
+  const excess = all.slice(0, all.length - CHAT_MAX_MESSAGES);
+  await Promise.all(excess.map(m=>storage.delete(chatKey(m.id)).catch(()=>{})));
+}
+async function sendChatMessage(text){
+  text = (text||'').trim();
+  if(!text) return;
+  if(text.length > 300){ showToast(tt('訊息請在300字以內','Message must be 300 characters or fewer')); return; }
+  const msg = {id: uid(), nickname: state.nickname, text, createdAt: Date.now(), isGM: isGM()};
+  try{
+    await storage.set(chatKey(msg.id), JSON.stringify(msg));
+  }catch(e){ showToast(tt('傳送失敗，請再試一次 ⚠','Failed to send - please try again ⚠')); return; }
+  if(state.tab === 'chat') renderTab();
+  fetchChatMessages().then(pruneChatMessages).catch(()=>{});
+}
+async function deleteChatMessage(id){
+  if(!isGM()) return;
+  try{ await storage.delete(chatKey(id)); }catch(e){ /* ignore */ }
+  if(state.tab === 'chat') renderTab();
+}
+function initChatPoll(){
+  setInterval(async ()=>{
+    if(!state.nickname || state.tab !== 'chat') return;
+    try{
+      const messages = await fetchChatMessages();
+      const fingerprint = messages.map(m=>m.id).join(',');
+      if(fingerprint === lastChatFingerprint) return;
+      lastChatFingerprint = fingerprint;
+      const inputEl = document.getElementById('chat-input');
+      const draft = inputEl ? inputEl.value : '';
+      const hadFocus = document.activeElement === inputEl;
+      await renderTab();
+      const newInput = document.getElementById('chat-input');
+      if(newInput && draft){ newInput.value = draft; if(hadFocus) newInput.focus(); }
+    }catch(e){ /* ignore */ }
+  }, 4000);
 }
 
 async function fetchFriendRequests(){
@@ -2278,6 +2389,7 @@ async function render(){
       <div class="tab ${state.tab==='auction'?'active':''}" data-tab="auction">${t('tabAuction')}</div>
       <div class="tab ${state.tab==='farm'?'active':''}" data-tab="farm">${t('tabFarm')}</div>
       <div class="tab ${state.tab==='leaderboard'?'active':''}" data-tab="leaderboard">${t('tabLeaderboard')}</div>
+      <div class="tab ${state.tab==='chat'?'active':''}" data-tab="chat">${t('tabChat')}</div>
       ${isGM() ? `<div class="tab ${state.tab==='gm'?'active':''}" data-tab="gm">${t('tabGM')}</div>` : ''}
     </div>
     <div id="tab-body">${prevTabHtml}</div>
@@ -2340,6 +2452,7 @@ function renderTab(){
   if(state.tab === 'auction') return renderAuction(body);
   if(state.tab === 'farm') return renderFarm(body);
   if(state.tab === 'leaderboard') return renderLeaderboard(body);
+  if(state.tab === 'chat') return renderChat(body);
   if(state.tab === 'gm' && isGM()) return renderGM(body);
 }
 
@@ -3080,6 +3193,54 @@ async function renderLeaderboard(body){
 }
 
 let gmLookupResult = null;
+async function renderChat(body){
+  const messages = await fetchChatMessages();
+  lastChatFingerprint = messages.map(m=>m.id).join(',');
+  const recent = messages.slice(-CHAT_MAX_MESSAGES);
+
+  let html = `<div class="panel">
+    <h2>${t('tabChat')}</h2>
+    <p class="sub">${tt('與所有玩家即時聊天，請保持友善 ✦','Chat with all players in real time - please be kind ✦')}</p>
+    <div class="chat-box" id="chat-scroll">
+      ${recent.length === 0 ? `<div class="empty-note">${tt('目前還沒有訊息，說點什麼吧！','No messages yet - say something!')}</div>` : recent.map(m=>`
+        <div class="chat-msg${m.nickname.toLowerCase()===state.nickname.toLowerCase()?' mine':''}">
+          <div class="chat-msg-head">
+            <span class="chat-msg-name" style="${m.isGM?'color:var(--gold);':''}">${escapeHtml(m.nickname)}${m.isGM?' ⚡':''}</span>
+            <span class="chat-msg-time">${timeAgo(m.createdAt)}</span>
+            ${isGM() ? `<button class="chat-msg-del" data-chat-del="${m.id}" title="${tt('刪除訊息','Delete message')}">✕</button>` : ''}
+          </div>
+          <div class="chat-msg-text">${escapeHtml(m.text)}</div>
+        </div>
+      `).join('')}
+    </div>
+    <div class="form-row" style="margin-top:10px;">
+      <input type="text" id="chat-input" placeholder="${tt('輸入訊息...','Type a message...')}" maxlength="300" style="flex:1;min-width:160px;" />
+      <button class="btn small" id="chat-send-btn">${tt('送出','Send')}</button>
+    </div>
+  </div>`;
+
+  body.innerHTML = html;
+
+  const scrollBox = document.getElementById('chat-scroll');
+  if(scrollBox) scrollBox.scrollTop = scrollBox.scrollHeight;
+
+  const input = document.getElementById('chat-input');
+  const sendBtn = document.getElementById('chat-send-btn');
+  const doSend = ()=>{
+    if(!input) return;
+    const v = input.value;
+    input.value = '';
+    sendChatMessage(v);
+  };
+  if(sendBtn) sendBtn.onclick = doSend;
+  if(input){
+    input.addEventListener('keydown', e=>{ if(e.key==='Enter') doSend(); });
+  }
+  document.querySelectorAll('[data-chat-del]').forEach(btn=>{
+    btn.onclick = ()=>deleteChatMessage(btn.dataset.chatDel);
+  });
+}
+
 async function renderGM(body){
   body.innerHTML = `<div class="loading-line">${tt('開啟 GM 控制台...','Opening GM console...')}</div>`;
 
@@ -3094,8 +3255,29 @@ async function renderGM(body){
     friendCountMap[b] = (friendCountMap[b]||0) + 1;
   });
   const gmAuctions = (await fetchAuctions()).sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
+  const currentAnnouncement = await fetchAnnouncement();
 
   let html = `<div class="panel">
+    <h2>${tt('📜 公告 / GM 留言','📜 Announcement / GM Message')}</h2>
+    <p class="sub">${tt('玩家登入時會彈出顯示（每則只提示一次），可用來公告更新或留言給所有人','Shown as a popup to players on login (once per update) - use it for update notes or a message to everyone')}</p>
+    ${currentAnnouncement ? `
+      <div class="listing">
+        <div class="left"><div class="icon-box">📜</div><div class="meta"><div>${escapeHtml(currentAnnouncement.title || tt('（無標題）','(untitled)'))}</div><div class="who">${timeAgo(currentAnnouncement.updatedAt)}</div></div></div>
+      </div>
+    ` : `<div class="empty-note">${tt('目前沒有發布中的公告','No announcement currently published')}</div>`}
+    <div class="form-row">
+      <div style="flex:1;min-width:160px;"><label>${tt('標題（選填）','Title (optional)')}</label><input type="text" id="gm-ann-title" placeholder="${tt('例如：v1.2 更新公告','e.g. v1.2 Update Notes')}" value="${currentAnnouncement ? escapeHtml(currentAnnouncement.title||'') : ''}" maxlength="60" /></div>
+    </div>
+    <div class="form-row">
+      <div style="flex:1;min-width:220px;"><label>${tt('內容','Message')}</label><textarea id="gm-ann-body" rows="4" maxlength="1000" style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--line);background:var(--bg-void);color:var(--cream);font-family:'EB Garamond',serif;font-size:14px;">${currentAnnouncement ? escapeHtml(currentAnnouncement.body||'') : ''}</textarea></div>
+    </div>
+    <div class="form-row">
+      <button class="btn small" id="gm-ann-save-btn">${tt('發布公告','Publish Announcement')}</button>
+      <button class="btn small secondary" id="gm-ann-clear-btn">${tt('清除公告','Clear Announcement')}</button>
+    </div>
+  </div>`;
+
+  html += `<div class="panel">
     <h2>${t('gmHeader')}</h2>
     <p class="sub">${tt('僅 GM 帳號可見，發放內容會直接寫入目標玩家的資料','Visible to GM accounts only - grants are written directly to the target player\'s data')}</p>
     <div class="form-row">
@@ -3271,6 +3453,22 @@ async function renderGM(body){
 
   wirePager(state.gmPlayersPage, gmPlayersTotalPages, 'gm-players-page', 'gmPlayersPage');
   wirePager(state.gmAuctionsPage, gmAuctionsTotalPages, 'gm-auctions-page', 'gmAuctionsPage');
+
+  const annSaveBtn = document.getElementById('gm-ann-save-btn');
+  if(annSaveBtn) annSaveBtn.onclick = async ()=>{
+    const title = document.getElementById('gm-ann-title').value.trim();
+    const bodyText = document.getElementById('gm-ann-body').value.trim();
+    if(!bodyText){ showToast(tt('請輸入公告內容','Please enter a message')); return; }
+    await saveAnnouncement(title, bodyText);
+    showToast(tt('公告已發布，玩家下次登入時會看到 📜','Announcement published - players will see it on next login 📜'));
+    renderTab();
+  };
+  const annClearBtn = document.getElementById('gm-ann-clear-btn');
+  if(annClearBtn) annClearBtn.onclick = async ()=>{
+    await clearAnnouncement();
+    showToast(tt('已清除公告','Announcement cleared'));
+    renderTab();
+  };
 
   const lookupBtn = document.getElementById('gm-lookup-btn');
   if(lookupBtn) lookupBtn.onclick = async ()=>{
