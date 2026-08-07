@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="format-detection" content="telephone=no">
-<title>秘境集卡 · 塔羅收藏所</title>
+<title>Mystic Tarot Collection</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=Cinzel+Decorative:wght@700&family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
 <style>
@@ -388,7 +388,7 @@
 </style>
 </head>
 <body>
-<div id="app"><div class="loading-line">開啟秘境入口中 🔮</div></div>
+<div id="app"><div class="loading-line" id="initial-loading-line">Opening the mystic gate 🔮</div></div>
 
 <audio id="bgm-audio" loop preload="none">
   <source src="bgm.mp3" type="audio/mpeg">
@@ -557,50 +557,50 @@ const MAJOR = [
 ];
 
 const SUIT_THEMES = {
-  wands: '行動與熱情',
-  cups: '情感與關係',
-  swords: '思考與抉擇',
-  pentacles: '現實與努力',
+  wands: {zh:'行動與熱情', en:'action and passion'},
+  cups: {zh:'情感與關係', en:'emotions and relationships'},
+  swords: {zh:'思考與抉擇', en:'thought and decisions'},
+  pentacles: {zh:'現實與努力', en:'reality and effort'},
 };
 const RANK_MEANINGS = {
-  'Ace': '全新的開始正在展開，把握第一步的勇氣。',
-  '2': '選擇與平衡的時刻，仔細權衡兩個方向。',
-  '3': '初步的成果顯現，值得慶祝這一小步。',
-  '4': '穩固與休整，先把根基站穩再前進。',
-  '5': '眼前有些波折，但這是成長的必經之路。',
-  '6': '情勢逐漸好轉，耐心會帶來回報。',
-  '7': '需要多一份堅持，不要在關鍵時刻放棄。',
-  '8': '行動力正旺，是時候加快腳步了。',
-  '9': '接近目標，但別忽略還剩下的最後一哩路。',
-  '10': '一個階段圓滿落幕，也是迎接下一章的時候。',
-  'Page': '帶著初學者的好奇心，去探索新的可能。',
-  'Knight': '全力以赴的時刻，勇敢地朝目標衝刺。',
-  'Queen': '用溫柔而堅定的態度，照顧好自己與身邊的人。',
-  'King': '掌握主導權，為自己的決定負責。',
+  'Ace': {zh:'全新的開始正在展開，把握第一步的勇氣。', en:'A brand-new beginning is unfolding - find the courage to take the first step.'},
+  '2': {zh:'選擇與平衡的時刻，仔細權衡兩個方向。', en:'A moment of choice and balance - weigh both directions carefully.'},
+  '3': {zh:'初步的成果顯現，值得慶祝這一小步。', en:'Early results are showing - this small step is worth celebrating.'},
+  '4': {zh:'穩固與休整，先把根基站穩再前進。', en:'Stability and rest - steady your foundation before moving forward.'},
+  '5': {zh:'眼前有些波折，但這是成長的必經之路。', en:'There are some bumps ahead, but they are a necessary part of growth.'},
+  '6': {zh:'情勢逐漸好轉，耐心會帶來回報。', en:'Things are gradually improving - patience will pay off.'},
+  '7': {zh:'需要多一份堅持，不要在關鍵時刻放棄。', en:"A bit more persistence is needed - don't give up at the critical moment."},
+  '8': {zh:'行動力正旺，是時候加快腳步了。', en:"Your momentum is strong - it's time to pick up the pace."},
+  '9': {zh:'接近目標，但別忽略還剩下的最後一哩路。', en:"You're close to the goal, but don't overlook the last stretch."},
+  '10': {zh:'一個階段圓滿落幕，也是迎接下一章的時候。', en:'A chapter is coming to a fulfilling close - time to welcome the next one.'},
+  'Page': {zh:'帶著初學者的好奇心，去探索新的可能。', en:"Explore new possibilities with a beginner's curiosity."},
+  'Knight': {zh:'全力以赴的時刻，勇敢地朝目標衝刺。', en:'A moment to give it your all - charge boldly toward your goal.'},
+  'Queen': {zh:'用溫柔而堅定的態度，照顧好自己與身邊的人。', en:'With gentle firmness, take care of yourself and those around you.'},
+  'King': {zh:'掌握主導權，為自己的決定負責。', en:'Take charge, and stand by your own decisions.'},
 };
 const MAJOR_MEANINGS = [
-  '帶著初心出發，未知的旅程正等著你。',
-  '你已經具備實現目標的所有工具，現在就去行動。',
-  '靜下心傾聽直覺，答案其實你早已知道。',
-  '滋養與創造力正旺盛，好好照顧正在成長的事物。',
-  '建立秩序與穩定，用清晰的規劃掌握局面。',
-  '傳統與經驗值得參考，不妨請教有智慧的人。',
-  '面臨一個重要的選擇，跟隨真心而非壓力。',
-  '意志力驅動前進，專注一個方向就能突破。',
-  '溫柔勝過蠻力，用耐心馴服眼前的難題。',
-  '適合獨處沉澱，答案在安靜之中浮現。',
-  '命運的轉輪正在轉動，變化即將到來。',
-  '因果分明的時刻，誠實面對會得到公平的結果。',
-  '換個角度看事情，暫時的停滯是為了看清全局。',
-  '一個階段結束了，才能讓新的開始有空間。',
-  '耐心調和各種力量，平衡會帶來意想不到的和諧。',
-  '留意讓自己感到束縛的習慣，你比想像中更自由。',
-  '劇變來得突然，但舊有的框架本就該被打破。',
-  '希望正在閃耀，堅定地相信美好會到來。',
-  '事情還不明朗，先別急著下判斷。',
-  '喜悅與活力洋溢，盡情享受這份明亮的能量。',
-  '一次重新檢視自己的機會，勇敢回應內心的呼喚。',
-  '圓滿的完成，也是踏入更大舞台的開始。',
+  {zh:'帶著初心出發，未知的旅程正等著你。', en:'Set out with an open heart - an unknown journey awaits.'},
+  {zh:'你已經具備實現目標的所有工具，現在就去行動。', en:'You already have every tool you need - go act on it now.'},
+  {zh:'靜下心傾聽直覺，答案其實你早已知道。', en:'Quiet your mind and listen to your intuition - you already know the answer.'},
+  {zh:'滋養與創造力正旺盛，好好照顧正在成長的事物。', en:'Nurturing and creativity are flourishing - tend well to what is growing.'},
+  {zh:'建立秩序與穩定，用清晰的規劃掌握局面。', en:'Build order and stability - take control with a clear plan.'},
+  {zh:'傳統與經驗值得參考，不妨請教有智慧的人。', en:'Tradition and experience are worth heeding - consider seeking wise counsel.'},
+  {zh:'面臨一個重要的選擇，跟隨真心而非壓力。', en:'An important choice lies ahead - follow your heart, not the pressure.'},
+  {zh:'意志力驅動前進，專注一個方向就能突破。', en:'Willpower drives you forward - focus on one direction and break through.'},
+  {zh:'溫柔勝過蠻力，用耐心馴服眼前的難題。', en:'Gentleness beats brute force - tame the challenge ahead with patience.'},
+  {zh:'適合獨處沉澱，答案在安靜之中浮現。', en:'A good time for solitude and reflection - the answer emerges in quiet.'},
+  {zh:'命運的轉輪正在轉動，變化即將到來。', en:"The wheel of fate is turning - change is on its way."},
+  {zh:'因果分明的時刻，誠實面對會得到公平的結果。', en:'A moment of clear cause and effect - honesty brings a fair outcome.'},
+  {zh:'換個角度看事情，暫時的停滯是為了看清全局。', en:'Look at things from another angle - this pause is for seeing the bigger picture.'},
+  {zh:'一個階段結束了，才能讓新的開始有空間。', en:'One chapter ending makes room for a new beginning.'},
+  {zh:'耐心調和各種力量，平衡會帶來意想不到的和諧。', en:'Patiently blend different forces - balance brings unexpected harmony.'},
+  {zh:'留意讓自己感到束縛的習慣，你比想像中更自由。', en:'Notice the habits that bind you - you are freer than you think.'},
+  {zh:'劇變來得突然，但舊有的框架本就該被打破。', en:'Sudden upheaval strikes, but the old framework needed to be broken anyway.'},
+  {zh:'希望正在閃耀，堅定地相信美好會到來。', en:'Hope is shining - trust firmly that good things are coming.'},
+  {zh:'事情還不明朗，先別急著下判斷。', en:"Things aren't clear yet - don't rush to judgment."},
+  {zh:'喜悅與活力洋溢，盡情享受這份明亮的能量。', en:'Joy and vitality overflow - fully enjoy this bright energy.'},
+  {zh:'一次重新檢視自己的機會，勇敢回應內心的呼喚。', en:'A chance to re-examine yourself - answer your inner calling with courage.'},
+  {zh:'圓滿的完成，也是踏入更大舞台的開始。', en:'A fulfilling completion, and also the start of stepping onto a bigger stage.'},
 ];
 
 function buildDeck(){
@@ -615,14 +615,18 @@ function buildDeck(){
         rarity,
         arcana:'minor',
         image: MINOR_IMAGES[`${suit.key}_${i}`] || null,
-        meaning: `${SUIT_THEMES[suit.key]}方面，${RANK_MEANINGS[rank]}`
+        meaningZh: `${SUIT_THEMES[suit.key].zh}方面，${RANK_MEANINGS[rank].zh}`,
+        meaningEn: `On the theme of ${SUIT_THEMES[suit.key].en}: ${RANK_MEANINGS[rank].en}`
       });
     });
   });
   MAJOR.forEach((m, i)=>{
-    deck.push({id:`major_${i}`, name:m.name, icon:m.icon, rarity:m.rarity, arcana:'major', image:m.image, meaning: MAJOR_MEANINGS[i]});
+    deck.push({id:`major_${i}`, name:m.name, icon:m.icon, rarity:m.rarity, arcana:'major', image:m.image, meaningZh: MAJOR_MEANINGS[i].zh, meaningEn: MAJOR_MEANINGS[i].en});
   });
   return deck;
+}
+function cardMeaning(c){
+  return appLang === 'zh' ? c.meaningZh : c.meaningEn;
 }
 const DECK = buildDeck();
 const DECK_BY_ID = Object.fromEntries(DECK.map(c=>[c.id,c]));
@@ -697,34 +701,38 @@ const MAJOR_SEED_UNLOCK_TOTAL = 30; // 收藏總張數達到此門檻才能種�
 let farmTickInterval = null;
 const SEED_TYPES = {
   wands: {
-    key:'wands', name:'火苗種子', suitLabel:'Wands · 火', icon:'🔥',
+    key:'wands', nameZh:'火苗種子', nameEn:'Flame Spark Seed', suitLabel:'Wands · 火',icon:'🔥',
     cost:12, growMs: 20*60*1000,
     coinMin:16, coinMax:22, wither:false,
   },
   cups: {
-    key:'cups', name:'水波種子', suitLabel:'Cups · 水', icon:'💧',
+    key:'cups', nameZh:'水波種子', nameEn:'Water Ripple Seed', suitLabel:'Cups · 水', icon:'💧',
     cost:28, growMs: 3*60*60*1000,
     coinMin:42, coinMax:58, wither:false,
   },
   swords: {
-    key:'swords', name:'風刃種子', suitLabel:'Swords · 風', icon:'⚔',
+    key:'swords', nameZh:'風刃種子', nameEn:'Wind Blade Seed', suitLabel:'Swords · 風', icon:'⚔',
     cost:20, growMs: 60*60*1000, witherMs: 2*60*60*1000,
     coinMin:38, coinMax:54, wither:true,
   },
   pentacles: {
-    key:'pentacles', name:'大地種子', suitLabel:'Pentacles · 土', icon:'✦',
+    key:'pentacles', nameZh:'大地種子', nameEn:'Earth Seed', suitLabel:'Pentacles · 土', icon:'✦',
     cost:55, growMs: 8*60*60*1000,
     coinMin:88, coinMax:118, wither:false,
     bonusCardChance:0.12, bonusCardRarities:['common','uncommon'],
   },
   major: {
-    key:'major', name:'秘儀種子', suitLabel:'Major Arcana', icon:'🌟',
+    key:'major', nameZh:'秘儀種子', nameEn:'Arcana Seed', suitLabel:'Major Arcana', icon:'🌟',
     cost:150, growMs: 24*60*60*1000,
     coinMin:150, coinMax:200, wither:false,
     bonusCardChance:0.35, bonusCardRarities:['rare','legendary'],
     unlockTotal: MAJOR_SEED_UNLOCK_TOTAL,
   },
 };
+function seedName(seed){
+  if(!seed) return tt('作物','crop');
+  return appLang === 'zh' ? seed.nameZh : seed.nameEn;
+}
 function ensureFarm(p){
   if(!Array.isArray(p.farm) || p.farm.length !== FARM_PLOT_COUNT){
     const old = Array.isArray(p.farm) ? p.farm : [];
@@ -751,13 +759,13 @@ function plotStatus(plot, now){
 }
 function timeAgo(ts){
   const diff = Date.now() - ts;
-  if(diff < 0) return '剛剛';
+  if(diff < 0) return tt('剛剛','just now');
   const min = Math.floor(diff/60000);
-  if(min < 1) return '剛剛';
-  if(min < 60) return `${min} 分鐘前`;
+  if(min < 1) return tt('剛剛','just now');
+  if(min < 60) return tt(`${min} 分鐘前`, `${min} min ago`);
   const hr = Math.floor(min/60);
-  if(hr < 24) return `${hr} 小時前`;
-  return `${Math.floor(hr/24)} 天前`;
+  if(hr < 24) return tt(`${hr} 小時前`, `${hr}h ago`);
+  return tt(`${Math.floor(hr/24)} 天前`, `${Math.floor(hr/24)}d ago`);
 }
 function formatDuration(ms){
   if(ms < 0) ms = 0;
@@ -765,9 +773,9 @@ function formatDuration(ms){
   const h = Math.floor(totalSec/3600);
   const m = Math.floor((totalSec%3600)/60);
   const s = totalSec%60;
-  if(h > 0) return `${h}時${String(m).padStart(2,'0')}分`;
-  if(m > 0) return `${m}分${String(s).padStart(2,'0')}秒`;
-  return `${s}秒`;
+  if(h > 0) return tt(`${h}時${String(m).padStart(2,'0')}分`, `${h}h ${String(m).padStart(2,'0')}m`);
+  if(m > 0) return tt(`${m}分${String(s).padStart(2,'0')}秒`, `${m}m ${String(s).padStart(2,'0')}s`);
+  return tt(`${s}秒`, `${s}s`);
 }
 
 async function plantSeed(plotIndex, seedKey){
@@ -777,12 +785,12 @@ async function plantSeed(plotIndex, seedKey){
   if(!seed) return;
   const farm = ensureFarm(p);
   const plot = farm[plotIndex];
-  if(!plot || plot.seed){ showToast('這塊地已經種了東西'); return; }
+  if(!plot || plot.seed){ showToast(tt('這塊地已經種了東西','This plot already has something planted')); return; }
   if(seed.unlockTotal){
     const total = playerTotalCards(p);
-    if(total < seed.unlockTotal){ showToast(`收藏滿 ${seed.unlockTotal} 張卡才能種植${seed.name}`); return; }
+    if(total < seed.unlockTotal){ showToast(tt(`收藏滿 ${seed.unlockTotal} 張卡才能種植${seedName(seed)}`, `Collect ${seed.unlockTotal} cards to unlock planting ${seedName(seed)}`)); return; }
   }
-  if((p.coins||0) < seed.cost){ showToast('金幣不足'); return; }
+  if((p.coins||0) < seed.cost){ showToast(tt('金幣不足','Not enough coins')); return; }
   p.coins -= seed.cost;
   const now = Date.now();
   plot.seed = seedKey;
@@ -792,7 +800,7 @@ async function plantSeed(plotIndex, seedKey){
   plot.waterLog = {};
   plot.stolenBy = [];
   await savePlayer(p);
-  showToast(`已種下${seed.name}`);
+  showToast(tt(`已種下${seedName(seed)}`, `Planted ${seedName(seed)}`));
   render();
 }
 
@@ -809,7 +817,7 @@ async function harvestPlot(plotIndex, opts){
   const seed = SEED_TYPES[plot.seed];
   let result = null;
   if(status === 'withered'){
-    result = {withered:true, seedName: seed ? seed.name : '作物'};
+    result = {withered:true, seedName: seedName(seed)};
   } else {
     const coinGain = Math.floor(Math.random()*(seed.coinMax-seed.coinMin+1)) + seed.coinMin;
     p.coins = (p.coins||0) + coinGain;
@@ -822,7 +830,7 @@ async function harvestPlot(plotIndex, opts){
         bonusCard = card;
       }
     }
-    result = {withered:false, seedName: seed.name, coinGain, bonusCard};
+    result = {withered:false, seedName: seedName(seed), coinGain, bonusCard};
   }
   plot.seed = null; plot.plantedAt = null; plot.readyAt = null; plot.witherAt = null;
   plot.waterLog = {}; plot.stolenBy = [];
@@ -834,10 +842,10 @@ async function harvestOne(plotIndex){
   const result = await harvestPlot(plotIndex);
   if(!result) return;
   if(result.withered){
-    showToast(`${result.seedName}已經枯萎了，白忙一場 🥀`);
+    showToast(tt(`${result.seedName}已經枯萎了，白忙一場 🥀`, `${result.seedName} withered away - all for nothing 🥀`));
   } else {
-    let msg = `收成${result.seedName}，獲得 ✦${result.coinGain}`;
-    if(result.bonusCard) msg += ` + 額外一張「${result.bonusCard.name}」！`;
+    let msg = tt(`收成${result.seedName}，獲得 ✦${result.coinGain}`, `Harvested ${result.seedName} for ✦${result.coinGain}`);
+    if(result.bonusCard) msg += tt(` + 額外一張「${result.bonusCard.name}」！`, ` + a bonus "${result.bonusCard.name}"!`);
     showToast(msg);
   }
   render();
@@ -861,12 +869,12 @@ async function harvestAllReady(){
       if(result.bonusCard) bonusCards.push(result.bonusCard.name);
     }
   }
-  if(harvestedCount===0 && witheredCount===0){ showToast('目前沒有可收成的作物'); return; }
+  if(harvestedCount===0 && witheredCount===0){ showToast(tt('目前沒有可收成的作物','Nothing ready to harvest right now')); return; }
   await savePlayer(p);
   let msg = '';
-  if(harvestedCount>0) msg += `收成 ${harvestedCount} 塊地，獲得 ✦${coinTotal}`;
-  if(bonusCards.length) msg += `（額外獲得：${bonusCards.join('、')}）`;
-  if(witheredCount>0) msg += `${msg?'；':''}${witheredCount} 塊地作物枯萎了`;
+  if(harvestedCount>0) msg += tt(`收成 ${harvestedCount} 塊地，獲得 ✦${coinTotal}`, `Harvested ${harvestedCount} plot(s) for ✦${coinTotal}`);
+  if(bonusCards.length) msg += tt(`（額外獲得：${bonusCards.join('、')}）`, ` (bonus: ${bonusCards.join(', ')})`);
+  if(witheredCount>0) msg += `${msg?tt('；', '; '):''}${tt(`${witheredCount} 塊地作物枯萎了`, `${witheredCount} plot(s) withered`)}`;
   showToast(msg);
   render();
 }
@@ -874,13 +882,13 @@ async function harvestAllReady(){
 async function waterFriendPlot(friendNick, plotIndex){
   if(!state.nickname){ return; }
   const owner = await loadPlayer(friendNick);
-  if(!owner){ showToast('找不到這位好友的資料'); return; }
+  if(!owner){ showToast(tt('找不到這位好友的資料',"Couldn't find this friend's data")); return; }
   const farm = ensureFarm(owner);
   const plot = farm[plotIndex];
   const now = Date.now();
   const status = plotStatus(plot, now);
-  if(status !== 'growing'){ showToast('這塊地目前不需要澆水'); return; }
-  if(plot.waterLog[state.nickname]){ showToast('你已經幫這塊地澆過水了'); return; }
+  if(status !== 'growing'){ showToast(tt('這塊地目前不需要澆水',"This plot doesn't need watering right now")); return; }
+  if(plot.waterLog[state.nickname]){ showToast(tt('你已經幫這塊地澆過水了',"You've already watered this plot")); return; }
   const remain = plot.readyAt - now;
   const speedup = Math.floor(remain * WATER_SPEEDUP_RATIO);
   plot.readyAt = plot.readyAt - speedup;
@@ -891,23 +899,23 @@ async function waterFriendPlot(friendNick, plotIndex){
   state.player.coins = (state.player.coins||0) + WATER_HELPER_REWARD;
   await savePlayer(state.player);
 
-  const wateredSeedName = SEED_TYPES[plot.seed] ? SEED_TYPES[plot.seed].name : '作物';
+  const wateredSeedName = seedName(SEED_TYPES[plot.seed]);
   await createNotification(friendNick, state.nickname, 'water', {plotIndex, seedName: wateredSeedName, speedup});
 
-  showToast(`已幫 ${friendNick} 澆水，縮短了 ${formatDuration(speedup)}，你獲得 ✦${WATER_HELPER_REWARD} 作為謝禮`);
+  showToast(tt(`已幫 ${friendNick} 澆水，縮短了 ${formatDuration(speedup)}，你獲得 ✦${WATER_HELPER_REWARD} 作為謝禮`, `Watered ${friendNick}'s plot, cutting ${formatDuration(speedup)} off the timer. You received ✦${WATER_HELPER_REWARD} as thanks`));
   render();
 }
 
 async function stealFriendPlot(friendNick, plotIndex){
   if(!state.nickname){ return; }
   const owner = await loadPlayer(friendNick);
-  if(!owner){ showToast('找不到這位好友的資料'); return; }
+  if(!owner){ showToast(tt('找不到這位好友的資料',"Couldn't find this friend's data")); return; }
   const farm = ensureFarm(owner);
   const plot = farm[plotIndex];
   const now = Date.now();
   const status = plotStatus(plot, now);
-  if(status !== 'ready'){ showToast('這塊地目前沒有成熟的作物可以偷'); return; }
-  if(plot.stolenBy.includes(state.nickname)){ showToast('你已經偷過這塊地了'); return; }
+  if(status !== 'ready'){ showToast(tt('這塊地目前沒有成熟的作物可以偷','Nothing ripe to take from this plot right now')); return; }
+  if(plot.stolenBy.includes(state.nickname)){ showToast(tt('你已經偷過這塊地了',"You've already taken from this plot")); return; }
   const gain = stealYieldFor(plot.seed);
   plot.stolenBy.push(state.nickname);
   await savePlayer(owner);
@@ -915,10 +923,10 @@ async function stealFriendPlot(friendNick, plotIndex){
   state.player.coins = (state.player.coins||0) + gain;
   await savePlayer(state.player);
 
-  const seedName = SEED_TYPES[plot.seed] ? SEED_TYPES[plot.seed].name : '作物';
-  await createNotification(friendNick, state.nickname, 'steal', {plotIndex, seedName, amount: gain});
+  const stolenSeedName = seedName(SEED_TYPES[plot.seed]);
+  await createNotification(friendNick, state.nickname, 'steal', {plotIndex, seedName: stolenSeedName, amount: gain});
 
-  showToast(`偷偷順走一點 ${friendNick} 的${seedName}，獲得 ✦${gain}（不影響對方收成）`);
+  showToast(tt(`偷偷順走一點 ${friendNick} 的${stolenSeedName}，獲得 ✦${gain}（不影響對方收成）`, `Sneaked a bit of ${friendNick}'s ${stolenSeedName}, gaining ✦${gain} (doesn't affect their harvest)`));
   render();
 }
 
@@ -1067,6 +1075,9 @@ function t(key){
   if(!entry) return key;
   return entry[appLang] || entry.zh;
 }
+function tt(zh, en){
+  return appLang === 'zh' ? zh : en;
+}
 function toggleLang(){
   appLang = appLang === 'zh' ? 'en' : 'zh';
   try{ localStorage.setItem('app-lang', appLang); }catch(e){}
@@ -1085,7 +1096,7 @@ function initBgm(){
       btn.textContent = '🔇';
       playing = false;
     } else {
-      audio.play().catch(()=>{ showToast('無法播放音樂，請再點一次'); });
+      audio.play().catch(()=>{ showToast(tt('無法播放音樂，請再點一次','Could not play music, please click again')); });
       btn.textContent = '🔊';
       playing = true;
     }
@@ -1095,11 +1106,13 @@ function initBgm(){
 function updateLangToggleBtn(){
   const btn = document.getElementById('lang-toggle');
   if(btn) btn.textContent = appLang === 'zh' ? 'EN' : '中文';
+  const bgmBtn = document.getElementById('bgm-toggle');
+  if(bgmBtn) bgmBtn.title = tt('播放背景音樂','Play background music');
 }
 function initLangToggle(){
   const btn = document.getElementById('lang-toggle');
-  if(!btn) return;
   updateLangToggleBtn();
+  if(!btn) return;
   btn.onclick = ()=>{
     toggleLang();
     updateLangToggleBtn();
@@ -1119,20 +1132,20 @@ function openCardModal(cardId){
 
   let bodyHtml = `
     ${c.image ? `<img src="${c.image}" alt="${escapeHtml(c.name)}" class="card-modal-img${owned>0?'':' locked-img'}${isLegendaryReveal?' legendary-img':''}" />` : `<div class="card-modal-icon${owned>0?'':' locked-img'}">${c.icon}</div>`}
-    ${isLegendaryReveal ? `<div class="legendary-modal-badge">✨ 史詩卡 ✨</div>` : ''}
-    <div class="card-modal-name">${owned>0 ? escapeHtml(c.name) : '？？？'}</div>
+    ${isLegendaryReveal ? `<div class="legendary-modal-badge">✨ ${tt('史詩卡','Epic Card')} ✨</div>` : ''}
+    <div class="card-modal-name">${owned>0 ? escapeHtml(c.name) : '???'}</div>
     <div class="card-modal-rarity">${RARITY_LABEL[c.rarity]}</div>
   `;
 
   if(owned > 0){
     bodyHtml += `
       <div class="card-modal-sell-box">
-        <div style="font-size:12px;color:var(--muted);font-family:'Space Mono',monospace;">持有 x${owned} · 每張 ✦${price}</div>
+        <div style="font-size:12px;color:var(--muted);font-family:'Space Mono',monospace;">${tt(`持有 x${owned} · 每張 ✦${price}`, `Owned x${owned} · ✦${price} each`)}</div>
         <div class="card-modal-qty-row">
           <input type="number" id="sell-qty-input" value="1" min="1" max="${owned}" />
-          <button class="btn small" id="sell-qty-btn">出售所選（+✦<span id="sell-qty-total">${price}</span>）</button>
+          <button class="btn small" id="sell-qty-btn">${tt('出售所選','Sell selected')}（+✦<span id="sell-qty-total">${price}</span>）</button>
         </div>
-        ${owned > 1 ? `<div style="margin-top:8px;"><button class="btn small secondary" id="sell-extra-btn">賣出多餘 ${owned-1} 張，保留 1 張（+✦${(owned-1)*price}）</button></div>` : ''}
+        ${owned > 1 ? `<div style="margin-top:8px;"><button class="btn small secondary" id="sell-extra-btn">${tt(`賣出多餘 ${owned-1} 張，保留 1 張`, `Sell ${owned-1} extra, keep 1`)}（+✦${(owned-1)*price}）</button></div>` : ''}
       </div>
     `;
   } else {
@@ -1142,7 +1155,7 @@ function openCardModal(cardId){
     const cardChance = pool.length ? (rarityChance / pool.length) * 100 : 0;
     bodyHtml += `
       <div class="card-modal-locked-note">
-        尚未擁有此卡 · 每次抽卡約有 <span class="odds">${cardChance.toFixed(2)}%</span> 機率抽到
+        ${tt('尚未擁有此卡 · 每次抽卡約有','Not yet owned · roughly a')} <span class="odds">${cardChance.toFixed(2)}%</span> ${tt('機率抽到','chance per draw')}
       </div>
     `;
   }
@@ -1200,18 +1213,18 @@ async function sellCard(cardId, qty){
   if(!c) return;
   qty = Math.max(1, parseInt(qty, 10) || 1);
   const owned = state.player.cards[cardId] || 0;
-  if(owned <= 0){ showToast('你沒有這張卡可以出售'); return; }
+  if(owned <= 0){ showToast(tt('你沒有這張卡可以出售',"You don't have this card to sell")); return; }
   qty = Math.min(qty, owned);
   const price = SELL_PRICES[c.rarity] || 0;
   const total = qty * price;
-  const warnPrefix = (c.rarity === 'rare' || c.rarity === 'legendary') ? '⚠️ 這是稀有卡牌！\n' : '';
-  const ok = window.confirm(`${warnPrefix}確定要出售「${c.name}」x${qty} 嗎？\n將獲得 ✦${total} 枚金幣，此動作無法復原。`);
+  const warnPrefix = (c.rarity === 'rare' || c.rarity === 'legendary') ? tt('⚠️ 這是稀有卡牌！\n','⚠️ This is a rare card!\n') : '';
+  const ok = window.confirm(tt(`${warnPrefix}確定要出售「${c.name}」x${qty} 嗎？\n將獲得 ✦${total} 枚金幣，此動作無法復原。`, `${warnPrefix}Sell "${c.name}" x${qty}?\nYou'll receive ✦${total} coins. This cannot be undone.`));
   if(!ok) return;
   state.player.cards[cardId] = owned - qty;
   state.player.coins = (state.player.coins||0) + total;
   await savePlayer(state.player);
   closeCardModal();
-  showToast(`已出售 ${c.name} x${qty}，獲得 ✦${total} 枚金幣`);
+  showToast(tt(`已出售 ${c.name} x${qty}，獲得 ✦${total} 枚金幣`, `Sold ${c.name} x${qty} for ✦${total} coins`));
   render();
 }
 function closeCardModal(){
@@ -1244,12 +1257,12 @@ async function boot(){
 
 async function doLogin(nick, password){
   nick = nick.trim();
-  if(!nick){ showToast('請輸入暱稱 ✦'); return; }
-  if(nick.length > 20){ showToast('暱稱請在20字以內'); return; }
-  if(!password || password.length < 4){ showToast('密碼至少需要4個字元'); return; }
+  if(!nick){ showToast(tt('請輸入暱稱 ✦','Please enter a nickname ✦')); return; }
+  if(nick.length > 20){ showToast(tt('暱稱請在20字以內','Nickname must be 20 characters or fewer')); return; }
+  if(!password || password.length < 4){ showToast(tt('密碼至少需要4個字元','Password must be at least 4 characters')); return; }
 
   const btn = document.getElementById('login-btn');
-  if(btn){ btn.disabled = true; btn.textContent = '登入中...'; }
+  if(btn){ btn.disabled = true; btn.textContent = t('loggingIn'); }
 
   try{
     const hash = await hashPassword(password);
@@ -1258,14 +1271,14 @@ async function doLogin(nick, password){
     if(!p){
       p = newPlayer(nick, hash);
       await savePlayer(p);
-      showToast(`歡迎加入，${nick}！已為你建立帳號 ✦`);
+      showToast(tt(`歡迎加入，${nick}！已為你建立帳號 ✦`, `Welcome, ${nick}! Your account has been created ✦`));
     } else if(!p.passwordHash){
       p.passwordHash = hash;
       await savePlayer(p);
-      showToast('已為此帳號設定密碼');
+      showToast(tt('已為此帳號設定密碼','Password set for this account'));
     } else if(p.passwordHash !== hash){
-      showToast('密碼錯誤，請重新輸入 🔒');
-      if(btn){ btn.disabled = false; btn.textContent = '登入 / 建立帳號'; }
+      showToast(tt('密碼錯誤，請重新輸入 🔒','Incorrect password, please try again 🔒'));
+      if(btn){ btn.disabled = false; btn.textContent = t('loginBtn'); }
       return;
     }
 
@@ -1281,8 +1294,8 @@ async function doLogin(nick, password){
       if(badge){ badge.style.display = notifUnreadCount>0 ? 'inline-flex' : 'none'; badge.textContent = notifUnreadCount>9?'9+':String(notifUnreadCount); }
     }).catch(()=>{});
   }catch(err){
-    showToast('登入失敗，請檢查網路後再試一次 ⚠');
-    if(btn){ btn.disabled = false; btn.textContent = '登入 / 建立帳號'; }
+    showToast(tt('登入失敗，請檢查網路後再試一次 ⚠','Login failed, please check your connection and try again ⚠'));
+    if(btn){ btn.disabled = false; btn.textContent = t('loginBtn'); }
     console.error('Login error:', err);
   }
 }
@@ -1323,7 +1336,7 @@ async function claimDaily(){
   render();
   setTimeout(()=>{ flipCard(0); }, 300);
   if(bonus > 0){
-    setTimeout(()=>showToast(`連續簽到 ${newStreak} 天！額外獲得 ${bonus} 枚金幣 🔥`), 1700);
+    setTimeout(()=>showToast(tt(`連續簽到 ${newStreak} 天！額外獲得 ${bonus} 枚金幣 🔥`, `${newStreak}-day streak! Bonus ${bonus} coins 🔥`)), 1700);
   }
 }
 function flipCard(i){
@@ -1336,7 +1349,7 @@ function flipCard(i){
     setTimeout(()=>{
       if(el) el.classList.add('legendary-reveal');
       playLegendaryRevealFx();
-      showToast(`✨ 史詩降臨：${drawn.name} ✨`, {legendary:true});
+      showToast(tt(`✨ 史詩降臨：${drawn.name} ✨`, `✨ Epic arrival: ${drawn.name} ✨`), {legendary:true});
     }, 380); // 等翻牌動畫轉到一半再爆發特效
   }
 
@@ -1355,7 +1368,7 @@ let lastSeenBroadcastTs = Date.now();
 let notifUnreadCount = 0;
 let notifBadgeSeenIds = new Set();
 async function pullSlot(){
-  if(state.player.coins < SLOT_SETTINGS.cost){ showToast('金幣不足，無法共鳴'); return; }
+  if(state.player.coins < SLOT_SETTINGS.cost){ showToast(tt('金幣不足，無法共鳴','Not enough coins to resonate')); return; }
   const drawn = [weightedDraw(), weightedDraw(), weightedDraw()];
   state.drawResults = drawn;
   state.drawSource = 'slot';
@@ -1376,23 +1389,23 @@ async function pullSlot(){
     winAmount = SLOT_JACKPOT;
     state.player.coins += winAmount;
     winTier = 'jackpot';
-    winMsg = `✨💫 命運共鳴！贏得整個獎池 ✦${winAmount}！`;
+    winMsg = tt(`✨💫 命運共鳴！贏得整個獎池 ✦${winAmount}！`, `✨💫 Fated Resonance! Won the entire jackpot pool ✦${winAmount}!`);
     await saveSlotJackpot(SLOT_SETTINGS.jackpotBase);
   } else if(allSame && rarities[0] === 'rare'){
     winAmount = SLOT_SETTINGS.cost * SLOT_SETTINGS.multRare;
     state.player.coins += winAmount;
     winTier = 'rare';
-    winMsg = `✨ 三張稀有共鳴！獲得 ✦${winAmount} 金幣`;
+    winMsg = tt(`✨ 三張稀有共鳴！獲得 ✦${winAmount} 金幣`, `✨ Three Rare Resonance! Won ✦${winAmount} coins`);
   } else if(allSame && rarities[0] === 'uncommon'){
     winAmount = SLOT_SETTINGS.cost * SLOT_SETTINGS.multUncommon;
     state.player.coins += winAmount;
     winTier = 'uncommon';
-    winMsg = `✨ 三張罕見共鳴！獲得 ✦${winAmount} 金幣`;
+    winMsg = tt(`✨ 三張罕見共鳴！獲得 ✦${winAmount} 金幣`, `✨ Three Uncommon Resonance! Won ✦${winAmount} coins`);
   } else if(allSame && rarities[0] === 'common'){
     winAmount = SLOT_SETTINGS.cost * SLOT_SETTINGS.multCommon;
     state.player.coins += winAmount;
     winTier = 'common';
-    winMsg = `✨ 三張普通共鳴！獲得 ✦${winAmount} 金幣`;
+    winMsg = tt(`✨ 三張普通共鳴！獲得 ✦${winAmount} 金幣`, `✨ Three Common Resonance! Won ✦${winAmount} coins`);
   } else {
     const contrib = Math.round(SLOT_SETTINGS.cost * SLOT_SETTINGS.contribRate / 100);
     await saveSlotJackpot(SLOT_JACKPOT + contrib);
@@ -1419,8 +1432,8 @@ function initWinBroadcastPoll(){
       const w = JSON.parse(r.value);
       if(w.ts > lastSeenBroadcastTs && w.nickname && w.nickname.toLowerCase() !== state.nickname.toLowerCase()){
         lastSeenBroadcastTs = w.ts;
-        const tierLabel = w.tier === 'jackpot' ? '命運共鳴' : `三張${RARITY_LABEL[w.tier]||''}共鳴`;
-        showToast(`✨ ${w.nickname} 觸發了${tierLabel}，贏得 ✦${w.amount} 金幣！`);
+        const tierLabel = w.tier === 'jackpot' ? tt('命運共鳴','Fated Resonance') : tt(`三張${RARITY_LABEL[w.tier]||''}共鳴`, `Three ${RARITY_LABEL[w.tier]||''} Resonance`);
+        showToast(tt(`✨ ${w.nickname} 觸發了${tierLabel}，贏得 ✦${w.amount} 金幣！`, `✨ ${w.nickname} triggered ${tierLabel}, winning ✦${w.amount} coins!`));
       }
     }catch(e){ /* ignore */ }
   }, 15000);
@@ -1461,13 +1474,13 @@ async function markAllNotificationsRead(notifs){
   await Promise.all(notifs.filter(n=>!n.read).map(n=>markNotificationRead(n.id)));
 }
 function notifText(n){
-  const seed = n.seedName || '作物';
-  if(n.type==='water') return `${n.from} 幫你的${seed}澆了水，縮短了 ${formatDuration(n.speedup||0)}`;
-  if(n.type==='steal') return `${n.from} 偷偷順走了一點你的${seed}（不影響你的收成）`;
-  if(n.type==='auction_sold') return `${n.from} 以 ${n.price} 枚金幣${n.viaBuyout?'一口價直接購買了':'買走了'}你的『${n.cardName}』`;
-  if(n.type==='auction_unsold') return `你的『${n.cardName}』拍賣流標了，已退回你的收藏`;
-  if(n.type==='auction_outbid') return `你在『${n.cardName}』的出價已被 ${n.from} 超過（目前 ${n.price} 枚金幣）`;
-  return `${n.from} 在你的花園留下了紀錄`;
+  const seed = n.seedName || tt('作物','crop');
+  if(n.type==='water') return tt(`${n.from} 幫你的${seed}澆了水，縮短了 ${formatDuration(n.speedup||0)}`, `${n.from} watered your ${seed}, cutting ${formatDuration(n.speedup||0)} off the timer`);
+  if(n.type==='steal') return tt(`${n.from} 偷偷順走了一點你的${seed}（不影響你的收成）`, `${n.from} sneaked a bit of your ${seed} (doesn't affect your harvest)`);
+  if(n.type==='auction_sold') return tt(`${n.from} 以 ${n.price} 枚金幣${n.viaBuyout?'一口價直接購買了':'買走了'}你的『${n.cardName}』`, `${n.from} ${n.viaBuyout?'bought':'won'} your "${n.cardName}" for ✦${n.price}`);
+  if(n.type==='auction_unsold') return tt(`你的『${n.cardName}』拍賣流標了，已退回你的收藏`, `Your "${n.cardName}" auction ended with no bids and was returned to your collection`);
+  if(n.type==='auction_outbid') return tt(`你在『${n.cardName}』的出價已被 ${n.from} 超過（目前 ${n.price} 枚金幣）`, `Your bid on "${n.cardName}" was outbid by ${n.from} (now ✦${n.price})`);
+  return tt(`${n.from} 在你的花園留下了紀錄`, `${n.from} left a note in your garden`);
 }
 function initNotifPoll(){
   setInterval(async ()=>{
@@ -1511,20 +1524,20 @@ function playerTotalCards(p){ return Object.values(p.cards||{}).reduce((a,b)=>a+
 
 async function sendFriendRequest(targetNick){
   targetNick = (targetNick||'').trim();
-  if(!targetNick){ showToast('請輸入好友暱稱 ✦'); return; }
-  if(targetNick.toLowerCase() === state.nickname.toLowerCase()){ showToast('不能加自己為好友'); return; }
-  if((state.player.friends||[]).some(f=>f.toLowerCase()===targetNick.toLowerCase())){ showToast('你們已經是好友了'); return; }
+  if(!targetNick){ showToast(tt('請輸入好友暱稱 ✦','Please enter a friend nickname ✦')); return; }
+  if(targetNick.toLowerCase() === state.nickname.toLowerCase()){ showToast(tt('不能加自己為好友',"You can't add yourself as a friend")); return; }
+  if((state.player.friends||[]).some(f=>f.toLowerCase()===targetNick.toLowerCase())){ showToast(tt('你們已經是好友了','You are already friends')); return; }
   const target = await loadPlayer(targetNick);
-  if(!target){ showToast('找不到此占卜師，請確認暱稱是否正確'); return; }
+  if(!target){ showToast(tt('找不到此占卜師，請確認暱稱是否正確',"Couldn't find this diviner - please check the nickname")); return; }
   const all = await fetchFriendRequests();
   const dup = all.find(r=>r.status==='pending' && (
     (r.from===state.nickname && r.to===target.nickname) ||
     (r.from===target.nickname && r.to===state.nickname)
   ));
-  if(dup){ showToast('已經有待處理的好友邀請'); return; }
+  if(dup){ showToast(tt('已經有待處理的好友邀請','There is already a pending friend request')); return; }
   const req = {id: uid(), from: state.nickname, to: target.nickname, status:'pending', createdAt: Date.now()};
   await storage.set(freqKey(req.id), JSON.stringify(req));
-  showToast(`已送出好友邀請給 ${target.nickname} 🕊`);
+  showToast(tt(`已送出好友邀請給 ${target.nickname} 🕊`, `Friend request sent to ${target.nickname} 🕊`));
   render();
 }
 
@@ -1545,9 +1558,9 @@ async function respondFriendRequest(reqId, accept){
       if(!other.friends.includes(state.nickname)) other.friends.push(state.nickname);
       await savePlayer(other);
     }
-    showToast(`你與 ${req.from} 已成為好友 ✦`);
+    showToast(tt(`你與 ${req.from} 已成為好友 ✦`, `You and ${req.from} are now friends ✦`));
   } else {
-    showToast('已婉拒好友邀請');
+    showToast(tt('已婉拒好友邀請','Friend request declined'));
   }
   render();
 }
@@ -1559,7 +1572,7 @@ async function cancelFriendRequest(reqId){
   if(req.status !== 'pending' || req.from !== state.nickname) return;
   req.status = 'cancelled';
   await storage.set(freqKey(reqId), JSON.stringify(req));
-  showToast('已取消好友邀請');
+  showToast(tt('已取消好友邀請','Friend request canceled'));
   render();
 }
 
@@ -1572,7 +1585,7 @@ async function removeFriend(friendNick){
     await savePlayer(other);
   }
   if(state.tradingWith === friendNick) state.tradingWith = null;
-  showToast(`已將 ${friendNick} 從好友移除`);
+  showToast(tt(`已將 ${friendNick} 從好友移除`, `Removed ${friendNick} from friends`));
   render();
 }
 
@@ -1590,10 +1603,10 @@ async function fetchFriendTrades(){
 }
 
 async function proposeFriendTrade(friendNick, offerCardId, wantCardId){
-  if(!(state.player.friends||[]).includes(friendNick)){ showToast('對方不是你的好友'); return; }
+  if(!(state.player.friends||[]).includes(friendNick)){ showToast(tt('對方不是你的好友','That player is not your friend')); return; }
   const owned = state.player.cards[offerCardId]||0;
-  if(owned < 1){ showToast('你沒有這張卡'); return; }
-  if(!wantCardId){ showToast('請選擇想要交換的卡片'); return; }
+  if(owned < 1){ showToast(tt('你沒有這張卡',"You don't have this card")); return; }
+  if(!wantCardId){ showToast(tt('請選擇想要交換的卡片','Please select a card you want in exchange')); return; }
   state.player.cards[offerCardId] = owned - 1;
   await savePlayer(state.player);
   const ft = {
@@ -1601,7 +1614,7 @@ async function proposeFriendTrade(friendNick, offerCardId, wantCardId){
     offerCardId, wantCardId, status:'pending', createdAt: Date.now()
   };
   await storage.set(ftradeKey(ft.id), JSON.stringify(ft));
-  showToast(`已向 ${friendNick} 提出交易邀請 🤝`);
+  showToast(tt(`已向 ${friendNick} 提出交易邀請 🤝`, `Trade request sent to ${friendNick} 🤝`));
   state.tradingWith = null;
   render();
 }
@@ -1613,7 +1626,7 @@ async function respondFriendTrade(ftId, accept){
   if(ft.status !== 'pending' || ft.to !== state.nickname) return;
   if(accept){
     const myOwned = state.player.cards[ft.wantCardId]||0;
-    if(myOwned < 1){ showToast('你已經沒有對方想要的那張卡了'); return; }
+    if(myOwned < 1){ showToast(tt('你已經沒有對方想要的那張卡了','You no longer have the card they want')); return; }
     state.player.cards[ft.wantCardId] = myOwned - 1;
     state.player.cards[ft.offerCardId] = (state.player.cards[ft.offerCardId]||0) + 1;
     await savePlayer(state.player);
@@ -1623,7 +1636,7 @@ async function respondFriendTrade(ftId, accept){
       await savePlayer(requester);
     }
     ft.status = 'completed';
-    showToast('交易成功！🌟');
+    showToast(tt('交易成功！🌟','Trade successful! 🌟'));
   } else {
     const requester = await loadPlayer(ft.from);
     if(requester){
@@ -1631,7 +1644,7 @@ async function respondFriendTrade(ftId, accept){
       await savePlayer(requester);
     }
     ft.status = 'declined';
-    showToast('已婉拒交易邀請');
+    showToast(tt('已婉拒交易邀請','Trade request declined'));
   }
   await storage.set(ftradeKey(ftId), JSON.stringify(ft));
   render();
@@ -1646,23 +1659,23 @@ async function cancelFriendTrade(ftId){
   await savePlayer(state.player);
   ft.status = 'cancelled';
   await storage.set(ftradeKey(ft.id), JSON.stringify(ft));
-  showToast('已取消交易邀請並取回卡片');
+  showToast(tt('已取消交易邀請並取回卡片','Trade request canceled and card returned'));
   render();
 }
 
 // ---------- Auctions ----------
 const DURATIONS = [
-  {label:'1 小時', ms: 3600*1000},
-  {label:'6 小時', ms: 6*3600*1000},
-  {label:'24 小時', ms: 24*3600*1000},
+  {labelZh:'1 小時', labelEn:'1 hour', ms: 3600*1000},
+  {labelZh:'6 小時', labelEn:'6 hours', ms: 6*3600*1000},
+  {labelZh:'24 小時', labelEn:'24 hours', ms: 24*3600*1000},
 ];
 async function listAuction(cardId, startBid, buyoutPrice, durMs){
   const owned = state.player.cards[cardId]||0;
-  if(owned < 1){ showToast('你沒有這張卡'); return; }
+  if(owned < 1){ showToast(tt('你沒有這張卡',"You don't have this card")); return; }
   const hasStart = startBid && startBid >= 1;
   const hasBuyout = buyoutPrice && buyoutPrice >= 1;
-  if(!hasStart && !hasBuyout){ showToast('起標價與一口價至少要填一個'); return; }
-  if(hasStart && hasBuyout && buyoutPrice <= startBid){ showToast('一口價必須高於起標價'); return; }
+  if(!hasStart && !hasBuyout){ showToast(tt('起標價與一口價至少要填一個','Please fill in either a starting bid or a buyout price')); return; }
+  if(hasStart && hasBuyout && buyoutPrice <= startBid){ showToast(tt('一口價必須高於起標價','Buyout price must be higher than the starting bid')); return; }
   state.player.cards[cardId] = owned - 1;
   await savePlayer(state.player);
   const auction = {
@@ -1673,7 +1686,7 @@ async function listAuction(cardId, startBid, buyoutPrice, durMs){
     endsAt: Date.now() + durMs, status:'active'
   };
   await storage.set(`auction:${auction.id}`, JSON.stringify(auction));
-  showToast('已建立拍賣 🔨');
+  showToast(tt('已建立拍賣 🔨','Auction created 🔨'));
   render();
 }
 async function fetchAuctions(){
@@ -1689,46 +1702,55 @@ async function fetchAuctions(){
 }
 async function placeBid(auctionId, amount){
   const r = await storage.get(`auction:${auctionId}`);
-  if(!r){ showToast('拍賣不存在'); return; }
+  if(!r){ showToast(tt('拍賣不存在','Auction does not exist')); return; }
   const auction = JSON.parse(r.value);
-  if(auction.status !== 'active' || Date.now() > auction.endsAt){ showToast('此拍賣已結束'); return; }
-  if(!auction.startBid){ showToast('這個拍賣沒有開放競標，只能直接購買'); return; }
+  if(auction.status !== 'active' || Date.now() > auction.endsAt){ showToast(tt('此拍賣已結束','This auction has ended')); return; }
+  if(!auction.startBid){ showToast(tt('這個拍賣沒有開放競標，只能直接購買','This auction is not open for bidding - only direct purchase')); return; }
   const minBid = auction.currentBid > 0 ? auction.currentBid + 1 : auction.startBid;
-  if(amount < minBid){ showToast(`出價至少要 ${minBid} 枚遊戲幣`); return; }
-  if(auction.buyoutPrice && amount >= auction.buyoutPrice){ showToast(`出價已達一口價，請直接使用「直接購買」`); return; }
-  if(amount > state.player.coins){ showToast('遊戲幣不足'); return; }
-  if(auction.seller === state.nickname){ showToast('不能競標自己的拍賣'); return; }
-  // refund previous bidder
-  if(auction.currentBidder){
+  if(amount < minBid){ showToast(tt(`出價至少要 ${minBid} 枚遊戲幣`, `Bid must be at least ${minBid} coins`)); return; }
+  if(auction.buyoutPrice && amount >= auction.buyoutPrice){ showToast(tt(`出價已達一口價，請直接使用「直接購買」`, `Your bid has reached the buyout price - please use "Buy Now" instead`)); return; }
+  if(auction.seller === state.nickname){ showToast(tt('不能競標自己的拍賣',"You can't bid on your own auction")); return; }
+  // refund previous bidder. If it's the same person raising their own bid,
+  // refund straight into state.player instead of a separately-loaded copy —
+  // otherwise savePlayer(state.player) below overwrites that refund.
+  if(auction.currentBidder === state.nickname){
+    state.player.coins += auction.currentBid;
+  } else if(auction.currentBidder){
     const prev = await loadPlayer(auction.currentBidder);
     if(prev){ prev.coins += auction.currentBid; await savePlayer(prev); }
-    const cardName = (DECK_BY_ID[auction.cardId] && DECK_BY_ID[auction.cardId].name) || '未知卡片';
+    const cardName = (DECK_BY_ID[auction.cardId] && DECK_BY_ID[auction.cardId].name) || tt('未知卡片','Unknown card');
     await createNotification(auction.currentBidder, state.nickname, 'auction_outbid', {cardName, price: amount});
   }
+  if(amount > state.player.coins){ showToast(tt('遊戲幣不足','Not enough coins')); return; }
   state.player.coins -= amount;
   await savePlayer(state.player);
   auction.currentBid = amount;
   auction.currentBidder = state.nickname;
   await storage.set(`auction:${auctionId}`, JSON.stringify(auction));
-  showToast('出價成功！✦');
+  showToast(tt('出價成功！✦','Bid placed! ✦'));
   render();
 }
 async function buyoutAuction(auctionId){
   const r = await storage.get(`auction:${auctionId}`);
-  if(!r){ showToast('拍賣不存在'); return; }
+  if(!r){ showToast(tt('拍賣不存在','Auction does not exist')); return; }
   const auction = JSON.parse(r.value);
-  if(auction.status !== 'active' || Date.now() > auction.endsAt){ showToast('此拍賣已結束'); return; }
-  if(!auction.buyoutPrice){ showToast('這個拍賣沒有開放直接購買'); return; }
-  if(auction.seller === state.nickname){ showToast('不能購買自己的拍賣'); return; }
+  if(auction.status !== 'active' || Date.now() > auction.endsAt){ showToast(tt('此拍賣已結束','This auction has ended')); return; }
+  if(!auction.buyoutPrice){ showToast(tt('這個拍賣沒有開放直接購買','This auction is not open for direct purchase')); return; }
+  if(auction.seller === state.nickname){ showToast(tt('不能購買自己的拍賣',"You can't buy your own auction")); return; }
   const price = auction.buyoutPrice;
-  if(price > state.player.coins){ showToast('遊戲幣不足'); return; }
-  const cardName = (DECK_BY_ID[auction.cardId] && DECK_BY_ID[auction.cardId].name) || '未知卡片';
-  // refund previous bidder if any (they got beaten by a buyout)
-  if(auction.currentBidder){
+  const cardName = (DECK_BY_ID[auction.cardId] && DECK_BY_ID[auction.cardId].name) || tt('未知卡片','Unknown card');
+  // refund previous bidder if any (they got beaten by a buyout).
+  // If the buyer IS the previous bidder, refund straight into state.player
+  // instead of a separately-loaded copy — otherwise the savePlayer(state.player)
+  // below would overwrite that refund with the stale in-memory balance.
+  if(auction.currentBidder === state.nickname){
+    state.player.coins += auction.currentBid;
+  } else if(auction.currentBidder){
     const prev = await loadPlayer(auction.currentBidder);
     if(prev){ prev.coins += auction.currentBid; await savePlayer(prev); }
     await createNotification(auction.currentBidder, state.nickname, 'auction_outbid', {cardName, price});
   }
+  if(price > state.player.coins){ showToast(tt('遊戲幣不足','Not enough coins')); return; }
   state.player.coins -= price;
   state.player.cards[auction.cardId] = (state.player.cards[auction.cardId]||0)+1;
   await savePlayer(state.player);
@@ -1740,12 +1762,12 @@ async function buyoutAuction(auctionId){
   auction.viaBuyout = true;
   await storage.set(`auction:${auctionId}`, JSON.stringify(auction));
   await createNotification(auction.seller, state.nickname, 'auction_sold', {cardName, price, viaBuyout:true});
-  showToast('購買成功！✦');
+  showToast(tt('購買成功！✦','Purchase successful! ✦'));
   render();
 }
 async function resolveAuction(auction){
   if(auction.status !== 'active' || Date.now() < auction.endsAt) return;
-  const cardName = (DECK_BY_ID[auction.cardId] && DECK_BY_ID[auction.cardId].name) || '未知卡片';
+  const cardName = (DECK_BY_ID[auction.cardId] && DECK_BY_ID[auction.cardId].name) || tt('未知卡片','Unknown card');
   if(auction.currentBidder){
     const winner = await loadPlayer(auction.currentBidder);
     if(winner){
@@ -1772,15 +1794,15 @@ async function cancelAuction(auctionId){
   await savePlayer(state.player);
   auction.status = 'cancelled';
   await storage.set(`auction:${auctionId}`, JSON.stringify(auction));
-  showToast('已取消拍賣並取回卡片');
+  showToast(tt('已取消拍賣並取回卡片','Auction canceled and card returned'));
   render();
 }
 
 function fmtCountdown(ms){
-  if(ms <= 0) return '已截標';
+  if(ms <= 0) return tt('已截標','Ended');
   const h = Math.floor(ms/3600000);
   const m = Math.floor((ms%3600000)/60000);
-  return `${h}時${m}分`;
+  return tt(`${h}時${m}分`, `${h}h ${m}m`);
 }
 
 function cardMini(cardId, count){
@@ -1800,13 +1822,13 @@ function isGM(){
 async function gmGrantCoins(targetNick, amount){
   if(!isGM()) return;
   targetNick = (targetNick||'').trim();
-  if(!targetNick){ showToast('請輸入目標玩家暱稱'); return; }
-  if(!amount || isNaN(amount)){ showToast('請輸入有效的金幣數量'); return; }
+  if(!targetNick){ showToast(tt('請輸入目標玩家暱稱','Please enter the target player nickname')); return; }
+  if(!amount || isNaN(amount)){ showToast(tt('請輸入有效的金幣數量','Please enter a valid coin amount')); return; }
   const target = await loadPlayer(targetNick);
-  if(!target){ showToast('找不到此玩家'); return; }
+  if(!target){ showToast(tt('找不到此玩家','Player not found')); return; }
   target.coins = Math.max(0, (target.coins||0) + parseInt(amount));
   await savePlayer(target);
-  showToast(`已發放 ${amount} 枚金幣給 ${target.nickname} ⚡`);
+  showToast(tt(`已發放 ${amount} 枚金幣給 ${target.nickname} ⚡`, `Granted ${amount} coins to ${target.nickname} ⚡`));
   if(target.nickname.toLowerCase() === state.nickname.toLowerCase()){
     state.player = target;
   }
@@ -1815,15 +1837,15 @@ async function gmGrantCoins(targetNick, amount){
 async function gmGrantCard(targetNick, cardId, qty){
   if(!isGM()) return;
   targetNick = (targetNick||'').trim();
-  if(!targetNick){ showToast('請輸入目標玩家暱稱'); return; }
-  if(!cardId){ showToast('請選擇卡片'); return; }
+  if(!targetNick){ showToast(tt('請輸入目標玩家暱稱','Please enter the target player nickname')); return; }
+  if(!cardId){ showToast(tt('請選擇卡片','Please select a card')); return; }
   qty = parseInt(qty) || 1;
   const target = await loadPlayer(targetNick);
-  if(!target){ showToast('找不到此玩家'); return; }
+  if(!target){ showToast(tt('找不到此玩家','Player not found')); return; }
   target.cards[cardId] = Math.max(0, (target.cards[cardId]||0) + qty);
   await savePlayer(target);
   const c = DECK_BY_ID[cardId];
-  showToast(`已發放 ${c.name} x${qty} 給 ${target.nickname} ⚡`);
+  showToast(tt(`已發放 ${c.name} x${qty} 給 ${target.nickname} ⚡`, `Granted ${c.name} x${qty} to ${target.nickname} ⚡`));
   if(target.nickname.toLowerCase() === state.nickname.toLowerCase()){
     state.player = target;
   }
@@ -1940,7 +1962,7 @@ function renderHome(body){
 
   let html = `<div class="panel draw-cta">
     <h2>${t('homeHeader')}</h2>
-    <p class="sub">每天可免費抽取三張塔羅牌，並獲得 ${DAILY_COINS} 枚遊戲幣</p>`;
+    <p class="sub">${tt(`每天可免費抽取三張塔羅牌，並獲得 ${DAILY_COINS} 枚遊戲幣`, `Draw three free tarot cards every day and earn ${DAILY_COINS} coins`)}</p>`;
 
   if(state.drawResults){
     html += `<div class="card-flip-row">` + state.drawResults.map((c,i)=>`
@@ -1961,11 +1983,11 @@ function renderHome(body){
     if(state.drawSource === 'daily'){
       const allFlipped = state.flipped && state.flipped.every(f=>f);
       html += `<div class="fortune-panel${allFlipped?' show':''}" id="fortune-panel">
-        <div class="sub" style="margin-bottom:8px;">🔮 今日的塔羅指引</div>
+        <div class="sub" style="margin-bottom:8px;">🔮 ${t('homeHeader')}</div>
         ${state.drawResults.map(c=>`
           <div class="fortune-card">
             <div class="fc-name">${c.name}</div>
-            <div class="fc-text">${c.meaning}</div>
+            <div class="fc-text">${cardMeaning(c)}</div>
           </div>
         `).join('')}
       </div>`;
@@ -1973,28 +1995,28 @@ function renderHome(body){
   }
 
   if(claimed){
-    html += `<button class="btn" disabled>今日已抽取 ✓</button>
-      <div class="countdown">明天再回來抽新的塔羅牌吧 ✦</div>`;
+    html += `<button class="btn" disabled>${tt('今日已抽取 ✓','Drawn for today ✓')}</button>
+      <div class="countdown">${tt('明天再回來抽新的塔羅牌吧 ✦','Come back tomorrow for a new tarot draw ✦')}</div>`;
   } else {
-    html += `<button class="btn" id="draw-btn">抽取今日塔羅 🔮</button>`;
+    html += `<button class="btn" id="draw-btn">${tt('抽取今日塔羅 🔮',"Draw Today's Tarot 🔮")}</button>`;
   }
-  html += `<div class="countdown">連續簽到 <b style="color:var(--gold-bright);">${streak}</b> 天${nextMilestone ? ` · 再簽到 ${nextMilestone - streak} 天可額外獲得 ${STREAK_BONUS[nextMilestone]} 枚金幣 🔥` : ''}</div>`;
+  html += `<div class="countdown">${tt(`連續簽到 <b style="color:var(--gold-bright);">${streak}</b> 天${nextMilestone ? ` · 再簽到 ${nextMilestone - streak} 天可額外獲得 ${STREAK_BONUS[nextMilestone]} 枚金幣 🔥` : ''}`, `<b style="color:var(--gold-bright);">${streak}</b>-day streak${nextMilestone ? ` · ${nextMilestone - streak} more day(s) for a bonus ${STREAK_BONUS[nextMilestone]} coins 🔥` : ''}`)}</div>`;
   html += `</div>`;
 
   html += `<div class="panel">
     <h2>${t('slotHeader')}</h2>
-    <p class="sub">花費 ✦${SLOT_SETTINGS.cost} 拉一次，抽到的 3 張牌都會直接進收藏；三張稀有度相同才會中獎，三張史詩直接卷走整個獎池！</p>
-    <div class="countdown" style="margin-bottom:10px;">目前獎池：<b style="color:var(--gold-bright);">✦ ${SLOT_JACKPOT}</b></div>
-    <button class="btn" id="slot-btn" ${p.coins < SLOT_SETTINGS.cost ? 'disabled' : ''}>共鳴一次（✦ ${SLOT_SETTINGS.cost}）</button>
+    <p class="sub">${tt(`花費 ✦${SLOT_SETTINGS.cost} 拉一次，抽到的 3 張牌都會直接進收藏；三張稀有度相同才會中獎，三張史詩直接卷走整個獎池！`, `Spend ✦${SLOT_SETTINGS.cost} per pull - all 3 drawn cards go straight into your collection; matching all 3 rarities wins, and three Epics take the whole jackpot!`)}</p>
+    <div class="countdown" style="margin-bottom:10px;">${tt(`目前獎池：<b style="color:var(--gold-bright);">✦ ${SLOT_JACKPOT}</b>`, `Current jackpot: <b style="color:var(--gold-bright);">✦ ${SLOT_JACKPOT}</b>`)}</div>
+    <button class="btn" id="slot-btn" ${p.coins < SLOT_SETTINGS.cost ? 'disabled' : ''}>${tt(`共鳴一次（✦ ${SLOT_SETTINGS.cost}）`, `Resonate once (✦ ${SLOT_SETTINGS.cost})`)}</button>
   </div>`;
 
   html += `<div class="panel">
     <h2>${t('profileHeader')}</h2>
     <div class="stat-row">
-      <div class="stat">遊戲幣 <b>✦ ${p.coins}</b></div>
-      <div class="stat">收藏張數 <b>${totalOwned}</b></div>
-      <div class="stat">已集齊卡種 <b>${uniqueOwned} / ${DECK.length}</b></div>
-      <div class="stat">連續簽到 <b>${streak} 天</b></div>
+      <div class="stat">${tt('遊戲幣','Coins')} <b>✦ ${p.coins}</b></div>
+      <div class="stat">${tt('收藏張數','Cards Owned')} <b>${totalOwned}</b></div>
+      <div class="stat">${tt('已集齊卡種','Unique Cards')} <b>${uniqueOwned} / ${DECK.length}</b></div>
+      <div class="stat">${tt('連續簽到','Streak')} <b>${streak} ${tt('天','days')}</b></div>
     </div>
   </div>`;
 
@@ -2025,9 +2047,9 @@ function renderCollection(body){
 
   let html = `<div class="panel">
     <h2>${t('collectionHeader')}</h2>
-    <p class="sub">共 ${DECK.length} 張塔羅牌，收集齊全的占卜師才是真正的秘境嚮導 · 點擊已持有的卡片可直接出售：普通 ✦${SELL_PRICES.common} · 罕見 ✦${SELL_PRICES.uncommon} · 稀有 ✦${SELL_PRICES.rare} · 史詩 ✦${SELL_PRICES.legendary}</p>
+    <p class="sub">${tt(`共 ${DECK.length} 張塔羅牌，收集齊全的占卜師才是真正的秘境嚮導 · 點擊已持有的卡片可直接出售：普通 ✦${SELL_PRICES.common} · 罕見 ✦${SELL_PRICES.uncommon} · 稀有 ✦${SELL_PRICES.rare} · 史詩 ✦${SELL_PRICES.legendary}`, `${DECK.length} tarot cards in total - only a true diviner completes the set. Click a card you own to sell it directly: Common ✦${SELL_PRICES.common} · Uncommon ✦${SELL_PRICES.uncommon} · Rare ✦${SELL_PRICES.rare} · Epic ✦${SELL_PRICES.legendary}`)}</p>
     <div class="filter-row">
-      ${rarities.map(r=>`<div class="chip-btn ${state.filter===r?'active':''}" data-filter="${r}">${r==='all'?'全部':RARITY_LABEL[r]}</div>`).join('')}
+      ${rarities.map(r=>`<div class="chip-btn ${state.filter===r?'active':''}" data-filter="${r}">${r==='all'?tt('全部','All'):RARITY_LABEL[r]}</div>`).join('')}
     </div>
     <div class="grid">
       ${filtered.map(c=>cardMini(c.id, p.cards[c.id]||0)).join('')}
@@ -2044,11 +2066,11 @@ function renderCollection(body){
 
 function ownedCardOptions(){
   return DECK.filter(c=>(state.player.cards[c.id]||0) > 0)
-    .map(c=>`<option value="${c.id}">${c.name} (持有 ${state.player.cards[c.id]})</option>`).join('');
+    .map(c=>`<option value="${c.id}">${c.name} (${tt(`持有 ${state.player.cards[c.id]}`, `x${state.player.cards[c.id]} owned`)})</option>`).join('');
 }
 
 async function renderFriends(body){
-  body.innerHTML = `<div class="loading-line">讀取好友名冊中...</div>`;
+  body.innerHTML = `<div class="loading-line">${tt('讀取好友名冊中...','Loading friend roster...')}</div>`;
   await refreshPlayer();
   const [allReqs, allFTrades, notifs] = await Promise.all([fetchFriendRequests(), fetchFriendTrades(), fetchNotifications()]);
   const incomingReqs = allReqs.filter(r=>r.status==='pending' && r.to===state.nickname);
@@ -2063,7 +2085,7 @@ async function renderFriends(body){
     const fp = await loadPlayer(state.tradingWith);
     if(fp){
       tradingFriendCards = DECK.filter(c=>(fp.cards[c.id]||0) > 0)
-        .map(c=>`<option value="${c.id}">${c.name} (對方持有 ${fp.cards[c.id]})</option>`).join('');
+        .map(c=>`<option value="${c.id}">${c.name} (${tt(`對方持有 ${fp.cards[c.id]}`, `they have ${fp.cards[c.id]}`)})</option>`).join('');
     }
   }
 
@@ -2091,19 +2113,19 @@ async function renderFriends(body){
   if(incomingReqs.length > 0 || outgoingReqs.length > 0){
     html += `<div class="panel">
       <h2>${t('friendRequestsHeader')}</h2>
-      ${incomingReqs.length>0 ? `<p class="sub">收到的邀請</p>` + incomingReqs.map(r=>`
+      ${incomingReqs.length>0 ? `<p class="sub">${tt('收到的邀請','Received requests')}</p>` + incomingReqs.map(r=>`
         <div class="listing">
-          <div class="left"><div class="icon-box">🔮</div><div class="meta"><div>${escapeHtml(r.from)}</div><div class="who">想加你為好友</div></div></div>
+          <div class="left"><div class="icon-box">🔮</div><div class="meta"><div>${escapeHtml(r.from)}</div><div class="who">${tt('想加你為好友','wants to be your friend')}</div></div></div>
           <div class="right">
-            <button class="btn small" data-accept-freq="${r.id}">接受</button>
-            <button class="btn small secondary" data-decline-freq="${r.id}">婉拒</button>
+            <button class="btn small" data-accept-freq="${r.id}">${tt('接受','Accept')}</button>
+            <button class="btn small secondary" data-decline-freq="${r.id}">${tt('婉拒','Decline')}</button>
           </div>
         </div>
       `).join('') : ''}
-      ${outgoingReqs.length>0 ? `<p class="sub">送出的邀請</p>` + outgoingReqs.map(r=>`
+      ${outgoingReqs.length>0 ? `<p class="sub">${tt('送出的邀請','Sent requests')}</p>` + outgoingReqs.map(r=>`
         <div class="listing">
-          <div class="left"><div class="icon-box">🕊</div><div class="meta"><div>${escapeHtml(r.to)}</div><div class="who">等待對方回應</div></div></div>
-          <div class="right"><button class="btn small secondary" data-cancel-freq="${r.id}">取消邀請</button></div>
+          <div class="left"><div class="icon-box">🕊</div><div class="meta"><div>${escapeHtml(r.to)}</div><div class="who">${tt('等待對方回應','Waiting for a response')}</div></div></div>
+          <div class="right"><button class="btn small secondary" data-cancel-freq="${r.id}">${tt('取消邀請','Cancel request')}</button></div>
         </div>
       `).join('') : ''}
     </div>`;
@@ -2111,12 +2133,12 @@ async function renderFriends(body){
 
   html += `<div class="panel">
     <h2>${t('myFriendsHeader')} (${friends.length})</h2>
-    <p class="sub">與好友一對一直接交易卡片，不必公開上架</p>
-    ${friends.length===0 ? '<div class="empty-note">尚未加入任何好友，先送出邀請吧 ✦</div>' : friends.map(f=>`
+    <p class="sub">${tt('與好友一對一直接交易卡片，不必公開上架','Trade cards directly with a friend, no need to list them publicly')}</p>
+    ${friends.length===0 ? `<div class="empty-note">${tt('尚未加入任何好友，先送出邀請吧 ✦','No friends yet - send a request first ✦')}</div>` : friends.map(f=>`
       <div class="listing">
         <div class="left"><div class="icon-box">✦</div><div class="meta"><div>${escapeHtml(f)}</div></div></div>
         <div class="right">
-          <button class="btn small" data-trade-with="${escapeHtml(f)}">${state.tradingWith===f ? '收合' : '交易'}</button>
+          <button class="btn small" data-trade-with="${escapeHtml(f)}">${state.tradingWith===f ? tt('收合','Collapse') : tt('交易','Trade')}</button>
           <button class="btn small secondary" data-remove-friend="${escapeHtml(f)}">${t('remove')}</button>
         </div>
       </div>
@@ -2124,11 +2146,11 @@ async function renderFriends(body){
         <div class="listing" style="background:var(--bg-void);flex-direction:column;align-items:stretch;">
           ${ownedCardOptions() ? (tradingFriendCards ? `
             <div class="form-row">
-              <div><label>你要給出的卡</label><select id="ftrade-offer-select">${ownedCardOptions()}</select></div>
-              <div><label>你想要對方的卡</label><select id="ftrade-want-select">${tradingFriendCards}</select></div>
-              <button class="btn small" id="ftrade-send-btn" data-target="${escapeHtml(f)}">送出交易邀請</button>
+              <div><label>${tt('你要給出的卡','Card you offer')}</label><select id="ftrade-offer-select">${ownedCardOptions()}</select></div>
+              <div><label>${tt('你想要對方的卡','Card you want')}</label><select id="ftrade-want-select">${tradingFriendCards}</select></div>
+              <button class="btn small" id="ftrade-send-btn" data-target="${escapeHtml(f)}">${tt('送出交易邀請','Send trade request')}</button>
             </div>
-          ` : `<div class="empty-note">${escapeHtml(f)} 目前沒有可交易的卡片</div>`) : `<div class="empty-note">你目前沒有可交易的卡片</div>`}
+          ` : `<div class="empty-note">${tt(`${escapeHtml(f)} 目前沒有可交易的卡片`, `${escapeHtml(f)} has no tradable cards right now`)}</div>`) : `<div class="empty-note">${tt('你目前沒有可交易的卡片','You have no tradable cards right now')}</div>`}
         </div>
       ` : ''}
     `).join('')}
@@ -2137,29 +2159,29 @@ async function renderFriends(body){
   if(incomingTrades.length > 0 || outgoingTrades.length > 0){
     html += `<div class="panel">
       <h2>${t('friendTradeHeader')}</h2>
-      ${incomingTrades.length>0 ? `<p class="sub">收到的交易邀請</p>` + incomingTrades.map(t=>{
-        const offerC = DECK_BY_ID[t.offerCardId];
-        const wantC = DECK_BY_ID[t.wantCardId];
+      ${incomingTrades.length>0 ? `<p class="sub">${tt('收到的交易邀請','Received trade requests')}</p>` + incomingTrades.map(tr=>{
+        const offerC = DECK_BY_ID[tr.offerCardId];
+        const wantC = DECK_BY_ID[tr.wantCardId];
         return `<div class="listing">
           <div class="left">
             <div class="icon-box cf-${offerC.rarity}">${iconBoxInner(offerC)}</div>
-            <div class="meta"><div>${escapeHtml(t.from)} 想用 ${offerC.name}</div><div class="who">交換你的 ${wantC.name}</div></div>
+            <div class="meta"><div>${tt(`${escapeHtml(tr.from)} 想用 ${offerC.name}`, `${escapeHtml(tr.from)} offers ${offerC.name}`)}</div><div class="who">${tt(`交換你的 ${wantC.name}`, `for your ${wantC.name}`)}</div></div>
           </div>
           <div class="right">
-            <button class="btn small" data-accept-ftrade="${t.id}">接受</button>
-            <button class="btn small secondary" data-decline-ftrade="${t.id}">婉拒</button>
+            <button class="btn small" data-accept-ftrade="${tr.id}">${tt('接受','Accept')}</button>
+            <button class="btn small secondary" data-decline-ftrade="${tr.id}">${tt('婉拒','Decline')}</button>
           </div>
         </div>`;
       }).join('') : ''}
-      ${outgoingTrades.length>0 ? `<p class="sub">送出的交易邀請</p>` + outgoingTrades.map(t=>{
-        const offerC = DECK_BY_ID[t.offerCardId];
-        const wantC = DECK_BY_ID[t.wantCardId];
+      ${outgoingTrades.length>0 ? `<p class="sub">${tt('送出的交易邀請','Sent trade requests')}</p>` + outgoingTrades.map(tr=>{
+        const offerC = DECK_BY_ID[tr.offerCardId];
+        const wantC = DECK_BY_ID[tr.wantCardId];
         return `<div class="listing">
           <div class="left">
             <div class="icon-box cf-${offerC.rarity}">${iconBoxInner(offerC)}</div>
-            <div class="meta"><div>提議給 ${escapeHtml(t.to)} ${offerC.name}</div><div class="who">交換對方的 ${wantC.name}</div></div>
+            <div class="meta"><div>${tt(`提議給 ${escapeHtml(tr.to)} ${offerC.name}`, `Offering ${escapeHtml(tr.to)} your ${offerC.name}`)}</div><div class="who">${tt(`交換對方的 ${wantC.name}`, `for their ${wantC.name}`)}</div></div>
           </div>
-          <div class="right"><button class="btn small secondary" data-cancel-ftrade="${t.id}">取消</button></div>
+          <div class="right"><button class="btn small secondary" data-cancel-ftrade="${tr.id}">${tt('取消','Cancel')}</button></div>
         </div>`;
       }).join('') : ''}
     </div>`;
@@ -2220,7 +2242,7 @@ async function renderFriends(body){
 }
 
 async function renderAuction(body){
-  body.innerHTML = `<div class="loading-line">讀取拍賣行中...</div>`;
+  body.innerHTML = `<div class="loading-line">${tt('讀取拍賣行中...','Loading auction house...')}</div>`;
   let auctions = await fetchAuctions();
   // resolve expired
   const expired = auctions.filter(a=>a.status==='active' && Date.now() > a.endsAt);
@@ -2234,27 +2256,27 @@ async function renderAuction(body){
 
   let html = `<div class="panel">
     <h2>${t('createAuctionHeader')}</h2>
-    <p class="sub">設定起標價、一口價（至少填一個），讓其他占卜師競標或直接購買你的稀有卡片</p>
+    <p class="sub">${tt('設定起標價、一口價（至少填一個），讓其他占卜師競標或直接購買你的稀有卡片','Set a starting bid and/or a buyout price (at least one), so other diviners can bid on or directly buy your rare cards')}</p>
     ${owned ? `
       <div class="form-row">
-        <div><label>選擇卡片</label><select id="auc-card-select">${owned}</select></div>
-        <div><label>起標價（選填）</label><input type="number" id="auc-start-input" min="1" placeholder="不填=不開放競標" style="width:130px;" /></div>
-        <div><label>一口價（選填）</label><input type="number" id="auc-buyout-input" min="1" placeholder="不填=無法直接購買" style="width:130px;" /></div>
-        <div><label>拍賣時長</label><select id="auc-dur-select">${DURATIONS.map((d,i)=>`<option value="${i}">${d.label}</option>`).join('')}</select></div>
-        <button class="btn" id="auc-list-btn">開始拍賣</button>
+        <div><label>${tt('選擇卡片','Choose card')}</label><select id="auc-card-select">${owned}</select></div>
+        <div><label>${tt('起標價（選填）','Starting bid (optional)')}</label><input type="number" id="auc-start-input" min="1" placeholder="${tt('不填=不開放競標','blank = no bidding')}" style="width:130px;" /></div>
+        <div><label>${tt('一口價（選填）','Buyout price (optional)')}</label><input type="number" id="auc-buyout-input" min="1" placeholder="${tt('不填=無法直接購買','blank = no direct buy')}" style="width:130px;" /></div>
+        <div><label>${tt('拍賣時長','Duration')}</label><select id="auc-dur-select">${DURATIONS.map((d,i)=>`<option value="${i}">${tt(d.labelZh, d.labelEn)}</option>`).join('')}</select></div>
+        <button class="btn" id="auc-list-btn">${tt('開始拍賣','Start Auction')}</button>
       </div>
-    ` : `<div class="empty-note">你目前沒有可拍賣的卡片</div>`}
+    ` : `<div class="empty-note">${tt('你目前沒有可拍賣的卡片','You have no cards available to auction')}</div>`}
   </div>`;
 
   html += `<div class="panel">
     <h2>${t('myAuctionsHeader')}</h2>
-    ${myAuctions.length===0 ? '<div class="empty-note">尚未建立任何拍賣</div>' : myAuctions.map(a=>{
+    ${myAuctions.length===0 ? `<div class="empty-note">${tt('尚未建立任何拍賣','No auctions created yet')}</div>` : myAuctions.map(a=>{
       const c = DECK_BY_ID[a.cardId];
       let statusLine;
-      if(a.currentBidder){ statusLine = `目前出價 ✦${a.currentBid} by ${escapeHtml(a.currentBidder)}`; }
-      else if(a.startBid && a.buyoutPrice){ statusLine = `起標 ✦${a.startBid} · 一口價 ✦${a.buyoutPrice}，尚無出價`; }
-      else if(a.startBid){ statusLine = `起標 ✦${a.startBid}，尚無出價`; }
-      else { statusLine = `直接購買價 ✦${a.buyoutPrice}`; }
+      if(a.currentBidder){ statusLine = tt(`目前出價 ✦${a.currentBid} by ${escapeHtml(a.currentBidder)}`, `Current bid ✦${a.currentBid} by ${escapeHtml(a.currentBidder)}`); }
+      else if(a.startBid && a.buyoutPrice){ statusLine = tt(`起標 ✦${a.startBid} · 一口價 ✦${a.buyoutPrice}，尚無出價`, `Start ✦${a.startBid} · Buyout ✦${a.buyoutPrice}, no bids yet`); }
+      else if(a.startBid){ statusLine = tt(`起標 ✦${a.startBid}，尚無出價`, `Start ✦${a.startBid}, no bids yet`); }
+      else { statusLine = tt(`直接購買價 ✦${a.buyoutPrice}`, `Buy-now price ✦${a.buyoutPrice}`); }
       return `<div class="listing">
         <div class="left">
           <div class="icon-box cf-${c.rarity}">${iconBoxInner(c)}</div>
@@ -2262,7 +2284,7 @@ async function renderAuction(body){
         </div>
         <div class="right">
           <span class="timer">${fmtCountdown(a.endsAt - Date.now())}</span>
-          ${!a.currentBidder ? `<button class="btn small secondary" data-cancel-auction="${a.id}">取消</button>` : ''}
+          ${!a.currentBidder ? `<button class="btn small secondary" data-cancel-auction="${a.id}">${tt('取消','Cancel')}</button>` : ''}
         </div>
       </div>`;
     }).join('')}
@@ -2270,12 +2292,12 @@ async function renderAuction(body){
 
   html += `<div class="panel">
     <h2>${t('publicAuctionsHeader')}</h2>
-    ${otherAuctions.length===0 ? '<div class="empty-note">目前沒有進行中的拍賣</div>' : otherAuctions.map(a=>{
+    ${otherAuctions.length===0 ? `<div class="empty-note">${tt('目前沒有進行中的拍賣','No active auctions right now')}</div>` : otherAuctions.map(a=>{
       const c = DECK_BY_ID[a.cardId];
       const minBid = a.currentBid > 0 ? a.currentBid+1 : a.startBid;
       const priceLine = a.currentBidder
-        ? `目前出價 ✦${a.currentBid} by ${escapeHtml(a.currentBidder)}`
-        : a.startBid ? `起標 ✦${a.startBid}` : `固定價格上架`;
+        ? tt(`目前出價 ✦${a.currentBid} by ${escapeHtml(a.currentBidder)}`, `Current bid ✦${a.currentBid} by ${escapeHtml(a.currentBidder)}`)
+        : a.startBid ? tt(`起標 ✦${a.startBid}`, `Start ✦${a.startBid}`) : tt(`固定價格上架`, `Fixed price listing`);
       return `<div class="listing">
         <div class="left">
           <div class="icon-box cf-${c.rarity}">${iconBoxInner(c)}</div>
@@ -2284,9 +2306,9 @@ async function renderAuction(body){
         <div class="right">
           ${a.startBid ? `
             <input type="number" min="${minBid}" placeholder="${minBid}" style="width:80px;" data-bid-input="${a.id}" />
-            <button class="btn small" data-bid-btn="${a.id}">出價</button>
+            <button class="btn small" data-bid-btn="${a.id}">${tt('出價','Bid')}</button>
           ` : ''}
-          ${a.buyoutPrice ? `<button class="btn small" data-buyout-btn="${a.id}">直接購買 ✦${a.buyoutPrice}</button>` : ''}
+          ${a.buyoutPrice ? `<button class="btn small" data-buyout-btn="${a.id}">${tt(`直接購買 ✦${a.buyoutPrice}`, `Buy Now ✦${a.buyoutPrice}`)}</button>` : ''}
         </div>
       </div>`;
     }).join('')}
@@ -2331,8 +2353,8 @@ async function renderFarm(body){
 
   let html = `<div class="panel">
     <h2>${t('gardenHeader')}</h2>
-    <p class="sub">用金幣種下元素種子，靜待時間發芽 · 花色種子對應塔羅四元素，秘儀種子需收藏滿 ${MAJOR_SEED_UNLOCK_TOTAL} 張才能解鎖 · 別忘了到下方看看好友的花園，互相澆水偷菜 🌿</p>
-    <button class="btn small" id="farm-harvest-all-btn" ${anyReady?'':'disabled'}>收成全部</button>
+    <p class="sub">${tt(`用金幣種下元素種子，靜待時間發芽 · 花色種子對應塔羅四元素，秘儀種子需收藏滿 ${MAJOR_SEED_UNLOCK_TOTAL} 張才能解鎖 · 別忘了到下方看看好友的花園，互相澆水偷菜 🌿`, `Spend coins to plant elemental seeds and wait for them to grow · Suit seeds match the four tarot elements, the Arcana seed unlocks once you've collected ${MAJOR_SEED_UNLOCK_TOTAL} cards · Don't forget to check your friends' gardens below to water or take from each other 🌿`)}</p>
+    <button class="btn small" id="farm-harvest-all-btn" ${anyReady?'':'disabled'}>${tt('收成全部','Harvest All')}</button>
   </div>`;
 
   html += `<div class="farm-grid">`;
@@ -2343,16 +2365,16 @@ async function renderFarm(body){
         const locked = seed.unlockTotal && total < seed.unlockTotal;
         const affordable = (p.coins||0) >= seed.cost;
         const disabled = locked || !affordable;
-        const label = locked ? `需收藏 ${seed.unlockTotal} 張` : `成長 ${formatDuration(seed.growMs)}`;
+        const label = locked ? tt(`需收藏 ${seed.unlockTotal} 張`, `Need ${seed.unlockTotal} cards`) : tt(`成長 ${formatDuration(seed.growMs)}`, `Grows in ${formatDuration(seed.growMs)}`);
         return `<button class="farm-seed-btn" data-plant="${i}" data-seed="${seed.key}" ${disabled?'disabled':''}>
-          <span class="fs-name">${seed.icon} ${seed.name}${locked?' 🔒':''}<br/><span style="color:var(--muted);font-size:11px;">${label}</span></span>
+          <span class="fs-name">${seed.icon} ${seedName(seed)}${locked?' 🔒':''}<br/><span style="color:var(--muted);font-size:11px;">${label}</span></span>
           <span class="fs-cost">✦${seed.cost}</span>
         </button>`;
       }).join('');
       html += `<div class="farm-plot">
         <div class="farm-plot-icon">🪴</div>
-        <div class="farm-plot-name">空地</div>
-        <div class="farm-plot-sub">選一顆種子種下</div>
+        <div class="farm-plot-name">${tt('空地','Empty plot')}</div>
+        <div class="farm-plot-sub">${tt('選一顆種子種下','Choose a seed to plant')}</div>
         <div class="farm-seed-list">${seedButtons}</div>
       </div>`;
     } else {
@@ -2360,16 +2382,16 @@ async function renderFarm(body){
       if(status === 'withered'){
         html += `<div class="farm-plot withered">
           <div class="farm-plot-icon">🥀</div>
-          <div class="farm-plot-name">${seed.name}已枯萎</div>
-          <div class="farm-plot-sub">錯過了最佳收成時機</div>
-          <button class="btn small secondary" data-harvest="${i}">清理地塊</button>
+          <div class="farm-plot-name">${tt(`${seedName(seed)}已枯萎`, `${seedName(seed)} withered`)}</div>
+          <div class="farm-plot-sub">${tt('錯過了最佳收成時機','Missed the best harvest window')}</div>
+          <button class="btn small secondary" data-harvest="${i}">${tt('清理地塊','Clear plot')}</button>
         </div>`;
       } else if(status === 'ready'){
         html += `<div class="farm-plot ready">
           <div class="farm-plot-icon">${seed.icon}</div>
-          <div class="farm-plot-name">${seed.name}</div>
-          <div class="farm-plot-sub">已成熟，可以收成！</div>
-          <button class="btn small" data-harvest="${i}">收成</button>
+          <div class="farm-plot-name">${seedName(seed)}</div>
+          <div class="farm-plot-sub">${tt('已成熟，可以收成！','Ripe and ready to harvest!')}</div>
+          <button class="btn small" data-harvest="${i}">${tt('收成','Harvest')}</button>
         </div>`;
       } else {
         const elapsed = now - plot.plantedAt;
@@ -2377,12 +2399,12 @@ async function renderFarm(body){
         const remain = plot.readyAt - now;
         let witherNote = '';
         if(plot.witherAt){
-          witherNote = `<div class="farm-plot-sub" style="color:#c98;">成熟後 ${formatDuration(plot.witherAt - plot.readyAt)} 內要收成，否則會枯萎</div>`;
+          witherNote = `<div class="farm-plot-sub" style="color:#c98;">${tt(`成熟後 ${formatDuration(plot.witherAt - plot.readyAt)} 內要收成，否則會枯萎`, `Must harvest within ${formatDuration(plot.witherAt - plot.readyAt)} of ripening, or it will wither`)}</div>`;
         }
         html += `<div class="farm-plot">
           <div class="farm-plot-icon">${seed.icon}</div>
-          <div class="farm-plot-name">${seed.name}</div>
-          <div class="farm-plot-sub">還需 ${formatDuration(remain)}</div>
+          <div class="farm-plot-name">${seedName(seed)}</div>
+          <div class="farm-plot-sub">${tt(`還需 ${formatDuration(remain)}`, `${formatDuration(remain)} remaining`)}</div>
           <div class="farm-progress"><div class="farm-progress-fill" style="width:${pct}%;"></div></div>
           ${witherNote}
         </div>`;
@@ -2395,11 +2417,11 @@ async function renderFarm(body){
   const friends = p.friends || [];
   html += `<div class="panel">
     <h2>${t('friendGardenHeader')}</h2>
-    <p class="sub">幫好友的作物澆水可以加速生長（雙方都有小獎勵），成熟後太久沒收成也可以被好友偷一點走，但不影響本人收成</p>
-    ${friends.length===0 ? '<div class="empty-note">尚未加入任何好友，先到「好友」分頁加人吧 ✦</div>' : friends.map(f=>`
+    <p class="sub">${tt('幫好友的作物澆水可以加速生長（雙方都有小獎勵），成熟後太久沒收成也可以被好友偷一點走，但不影響本人收成',"Watering a friend's crop speeds up its growth (small reward for both of you); crops left unharvested too long after ripening can be taken from by friends, but it doesn't affect the owner's harvest")}</p>
+    ${friends.length===0 ? `<div class="empty-note">${tt('尚未加入任何好友，先到「好友」分頁加人吧 ✦','No friends yet - add some on the Friends tab first ✦')}</div>` : friends.map(f=>`
       <div class="listing">
         <div class="left"><div class="icon-box">✦</div><div class="meta"><div>${escapeHtml(f)}</div></div></div>
-        <div class="right"><button class="btn small" data-visit-farm="${escapeHtml(f)}">${state.farmVisiting===f ? '收合' : '查看花園'}</button></div>
+        <div class="right"><button class="btn small" data-visit-farm="${escapeHtml(f)}">${state.farmVisiting===f ? tt('收合','Collapse') : tt('查看花園','View Garden')}</button></div>
       </div>
     `).join('')}
   </div>`;
@@ -2412,31 +2434,31 @@ async function renderFarm(body){
   if(state.farmVisiting && visitingFarm){
     const vnow = Date.now();
     html += `<div class="panel">
-      <h2>${escapeHtml(state.farmVisiting)} 的花園</h2>
+      <h2>${tt(`${escapeHtml(state.farmVisiting)} 的花園`, `${escapeHtml(state.farmVisiting)}'s Garden`)}</h2>
       <div class="farm-grid">`;
     visitingFarm.forEach((plot, i)=>{
       const status = plotStatus(plot, vnow);
       if(status === 'empty'){
         html += `<div class="farm-plot">
           <div class="farm-plot-icon">🪴</div>
-          <div class="farm-plot-name">空地</div>
-          <div class="farm-plot-sub">還沒有種東西</div>
+          <div class="farm-plot-name">${tt('空地','Empty plot')}</div>
+          <div class="farm-plot-sub">${tt('還沒有種東西','Nothing planted yet')}</div>
         </div>`;
       } else {
         const seed = SEED_TYPES[plot.seed];
         if(status === 'withered'){
           html += `<div class="farm-plot withered">
             <div class="farm-plot-icon">🥀</div>
-            <div class="farm-plot-name">${seed.name}已枯萎</div>
-            <div class="farm-plot-sub">錯過了最佳收成時機</div>
+            <div class="farm-plot-name">${tt(`${seedName(seed)}已枯萎`, `${seedName(seed)} withered`)}</div>
+            <div class="farm-plot-sub">${tt('錯過了最佳收成時機','Missed the best harvest window')}</div>
           </div>`;
         } else if(status === 'ready'){
           const stolen = plot.stolenBy.includes(state.nickname);
           html += `<div class="farm-plot ready">
             <div class="farm-plot-icon">${seed.icon}</div>
-            <div class="farm-plot-name">${seed.name}</div>
-            <div class="farm-plot-sub">已成熟，還沒收成</div>
-            <button class="btn small secondary" data-steal-plot="${i}" data-steal-friend="${escapeHtml(state.farmVisiting)}" ${stolen?'disabled':''}>${stolen?'已偷過':`🌾 偷一點（+✦${stealYieldFor(plot.seed)}）`}</button>
+            <div class="farm-plot-name">${seedName(seed)}</div>
+            <div class="farm-plot-sub">${tt('已成熟，還沒收成','Ripe, not yet harvested')}</div>
+            <button class="btn small secondary" data-steal-plot="${i}" data-steal-friend="${escapeHtml(state.farmVisiting)}" ${stolen?'disabled':''}>${stolen?tt('已偷過','Already taken'):tt(`🌾 偷一點（+✦${stealYieldFor(plot.seed)}）`, `🌾 Take some (+✦${stealYieldFor(plot.seed)})`)}</button>
           </div>`;
         } else {
           const elapsed = vnow - plot.plantedAt;
@@ -2445,10 +2467,10 @@ async function renderFarm(body){
           const watered = !!plot.waterLog[state.nickname];
           html += `<div class="farm-plot">
             <div class="farm-plot-icon">${seed.icon}</div>
-            <div class="farm-plot-name">${seed.name}</div>
-            <div class="farm-plot-sub">還需 ${formatDuration(remain)}</div>
+            <div class="farm-plot-name">${seedName(seed)}</div>
+            <div class="farm-plot-sub">${tt(`還需 ${formatDuration(remain)}`, `${formatDuration(remain)} remaining`)}</div>
             <div class="farm-progress"><div class="farm-progress-fill" style="width:${pct}%;"></div></div>
-            <button class="btn small" data-water-plot="${i}" data-water-friend="${escapeHtml(state.farmVisiting)}" ${watered?'disabled':''}>${watered?'已澆過水':'🚿 幫忙澆水'}</button>
+            <button class="btn small" data-water-plot="${i}" data-water-friend="${escapeHtml(state.farmVisiting)}" ${watered?'disabled':''}>${watered?tt('已澆過水','Already watered'):tt('🚿 幫忙澆水','🚿 Water it')}</button>
           </div>`;
         }
       }
@@ -2482,7 +2504,7 @@ async function renderFarm(body){
 }
 
 async function renderLeaderboard(body){
-  body.innerHTML = `<div class="loading-line">讀取排行榜中...</div>`;
+  body.innerHTML = `<div class="loading-line">${tt('讀取排行榜中...','Loading leaderboard...')}</div>`;
   const allPlayers = await fetchAllPlayers();
   const players = allPlayers.filter(pl=>pl.nickname.toLowerCase() !== GM_NICKNAME.toLowerCase());
 
@@ -2498,21 +2520,21 @@ async function renderLeaderboard(body){
 
   let html = `<div class="panel">
     <h2>${t('leaderCollectionHeader')}</h2>
-    <p class="sub">依收藏卡牌總張數排名</p>
-    ${byCards.length===0 ? '<div class="empty-note">目前尚無玩家資料</div>' : byCards.map((pl,i)=>`
+    <p class="sub">${tt('依收藏卡牌總張數排名','Ranked by total cards collected')}</p>
+    ${byCards.length===0 ? `<div class="empty-note">${tt('目前尚無玩家資料','No player data yet')}</div>` : byCards.map((pl,i)=>`
       <div class="listing">
-        <div class="left"><div class="icon-box">${medal(i)}</div><div class="meta"><div>${escapeHtml(pl.nickname)}${isMe(pl.nickname)?' <span style="color:var(--gold-bright);">(你)</span>':''}</div></div></div>
-        <div class="right"><span class="price">${pl.total} 張</span></div>
+        <div class="left"><div class="icon-box">${medal(i)}</div><div class="meta"><div>${escapeHtml(pl.nickname)}${isMe(pl.nickname)?` <span style="color:var(--gold-bright);">(${tt('你','you')})</span>`:''}</div></div></div>
+        <div class="right"><span class="price">${tt(`${pl.total} 張`, `${pl.total} cards`)}</span></div>
       </div>
     `).join('')}
   </div>`;
 
   html += `<div class="panel">
     <h2>${t('leaderWealthHeader')}</h2>
-    <p class="sub">依持有金幣排名</p>
-    ${byCoins.length===0 ? '<div class="empty-note">目前尚無玩家資料</div>' : byCoins.map((pl,i)=>`
+    <p class="sub">${tt('依持有金幣排名','Ranked by coins held')}</p>
+    ${byCoins.length===0 ? `<div class="empty-note">${tt('目前尚無玩家資料','No player data yet')}</div>` : byCoins.map((pl,i)=>`
       <div class="listing">
-        <div class="left"><div class="icon-box">${medal(i)}</div><div class="meta"><div>${escapeHtml(pl.nickname)}${isMe(pl.nickname)?' <span style="color:var(--gold-bright);">(你)</span>':''}</div></div></div>
+        <div class="left"><div class="icon-box">${medal(i)}</div><div class="meta"><div>${escapeHtml(pl.nickname)}${isMe(pl.nickname)?` <span style="color:var(--gold-bright);">(${tt('你','you')})</span>`:''}</div></div></div>
         <div class="right"><span class="price">✦ ${pl.coins}</span></div>
       </div>
     `).join('')}
@@ -2520,10 +2542,10 @@ async function renderLeaderboard(body){
 
   html += `<div class="panel">
     <h2>${t('leaderSlotHeader')}</h2>
-    <p class="sub">依三牌共鳴累計花費金幣排名</p>
-    ${bySlotSpend.length===0 ? '<div class="empty-note">目前尚無玩家資料</div>' : bySlotSpend.map((pl,i)=>`
+    <p class="sub">${tt('依三牌共鳴累計花費金幣排名','Ranked by total coins spent on Resonance')}</p>
+    ${bySlotSpend.length===0 ? `<div class="empty-note">${tt('目前尚無玩家資料','No player data yet')}</div>` : bySlotSpend.map((pl,i)=>`
       <div class="listing">
-        <div class="left"><div class="icon-box">${medal(i)}</div><div class="meta"><div>${escapeHtml(pl.nickname)}${isMe(pl.nickname)?' <span style="color:var(--gold-bright);">(你)</span>':''}</div></div></div>
+        <div class="left"><div class="icon-box">${medal(i)}</div><div class="meta"><div>${escapeHtml(pl.nickname)}${isMe(pl.nickname)?` <span style="color:var(--gold-bright);">(${tt('你','you')})</span>`:''}</div></div></div>
         <div class="right"><span class="price">✦ ${pl.spend}</span></div>
       </div>
     `).join('')}
@@ -2534,35 +2556,75 @@ async function renderLeaderboard(body){
 
 let gmLookupResult = null;
 async function renderGM(body){
-  body.innerHTML = `<div class="loading-line">開啟 GM 控制台...</div>`;
+  body.innerHTML = `<div class="loading-line">${tt('開啟 GM 控制台...','Opening GM console...')}</div>`;
 
   const cardOptions = DECK.map(c=>`<option value="${c.id}">${c.name}（${RARITY_LABEL[c.rarity]}）</option>`).join('');
   const allPlayers = (await fetchAllPlayers()).sort((a,b)=>(b.coins||0)-(a.coins||0));
+  const gmAuctions = (await fetchAuctions()).sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
 
   let html = `<div class="panel">
     <h2>${t('gmHeader')}</h2>
-    <p class="sub">僅 GM 帳號可見，發放內容會直接寫入目標玩家的資料</p>
+    <p class="sub">${tt('僅 GM 帳號可見，發放內容會直接寫入目標玩家的資料','Visible to GM accounts only - grants are written directly to the target player\'s data')}</p>
     <div class="form-row">
-      <div style="flex:1;min-width:160px;"><label>目標玩家暱稱</label><input type="text" id="gm-target-input" placeholder="輸入暱稱..." value="${gmLookupResult ? escapeHtml(gmLookupResult.nickname) : ''}" /></div>
-      <button class="btn small secondary" id="gm-lookup-btn">查詢</button>
+      <div style="flex:1;min-width:160px;"><label>${tt('目標玩家暱稱','Target player nickname')}</label><input type="text" id="gm-target-input" placeholder="${t('nickPlaceholder')}" value="${gmLookupResult ? escapeHtml(gmLookupResult.nickname) : ''}" /></div>
+      <button class="btn small secondary" id="gm-lookup-btn">${tt('查詢','Look Up')}</button>
     </div>
     ${gmLookupResult ? `
       <div class="listing">
-        <div class="left"><div class="icon-box">👤</div><div class="meta"><div>${escapeHtml(gmLookupResult.nickname)}</div><div class="who">✦ ${gmLookupResult.coins} 金幣 · 收藏 ${gmLookupResult.totalCards} 張（${gmLookupResult.uniqueCards} 種）</div></div></div>
+        <div class="left"><div class="icon-box">👤</div><div class="meta"><div>${escapeHtml(gmLookupResult.nickname)}</div><div class="who">${tt(`✦ ${gmLookupResult.coins} 金幣 · 收藏 ${gmLookupResult.totalCards} 張（${gmLookupResult.uniqueCards} 種）`, `✦ ${gmLookupResult.coins} coins · ${gmLookupResult.totalCards} cards (${gmLookupResult.uniqueCards} unique)`)}</div></div></div>
       </div>
     ` : ''}
   </div>`;
 
   html += `<div class="panel">
     <h2>${t('allPlayersHeader')}</h2>
-    <p class="sub">共 ${allPlayers.length} 位玩家 · 暱稱 / 金幣 / 收藏張數 / 好友數</p>
-    ${allPlayers.length === 0 ? '<div class="empty-note">尚無玩家資料</div>' : allPlayers.map(pl=>{
+    <p class="sub">${tt(`共 ${allPlayers.length} 位玩家 · 暱稱 / 金幣 / 收藏張數 / 好友數`, `${allPlayers.length} players total · nickname / coins / cards / friends`)}</p>
+    ${allPlayers.length === 0 ? `<div class="empty-note">${tt('尚無玩家資料','No player data yet')}</div>` : allPlayers.map(pl=>{
       const total = playerTotalCards(pl);
       const friendCount = (pl.friends||[]).length;
       const isThisGM = pl.nickname.toLowerCase() === GM_NICKNAME.toLowerCase();
       return `<div class="listing">
         <div class="left"><div class="icon-box">${isThisGM ? '⚡' : '👤'}</div><div class="meta"><div>${escapeHtml(pl.nickname)}${isThisGM ? ' <span style="color:var(--gold);">(GM)</span>' : ''}</div></div></div>
-        <div class="right"><span class="price">✦ ${pl.coins||0}</span><span class="timer">收藏 ${total} 張</span><span class="timer">好友 ${friendCount} 位</span></div>
+        <div class="right"><span class="price">✦ ${pl.coins||0}</span><span class="timer">${tt(`收藏 ${total} 張`, `${total} cards`)}</span><span class="timer">${tt(`好友 ${friendCount} 位`, `${friendCount} friends`)}</span></div>
+      </div>`;
+    }).join('')}
+  </div>`;
+
+  html += `<div class="panel">
+    <h2>${tt('所有拍賣','All Auctions')}</h2>
+    <p class="sub">${tt('顯示每筆拍賣的賣家、卡片與目前狀態，方便追蹤交易','Shows each auction\'s seller, card, and current status for tracking')}</p>
+    ${gmAuctions.length === 0 ? `<div class="empty-note">${tt('目前沒有任何拍賣紀錄','No auction records right now')}</div>` : gmAuctions.map(a=>{
+      const c = DECK_BY_ID[a.cardId];
+      const cardLabel = c ? `${c.name}（${RARITY_LABEL[c.rarity]}）` : tt('未知卡片','Unknown card');
+      let statusLabel, statusColor, priceInfo;
+      if(a.status === 'active'){
+        statusLabel = a.endsAt > Date.now() ? tt('進行中','Active') : tt('待結算','Pending resolution');
+        statusColor = 'var(--gold-bright)';
+        priceInfo = a.currentBidder
+          ? tt(`目前出價 ✦${a.currentBid} by ${escapeHtml(a.currentBidder)}`, `Current bid ✦${a.currentBid} by ${escapeHtml(a.currentBidder)}`)
+          : tt('尚無出價','No bids yet');
+      } else if(a.status === 'cancelled'){
+        statusLabel = tt('已取消','Cancelled');
+        statusColor = 'var(--muted)';
+        priceInfo = tt('賣家已取消並取回卡片','Seller cancelled and reclaimed the card');
+      } else if(a.currentBidder){
+        statusLabel = tt('已售出','Sold');
+        statusColor = '#7ec98f';
+        priceInfo = tt(`由 ${escapeHtml(a.currentBidder)} 以 ✦${a.currentBid} ${a.viaBuyout?'直接購買':'得標'}`, `Bought by ${escapeHtml(a.currentBidder)} for ✦${a.currentBid}${a.viaBuyout?' (buyout)':''}`);
+      } else {
+        statusLabel = tt('流標','Unsold');
+        statusColor = 'var(--muted)';
+        priceInfo = tt('無人出價，卡片已退回賣家','No bids - card returned to seller');
+      }
+      return `<div class="listing">
+        <div class="left">
+          <div class="icon-box${c?` cf-${c.rarity}`:''}">${c?iconBoxInner(c):'❓'}</div>
+          <div class="meta">
+            <div>${cardLabel} <span style="color:${statusColor};font-size:11px;">· ${statusLabel}</span></div>
+            <div class="who">${tt('賣家','Seller')}: <b>${escapeHtml(a.seller||'?')}</b> · ${priceInfo}</div>
+          </div>
+        </div>
+        <div class="right"><span class="timer">${a.status==='active' ? fmtCountdown(a.endsAt-Date.now()) : timeAgo(a.endsAt||a.createdAt)}</span></div>
       </div>`;
     }).join('')}
   </div>`;
@@ -2570,55 +2632,55 @@ async function renderGM(body){
   html += `<div class="panel">
     <h2>${t('grantCoinsHeader')}</h2>
     <div class="form-row">
-      <div><label>金幣數量（可輸入負數扣除）</label><input type="number" id="gm-coin-amount" placeholder="例如 500" /></div>
-      <button class="btn small" id="gm-coin-btn">發放金幣</button>
+      <div><label>${tt('金幣數量（可輸入負數扣除）','Coin amount (negative to deduct)')}</label><input type="number" id="gm-coin-amount" placeholder="${tt('例如 500','e.g. 500')}" /></div>
+      <button class="btn small" id="gm-coin-btn">${tt('發放金幣','Grant Coins')}</button>
     </div>
   </div>`;
 
   html += `<div class="panel">
     <h2>${t('grantCardsHeader')}</h2>
     <div class="form-row">
-      <div style="flex:1;min-width:160px;"><label>卡片</label><select id="gm-card-select">${cardOptions}</select></div>
-      <div><label>數量</label><input type="number" id="gm-card-qty" value="1" min="1" style="width:70px;" /></div>
-      <button class="btn small" id="gm-card-btn">發放卡片</button>
+      <div style="flex:1;min-width:160px;"><label>${tt('卡片','Card')}</label><select id="gm-card-select">${cardOptions}</select></div>
+      <div><label>${tt('數量','Quantity')}</label><input type="number" id="gm-card-qty" value="1" min="1" style="width:70px;" /></div>
+      <button class="btn small" id="gm-card-btn">${tt('發放卡片','Grant Card')}</button>
     </div>
   </div>`;
 
   html += `<div class="panel">
     <h2>${t('drawWeightsHeader')}</h2>
-    <p class="sub">調整四個稀有度的相對權重，會影響「所有玩家」之後的每日抽卡與三牌共鳴結果。建議四項總和維持在 100 左右方便理解百分比，但不強制。</p>
+    <p class="sub">${tt('調整四個稀有度的相對權重，會影響「所有玩家」之後的每日抽卡與三牌共鳴結果。建議四項總和維持在 100 左右方便理解百分比，但不強制。','Adjust the relative weights of the four rarities - this affects all players\' daily draws and Resonance results going forward. It helps (but isn\'t required) to keep the four values summing to roughly 100 for easy percentages.')}</p>
     <div class="form-row">
-      <div><label>普通</label><input type="number" id="gm-w-common" value="${DRAW_WEIGHTS.common}" min="0" style="width:70px;" /></div>
-      <div><label>罕見</label><input type="number" id="gm-w-uncommon" value="${DRAW_WEIGHTS.uncommon}" min="0" style="width:70px;" /></div>
-      <div><label>稀有</label><input type="number" id="gm-w-rare" value="${DRAW_WEIGHTS.rare}" min="0" style="width:70px;" /></div>
-      <div><label>史詩</label><input type="number" id="gm-w-legendary" value="${DRAW_WEIGHTS.legendary}" min="0" style="width:70px;" /></div>
+      <div><label>${tt('普通','Common')}</label><input type="number" id="gm-w-common" value="${DRAW_WEIGHTS.common}" min="0" style="width:70px;" /></div>
+      <div><label>${tt('罕見','Uncommon')}</label><input type="number" id="gm-w-uncommon" value="${DRAW_WEIGHTS.uncommon}" min="0" style="width:70px;" /></div>
+      <div><label>${tt('稀有','Rare')}</label><input type="number" id="gm-w-rare" value="${DRAW_WEIGHTS.rare}" min="0" style="width:70px;" /></div>
+      <div><label>${tt('史詩','Epic')}</label><input type="number" id="gm-w-legendary" value="${DRAW_WEIGHTS.legendary}" min="0" style="width:70px;" /></div>
     </div>
     <div class="form-row">
-      <button class="btn small" id="gm-weights-save-btn">儲存機率設定</button>
-      <button class="btn small secondary" id="gm-weights-reset-btn">還原預設值</button>
+      <button class="btn small" id="gm-weights-save-btn">${tt('儲存機率設定','Save Draw Rates')}</button>
+      <button class="btn small secondary" id="gm-weights-reset-btn">${tt('還原預設值','Reset to Default')}</button>
     </div>
   </div>`;
 
   html += `<div class="panel">
     <h2>${t('slotSettingsHeader')}</h2>
-    <p class="sub">目前獎池：<b style="color:var(--gold-bright);">✦ ${SLOT_JACKPOT}</b> · 中頭獎（三張史詩）會直接卷走全部獎池</p>
+    <p class="sub">${tt(`目前獎池：<b style="color:var(--gold-bright);">✦ ${SLOT_JACKPOT}</b> · 中頭獎（三張史詩）會直接卷走全部獎池`, `Current jackpot: <b style="color:var(--gold-bright);">✦ ${SLOT_JACKPOT}</b> · Hitting the jackpot (three Epics) takes the entire pool`)}</p>
     <div class="form-row">
-      <div><label>每次花費</label><input type="number" id="gm-slot-cost" value="${SLOT_SETTINGS.cost}" min="1" style="width:80px;" /></div>
-      <div><label>三普通倍率</label><input type="number" id="gm-slot-mult-common" value="${SLOT_SETTINGS.multCommon}" min="0" style="width:70px;" /></div>
-      <div><label>三罕見倍率</label><input type="number" id="gm-slot-mult-uncommon" value="${SLOT_SETTINGS.multUncommon}" min="0" style="width:70px;" /></div>
-      <div><label>三稀有倍率</label><input type="number" id="gm-slot-mult-rare" value="${SLOT_SETTINGS.multRare}" min="0" style="width:70px;" /></div>
+      <div><label>${tt('每次花費','Cost per pull')}</label><input type="number" id="gm-slot-cost" value="${SLOT_SETTINGS.cost}" min="1" style="width:80px;" /></div>
+      <div><label>${tt('三普通倍率','Common x3 multiplier')}</label><input type="number" id="gm-slot-mult-common" value="${SLOT_SETTINGS.multCommon}" min="0" style="width:70px;" /></div>
+      <div><label>${tt('三罕見倍率','Uncommon x3 multiplier')}</label><input type="number" id="gm-slot-mult-uncommon" value="${SLOT_SETTINGS.multUncommon}" min="0" style="width:70px;" /></div>
+      <div><label>${tt('三稀有倍率','Rare x3 multiplier')}</label><input type="number" id="gm-slot-mult-rare" value="${SLOT_SETTINGS.multRare}" min="0" style="width:70px;" /></div>
     </div>
     <div class="form-row">
-      <div><label>未中獎抽成 %（存入獎池）</label><input type="number" id="gm-slot-contrib" value="${SLOT_SETTINGS.contribRate}" min="0" max="100" style="width:80px;" /></div>
-      <div><label>頭獎後獎池重置為</label><input type="number" id="gm-slot-jackpot-base" value="${SLOT_SETTINGS.jackpotBase}" min="0" style="width:100px;" /></div>
+      <div><label>${tt('未中獎抽成 %（存入獎池）','Non-win rake % (into jackpot)')}</label><input type="number" id="gm-slot-contrib" value="${SLOT_SETTINGS.contribRate}" min="0" max="100" style="width:80px;" /></div>
+      <div><label>${tt('頭獎後獎池重置為','Jackpot resets to')}</label><input type="number" id="gm-slot-jackpot-base" value="${SLOT_SETTINGS.jackpotBase}" min="0" style="width:100px;" /></div>
     </div>
     <div class="form-row">
-      <button class="btn small" id="gm-slot-save-btn">儲存共鳴設定</button>
-      <button class="btn small secondary" id="gm-slot-reset-btn">還原預設值</button>
+      <button class="btn small" id="gm-slot-save-btn">${tt('儲存共鳴設定','Save Resonance Settings')}</button>
+      <button class="btn small secondary" id="gm-slot-reset-btn">${tt('還原預設值','Reset to Default')}</button>
     </div>
     <div class="form-row" style="margin-top:6px;">
-      <div><label>直接設定獎池金額</label><input type="number" id="gm-slot-jackpot-set" placeholder="例如 500" min="0" style="width:100px;" /></div>
-      <button class="btn small" id="gm-slot-jackpot-set-btn">設定獎池</button>
+      <div><label>${tt('直接設定獎池金額','Set jackpot amount directly')}</label><input type="number" id="gm-slot-jackpot-set" placeholder="${tt('例如 500','e.g. 500')}" min="0" style="width:100px;" /></div>
+      <button class="btn small" id="gm-slot-jackpot-set-btn">${tt('設定獎池','Set Jackpot')}</button>
     </div>
   </div>`;
 
@@ -2628,7 +2690,7 @@ async function renderGM(body){
   if(lookupBtn) lookupBtn.onclick = async ()=>{
     const nick = document.getElementById('gm-target-input').value;
     const p = await gmLookupPlayer(nick);
-    if(!p){ showToast('找不到此玩家'); gmLookupResult = null; }
+    if(!p){ showToast(tt('找不到此玩家','Player not found')); gmLookupResult = null; }
     else {
       gmLookupResult = {
         nickname: p.nickname, coins: p.coins,
@@ -2659,16 +2721,16 @@ async function renderGM(body){
       rare: parseFloat(document.getElementById('gm-w-rare').value),
       legendary: parseFloat(document.getElementById('gm-w-legendary').value),
     };
-    if(Object.values(w).some(v=>isNaN(v) || v < 0)){ showToast('請輸入有效的非負數字'); return; }
-    if(Object.values(w).every(v=>v===0)){ showToast('至少要有一個稀有度的權重大於 0'); return; }
+    if(Object.values(w).some(v=>isNaN(v) || v < 0)){ showToast(tt('請輸入有效的非負數字','Please enter a valid non-negative number')); return; }
+    if(Object.values(w).every(v=>v===0)){ showToast(tt('至少要有一個稀有度的權重大於 0','At least one rarity weight must be greater than 0')); return; }
     await saveDrawWeights(w);
-    showToast('抽卡機率已更新，即時對所有玩家生效 ⚡');
+    showToast(tt('抽卡機率已更新，即時對所有玩家生效 ⚡','Draw rates updated, effective immediately for all players ⚡'));
     renderTab();
   };
   const weightsResetBtn = document.getElementById('gm-weights-reset-btn');
   if(weightsResetBtn) weightsResetBtn.onclick = async ()=>{
     await saveDrawWeights({...DEFAULT_DRAW_WEIGHTS});
-    showToast('已還原為預設機率');
+    showToast(tt('已還原為預設機率','Reverted to default rates'));
     renderTab();
   };
   const slotSaveBtn = document.getElementById('gm-slot-save-btn');
@@ -2681,23 +2743,23 @@ async function renderGM(body){
       contribRate: parseFloat(document.getElementById('gm-slot-contrib').value),
       jackpotBase: parseFloat(document.getElementById('gm-slot-jackpot-base').value),
     };
-    if(Object.values(s).some(v=>isNaN(v) || v < 0)){ showToast('請輸入有效的非負數字'); return; }
+    if(Object.values(s).some(v=>isNaN(v) || v < 0)){ showToast(tt('請輸入有效的非負數字','Please enter a valid non-negative number')); return; }
     await saveSlotSettings(s);
-    showToast('三牌共鳴設定已更新，即時對所有玩家生效 ⚡');
+    showToast(tt('三牌共鳴設定已更新，即時對所有玩家生效 ⚡','Resonance settings updated, effective immediately for all players ⚡'));
     renderTab();
   };
   const slotResetBtn = document.getElementById('gm-slot-reset-btn');
   if(slotResetBtn) slotResetBtn.onclick = async ()=>{
     await saveSlotSettings({...DEFAULT_SLOT_SETTINGS});
-    showToast('已還原為預設共鳴設定');
+    showToast(tt('已還原為預設共鳴設定','Reverted to default resonance settings'));
     renderTab();
   };
   const slotJackpotSetBtn = document.getElementById('gm-slot-jackpot-set-btn');
   if(slotJackpotSetBtn) slotJackpotSetBtn.onclick = async ()=>{
     const v = parseFloat(document.getElementById('gm-slot-jackpot-set').value);
-    if(isNaN(v) || v < 0){ showToast('請輸入有效的非負數字'); return; }
+    if(isNaN(v) || v < 0){ showToast(tt('請輸入有效的非負數字','Please enter a valid non-negative number')); return; }
     await saveSlotJackpot(v);
-    showToast(`獎池已設定為 ✦${v}`);
+    showToast(tt(`獎池已設定為 ✦${v}`, `Jackpot pool set to ✦${v}`));
     renderTab();
   };
 }
