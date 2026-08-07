@@ -922,6 +922,18 @@ function consumeCardsForReq(p, req){
     remaining -= take;
   }
 }
+function defaultMaterialSelection(p, req){
+  const sel = {};
+  let remaining = req.count;
+  for(const c of reqCardPool(req)){
+    if(remaining<=0) break;
+    const have = p.cards[c.id]||0;
+    const take = Math.min(have, remaining);
+    if(take>0) sel[c.id] = take;
+    remaining -= take;
+  }
+  return sel;
+}
 function reqLabel(req){
   if(req.type==='rarity') return tt(`${RARITY_LABEL[req.rarity]}卡 ×${req.count}`, `${RARITY_LABEL[req.rarity]} cards ×${req.count}`);
   if(req.type==='suit'){
@@ -934,24 +946,91 @@ function reqLabel(req){
 function farmPlotCount(p){
   return FARM_LEVEL_PLOTS[p.farmLevel||0] || FARM_LEVEL_PLOTS[0];
 }
-async function upgradeFarm(){
+function openFarmUpgradeSelect(){
   const p = state.player;
   if(!p) return;
   const level = p.farmLevel||0;
   if(level >= FARM_MAX_LEVEL){ showToast(tt('花園已經是最高等級了','Your garden is already max level')); return; }
+  state.farmUpgradeMode = true;
+  state.farmUpgradeSelections = null;
+  render();
+}
+function renderFarmUpgradeSelectionUI(p, nextReq){
+  if(!state.farmUpgradeSelections){
+    state.farmUpgradeSelections = nextReq.cards.map(r=>defaultMaterialSelection(p, r));
+  }
+  let html = `<div class="farm-upgrade-select" style="margin-top:10px;padding-top:10px;border-top:1px dashed rgba(255,255,255,0.12);">`;
+  html += `<div style="font-size:12px;color:var(--muted);margin-bottom:8px;">${tt('自行選擇要消耗的卡片（可自由調整，只要總數符合每項所需數量即可）','Choose exactly which cards to spend - adjust freely as long as each requirement\'s total matches')}</div>`;
+  nextReq.cards.forEach((r, ri)=>{
+    const pool = reqCardPool(r).filter(c=>(p.cards[c.id]||0) > 0);
+    const sel = state.farmUpgradeSelections[ri] || {};
+    const selTotal = Object.values(sel).reduce((a,b)=>a+b,0);
+    html += `<div class="farm-mat-req" style="margin-bottom:12px;">
+      <div class="farm-upgrade-line" style="color:var(--gold-bright);">${reqLabel(r)} — <span id="mat-total-${ri}">${selTotal}</span>/${r.count}</div>
+      ${pool.length === 0 ? `<div class="farm-upgrade-line" style="color:var(--muted);">${tt('沒有符合條件的卡片','No eligible cards')}</div>` : `
+        <div class="farm-mat-list" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px;">
+          ${pool.map(c=>{
+            const owned = p.cards[c.id]||0;
+            const val = sel[c.id]||0;
+            return `<div style="display:flex;align-items:center;gap:6px;background:var(--bg-panel-raised);border:1px solid var(--line);border-radius:8px;padding:5px 9px;font-size:12px;">
+              <span>${c.icon||''} ${escapeHtml(c.name)} (${owned})</span>
+              <input type="number" class="farm-mat-input" data-req="${ri}" data-card="${c.id}" value="${val}" min="0" max="${owned}" style="width:52px;" />
+            </div>`;
+          }).join('')}
+        </div>
+      `}
+    </div>`;
+  });
+  html += `<div class="form-row" style="margin-top:6px;">
+    <button class="btn small" id="farm-upgrade-confirm-btn">${tt('確認升級','Confirm Upgrade')}</button>
+    <button class="btn small secondary" id="farm-upgrade-cancel-btn">${tt('取消','Cancel')}</button>
+  </div>`;
+  html += `</div>`;
+  return html;
+}
+async function confirmFarmUpgrade(){
+  const p = state.player;
+  if(!p) return;
+  const level = p.farmLevel||0;
+  if(level >= FARM_MAX_LEVEL) return;
   const nextLevel = level+1;
   const req = FARM_UPGRADE_REQS[nextLevel];
-  if(req.coins && (p.coins||0) < req.coins){ showToast(tt('金幣不足，無法升級','Not enough coins to upgrade')); return; }
-  for(const c of req.cards){
-    if(countCardsForReq(p, c) < c.count){
-      showToast(tt('材料不足，無法升級','Not enough materials to upgrade'));
+  const selections = state.farmUpgradeSelections || req.cards.map(r=>defaultMaterialSelection(p, r));
+  for(let ri=0; ri<req.cards.length; ri++){
+    const r = req.cards[ri];
+    const sel = selections[ri] || {};
+    const poolIds = reqCardPool(r).map(c=>c.id);
+    let total = 0;
+    for(const cid of Object.keys(sel)){
+      const qty = sel[cid]||0;
+      if(qty<=0) continue;
+      if(!poolIds.includes(cid) || qty > (p.cards[cid]||0)){
+        showToast(tt('材料選擇有誤，請重新確認','Material selection is invalid - please recheck'));
+        return;
+      }
+      total += qty;
+    }
+    if(total !== r.count){
+      showToast(tt(`「${reqLabel(r)}」尚未選滿所需數量`, `You haven't selected the full amount for "${reqLabel(r)}"`));
       return;
     }
   }
-  for(const c of req.cards) consumeCardsForReq(p, c);
+  if(req.coins && (p.coins||0) < req.coins){
+    showToast(tt('金幣不足，無法升級','Not enough coins to upgrade'));
+    return;
+  }
+  req.cards.forEach((r, ri)=>{
+    const sel = selections[ri] || {};
+    Object.keys(sel).forEach(cid=>{
+      const qty = sel[cid]||0;
+      if(qty>0) p.cards[cid] = (p.cards[cid]||0) - qty;
+    });
+  });
   if(req.coins) p.coins -= req.coins;
   p.farmLevel = nextLevel;
   ensureFarm(p);
+  state.farmUpgradeMode = false;
+  state.farmUpgradeSelections = null;
   await savePlayer(p);
   showToast(tt(`🌱 花園升級到 Lv.${nextLevel}！`, `🌱 Garden upgraded to Lv.${nextLevel}!`));
   render();
@@ -1214,6 +1293,10 @@ let state = {
   toastTimer: null,
   tradingWith: null,
   farmVisiting: null,
+  farmUpgradeMode: false,
+  farmUpgradeSelections: null,
+  gmPlayersPage: 1,
+  gmAuctionsPage: 1,
 };
 
 async function loadPlayer(nick){
@@ -2203,6 +2286,7 @@ function render(){
   document.querySelectorAll('.tab').forEach(t=>{
     t.onclick = async ()=>{
       state.tab = t.dataset.tab;
+      if(state.tab !== 'farm'){ state.farmUpgradeMode = false; state.farmUpgradeSelections = null; }
       // Re-pull our own player record from storage before rendering: friend
       // requests/trades accepted by *other* players are written straight into
       // our storage record by their client, but our in-memory state.player
@@ -2218,12 +2302,28 @@ function render(){
   if(farmTickInterval){ clearInterval(farmTickInterval); farmTickInterval = null; }
   if(state.tab === 'farm'){
     farmTickInterval = setInterval(()=>{
-      if(state.tab === 'farm') renderTab();
+      if(state.tab === 'farm'){ if(!state.farmUpgradeMode) renderTab(); }
       else { clearInterval(farmTickInterval); farmTickInterval = null; }
     }, 1000);
   }
 }
 
+const GM_PAGE_SIZE = 10;
+function pagerHtml(current, total, idPrefix){
+  if(total<=1) return '';
+  return `<div class="form-row" style="justify-content:center;margin-top:10px;gap:10px;align-items:center;">
+    <button class="btn small secondary" id="${idPrefix}-prev" ${current<=1?'disabled':''}>‹ ${tt('上一頁','Prev')}</button>
+    <span style="font-family:'Space Mono',monospace;font-size:12px;color:var(--muted);">${tt(`第 ${current} / ${total} 頁`, `Page ${current} / ${total}`)}</span>
+    <button class="btn small secondary" id="${idPrefix}-next" ${current>=total?'disabled':''}>${tt('下一頁','Next')} ›</button>
+  </div>`;
+}
+function wirePager(current, total, idPrefix, pageField){
+  if(total<=1) return;
+  const prevBtn = document.getElementById(`${idPrefix}-prev`);
+  const nextBtn = document.getElementById(`${idPrefix}-next`);
+  if(prevBtn) prevBtn.onclick = ()=>{ state[pageField] = Math.max(1, current - 1); renderTab(); };
+  if(nextBtn) nextBtn.onclick = ()=>{ state[pageField] = Math.min(total, current + 1); renderTab(); };
+}
 function escapeHtml(s){
   return String(s).replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 }
@@ -2743,7 +2843,7 @@ async function renderFarm(body){
         ${nextReq.coins ? `<div class="farm-upgrade-line" style="color:${(p.coins||0)>=nextReq.coins?'#7ec98f':'var(--muted)'};">${(p.coins||0)>=nextReq.coins?'✓':'✗'} ${tt('金幣','Coins')} ✦${nextReq.coins}（${tt('目前擁有','have')} ✦${p.coins||0}）</div>` : ''}
         ${(nextLevel===3 || nextLevel===6) ? `<div class="farm-upgrade-line" style="color:var(--gold-bright);">✨ ${tt(nextLevel===3 ? '達成後解鎖「新芽」層種子' : '達成後解鎖「綻放」層種子', nextLevel===3 ? 'Unlocks Sprout-tier seeds' : 'Unlocks Bloom-tier seeds')}</div>` : ''}
         ${FARM_LEVEL_PLOTS[nextLevel] > FARM_LEVEL_PLOTS[farmLevel] ? `<div class="farm-upgrade-line" style="color:var(--gold-bright);">✨ ${tt('達成後 +1 塊地','Unlocks +1 plot')}</div>` : ''}
-        <button class="btn small" id="farm-upgrade-btn" style="margin-top:8px;">${tt('升級花園','Upgrade Garden')}</button>
+        ${state.farmUpgradeMode ? renderFarmUpgradeSelectionUI(p, nextReq) : `<button class="btn small" id="farm-upgrade-btn" style="margin-top:8px;">${tt('選擇升級材料','Choose Upgrade Materials')}</button>`}
       </div>
     `}
   </div>`;
@@ -2880,7 +2980,30 @@ async function renderFarm(body){
   const harvestAllBtn = document.getElementById('farm-harvest-all-btn');
   if(harvestAllBtn) harvestAllBtn.onclick = harvestAllReady;
   const upgradeBtn = document.getElementById('farm-upgrade-btn');
-  if(upgradeBtn) upgradeBtn.onclick = upgradeFarm;
+  if(upgradeBtn) upgradeBtn.onclick = openFarmUpgradeSelect;
+  document.querySelectorAll('.farm-mat-input').forEach(inp=>{
+    inp.oninput = ()=>{
+      const ri = parseInt(inp.dataset.req,10);
+      const cid = inp.dataset.card;
+      const max = parseInt(inp.max,10)||0;
+      let v = parseInt(inp.value,10); if(isNaN(v)||v<0) v=0;
+      v = Math.min(v, max);
+      inp.value = v;
+      if(!state.farmUpgradeSelections || !state.farmUpgradeSelections[ri]) return;
+      if(v>0) state.farmUpgradeSelections[ri][cid] = v;
+      else delete state.farmUpgradeSelections[ri][cid];
+      const totalEl = document.getElementById(`mat-total-${ri}`);
+      if(totalEl) totalEl.textContent = Object.values(state.farmUpgradeSelections[ri]).reduce((a,b)=>a+b,0);
+    };
+  });
+  const upgradeConfirmBtn = document.getElementById('farm-upgrade-confirm-btn');
+  if(upgradeConfirmBtn) upgradeConfirmBtn.onclick = confirmFarmUpgrade;
+  const upgradeCancelBtn = document.getElementById('farm-upgrade-cancel-btn');
+  if(upgradeCancelBtn) upgradeCancelBtn.onclick = ()=>{
+    state.farmUpgradeMode = false;
+    state.farmUpgradeSelections = null;
+    render();
+  };
   document.querySelectorAll('[data-plant]').forEach(btn=>{
     btn.onclick = ()=>plantSeed(parseInt(btn.dataset.plant,10), btn.dataset.seed);
   });
@@ -2983,10 +3106,16 @@ async function renderGM(body){
     ` : ''}
   </div>`;
 
+  const gmPlayersTotalPages = Math.max(1, Math.ceil(allPlayers.length / GM_PAGE_SIZE));
+  if(!state.gmPlayersPage || state.gmPlayersPage < 1) state.gmPlayersPage = 1;
+  if(state.gmPlayersPage > gmPlayersTotalPages) state.gmPlayersPage = gmPlayersTotalPages;
+  const gmPlayersStart = (state.gmPlayersPage - 1) * GM_PAGE_SIZE;
+  const pagedPlayers = allPlayers.slice(gmPlayersStart, gmPlayersStart + GM_PAGE_SIZE);
+
   html += `<div class="panel">
     <h2>${t('allPlayersHeader')}</h2>
     <p class="sub">${tt(`共 ${allPlayers.length} 位玩家 · 暱稱 / 金幣 / 收藏張數 / 好友數`, `${allPlayers.length} players total · nickname / coins / cards / friends`)}</p>
-    ${allPlayers.length === 0 ? `<div class="empty-note">${tt('尚無玩家資料','No player data yet')}</div>` : allPlayers.map(pl=>{
+    ${allPlayers.length === 0 ? `<div class="empty-note">${tt('尚無玩家資料','No player data yet')}</div>` : pagedPlayers.map(pl=>{
       const total = playerTotalCards(pl);
       const friendCount = friendCountMap[pl.nickname.toLowerCase()] || 0;
       const isThisGM = pl.nickname.toLowerCase() === GM_NICKNAME.toLowerCase();
@@ -2995,12 +3124,19 @@ async function renderGM(body){
         <div class="right"><span class="price">✦ ${pl.coins||0}</span><span class="timer">${tt(`收藏 ${total} 張`, `${total} cards`)}</span><span class="timer">${tt(`好友 ${friendCount} 位`, `${friendCount} friends`)}</span></div>
       </div>`;
     }).join('')}
+    ${pagerHtml(state.gmPlayersPage, gmPlayersTotalPages, 'gm-players-page')}
   </div>`;
+
+  const gmAuctionsTotalPages = Math.max(1, Math.ceil(gmAuctions.length / GM_PAGE_SIZE));
+  if(!state.gmAuctionsPage || state.gmAuctionsPage < 1) state.gmAuctionsPage = 1;
+  if(state.gmAuctionsPage > gmAuctionsTotalPages) state.gmAuctionsPage = gmAuctionsTotalPages;
+  const gmAuctionsStart = (state.gmAuctionsPage - 1) * GM_PAGE_SIZE;
+  const pagedAuctions = gmAuctions.slice(gmAuctionsStart, gmAuctionsStart + GM_PAGE_SIZE);
 
   html += `<div class="panel">
     <h2>${tt('所有拍賣','All Auctions')}</h2>
     <p class="sub">${tt('顯示每筆拍賣的賣家、卡片與目前狀態，方便追蹤交易','Shows each auction\'s seller, card, and current status for tracking')}</p>
-    ${gmAuctions.length === 0 ? `<div class="empty-note">${tt('目前沒有任何拍賣紀錄','No auction records right now')}</div>` : gmAuctions.map(a=>{
+    ${gmAuctions.length === 0 ? `<div class="empty-note">${tt('目前沒有任何拍賣紀錄','No auction records right now')}</div>` : pagedAuctions.map(a=>{
       const c = DECK_BY_ID[a.cardId];
       const cardLabel = c ? `${c.name}（${RARITY_LABEL[c.rarity]}）` : tt('未知卡片','Unknown card');
       let statusLabel, statusColor, priceInfo;
@@ -3034,6 +3170,7 @@ async function renderGM(body){
         <div class="right"><span class="timer">${a.status==='active' ? fmtCountdown(a.endsAt-Date.now()) : timeAgo(a.endsAt||a.createdAt)}</span></div>
       </div>`;
     }).join('')}
+    ${pagerHtml(state.gmAuctionsPage, gmAuctionsTotalPages, 'gm-auctions-page')}
   </div>`;
 
   html += `<div class="panel">
@@ -3128,6 +3265,9 @@ async function renderGM(body){
   </div>`;
 
   body.innerHTML = html;
+
+  wirePager(state.gmPlayersPage, gmPlayersTotalPages, 'gm-players-page', 'gmPlayersPage');
+  wirePager(state.gmAuctionsPage, gmAuctionsTotalPages, 'gm-auctions-page', 'gmAuctionsPage');
 
   const lookupBtn = document.getElementById('gm-lookup-btn');
   if(lookupBtn) lookupBtn.onclick = async ()=>{
