@@ -441,6 +441,20 @@
   .badge-desc{font-size:11px;color:var(--muted);line-height:1.4;min-height:30px;}
   .badge-progress{font-family:'Space Mono',monospace;font-size:11px;color:var(--cream);}
   .badge-locked-label{font-size:11px;color:var(--muted);margin-top:2px;}
+  .achievement-modal-box{text-align:center;}
+  .achievement-modal-eyebrow{
+    font-family:'Space Mono',monospace;font-size:11px;letter-spacing:2px;text-transform:uppercase;
+    color:var(--gold);margin-bottom:10px;
+  }
+  .achievement-modal-img-wrap{
+    width:140px;height:140px;border-radius:50%;overflow:hidden;margin:0 auto 14px;
+    border:3px solid var(--gold-bright);box-shadow:0 0 24px rgba(232,196,104,0.55),0 8px 24px rgba(0,0,0,0.5);
+    animation: legendary-badge-fade 1.4s ease-in-out infinite;
+  }
+  .achievement-modal-img{width:100%;height:100%;object-fit:cover;display:block;}
+  .achievement-modal-name{font-family:'Cinzel Decorative',serif;font-size:20px;color:var(--gold-bright);margin-bottom:6px;text-shadow:0 0 18px rgba(201,162,74,0.35);}
+  .achievement-modal-desc{font-size:13px;color:var(--cream);line-height:1.6;margin-bottom:16px;}
+  .achievement-modal-note{font-size:11px;color:var(--muted);font-family:'Space Mono',monospace;}
 </style>
 </head>
 <body>
@@ -467,6 +481,13 @@
       <div class="announce-frame-text" id="announce-frame-text"></div>
     </div>
     <div class="announce-frame-btn-row" id="announce-frame-btn-row"></div>
+  </div>
+</div>
+
+<div id="achievement-modal" class="card-modal-overlay" style="display:none;">
+  <div class="card-modal-box achievement-modal-box">
+    <button class="card-modal-close" id="achievement-modal-close">✕</button>
+    <div id="achievement-modal-content"></div>
   </div>
 </div>
 
@@ -968,8 +989,36 @@ function checkAchievementUnlocks(p){
       seenUnlockedBadges.add(k);
       const a = ACHIEVEMENT_BY_KEY[k];
       showToast(tt(`🏅 解鎖成就：${a.nameZh}！`, `🏅 Achievement unlocked: ${a.nameEn}!`), {legendary:true});
+      showAchievementUnlockModal(a.key);
     }
   });
+}
+function showAchievementUnlockModal(key){
+  const a = ACHIEVEMENT_BY_KEY[key];
+  if(!a) return;
+  const overlay = document.getElementById('achievement-modal');
+  const content = document.getElementById('achievement-modal-content');
+  if(!overlay || !content) return;
+  content.innerHTML = `
+    <div class="achievement-modal-eyebrow">${tt('🏅 恭喜獲得新徽章','🏅 New Badge Unlocked')}</div>
+    <div class="achievement-modal-img-wrap"><img src="${a.image}" class="achievement-modal-img" alt="${escapeHtml(tt(a.nameZh,a.nameEn))}" /></div>
+    <div class="achievement-modal-name">${escapeHtml(tt(a.nameZh, a.nameEn))}</div>
+    <div class="achievement-modal-desc">${escapeHtml(tt(a.descZh, a.descEn))}</div>
+    <div class="achievement-modal-note">${tt('此徽章將永久保留在你的成就紀錄中','This badge is permanently kept in your achievement record')}</div>
+  `;
+  overlay.style.display = 'flex';
+  playLegendaryRevealFx();
+}
+function closeAchievementModal(){
+  const overlay = document.getElementById('achievement-modal');
+  if(overlay) overlay.style.display = 'none';
+}
+function initAchievementModal(){
+  const overlay = document.getElementById('achievement-modal');
+  const closeBtn = document.getElementById('achievement-modal-close');
+  if(!overlay || !closeBtn) return;
+  closeBtn.onclick = closeAchievementModal;
+  overlay.onclick = (e)=>{ if(e.target === overlay) closeAchievementModal(); };
 }
 function renderAchievements(body){
   const p = state.player;
@@ -1765,6 +1814,45 @@ function openCardModal(cardId){
   if(sellExtraBtn) sellExtraBtn.onclick = ()=>sellCard(cardId, owned - 1);
 }
 
+function sellableExtraCommonUncommon(){
+  const targets = ['common','uncommon'];
+  const items = [];
+  let totalQty = 0, totalCoins = 0;
+  DECK.filter(c=>targets.includes(c.rarity)).forEach(c=>{
+    const owned = (state.player.cards[c.id]) || 0;
+    if(owned > 1){
+      const qty = owned - 1;
+      const price = SELL_PRICES[c.rarity] || 0;
+      items.push({cardId:c.id, qty, price});
+      totalQty += qty;
+      totalCoins += qty * price;
+    }
+  });
+  return {items, totalQty, totalCoins};
+}
+
+async function sellExtraCommonUncommon(){
+  if(!state.player) return;
+  const {items, totalQty, totalCoins} = sellableExtraCommonUncommon();
+  if(items.length === 0){
+    showToast(tt('目前沒有多餘的普通或罕見卡牌可以出售','No extra common or uncommon cards to sell right now'));
+    return;
+  }
+  const ok = window.confirm(tt(
+    `確定要一鍵出售所有多出來的普通與罕見卡牌嗎？\n每張卡都會保留 1 張，其餘 ${totalQty} 張將被出售，共獲得 ✦${totalCoins} 枚金幣，此動作無法復原。`,
+    `Sell all extra common and uncommon cards? Each card keeps 1 copy - the remaining ${totalQty} cards will be sold for ✦${totalCoins} coins total. This cannot be undone.`
+  ));
+  if(!ok) return;
+  items.forEach(it=>{
+    state.player.cards[it.cardId] = (state.player.cards[it.cardId] || 0) - it.qty;
+  });
+  state.player.coins = (state.player.coins||0) + totalCoins;
+  bumpQuest(state.player, 'sell', 1);
+  await savePlayer(state.player);
+  showToast(tt(`已出售 ${totalQty} 張多餘卡牌，獲得 ✦${totalCoins} 枚金幣`, `Sold ${totalQty} extra cards for ✦${totalCoins} coins`));
+  render();
+}
+
 async function sellCard(cardId, qty){
   if(!state.player) return;
   const c = DECK_BY_ID[cardId];
@@ -1843,6 +1931,7 @@ async function boot(){
   initBgm();
   initLangToggle();
   initCardModal();
+  initAchievementModal();
   render();
   loadDrawWeights().catch(()=>{});
   loadSlotConfig().catch(()=>{});
@@ -2822,9 +2911,14 @@ function renderCollection(body){
   if(state.filter !== 'all') filtered = DECK.filter(c=>c.rarity===state.filter);
   COLLECTION_MODAL_LIST = filtered.map(c=>c.id);
 
+  const {totalQty: extraQty, totalCoins: extraCoins} = sellableExtraCommonUncommon();
+
   let html = `<div class="panel">
     <h2>${t('collectionHeader')}</h2>
     <p class="sub">${tt(`共 ${DECK.length} 張塔羅牌，收集齊全的占卜師才是真正的秘境嚮導 · 點擊已持有的卡片可直接出售：普通 ✦${SELL_PRICES.common} · 罕見 ✦${SELL_PRICES.uncommon} · 稀有 ✦${SELL_PRICES.rare} · 史詩 ✦${SELL_PRICES.legendary}`, `${DECK.length} tarot cards in total - only a true diviner completes the set. Click a card you own to sell it directly: Common ✦${SELL_PRICES.common} · Uncommon ✦${SELL_PRICES.uncommon} · Rare ✦${SELL_PRICES.rare} · Epic ✦${SELL_PRICES.legendary}`)}</p>
+    <div class="form-row" style="margin-bottom:14px;">
+      <button class="btn small secondary" id="sell-extra-common-uncommon-btn" ${extraQty===0?'disabled':''}>${tt('一鍵出售多餘普通／罕見卡','Sell extra Common/Uncommon')}${extraQty>0?`（${tt(`${extraQty} 張`,`x${extraQty}`)} · +✦${extraCoins}）`:''}</button>
+    </div>
     <div class="filter-row">
       ${rarities.map(r=>`<div class="chip-btn ${state.filter===r?'active':''}" data-filter="${r}">${r==='all'?tt('全部','All'):RARITY_LABEL[r]}</div>`).join('')}
     </div>
@@ -2839,6 +2933,8 @@ function renderCollection(body){
   document.querySelectorAll('.mini-card').forEach(el=>{
     el.onclick = ()=>openCardModal(el.dataset.cardId);
   });
+  const sellExtraCUBtn = document.getElementById('sell-extra-common-uncommon-btn');
+  if(sellExtraCUBtn) sellExtraCUBtn.onclick = ()=>sellExtraCommonUncommon();
 }
 
 function ownedCardOptions(){
@@ -3364,11 +3460,11 @@ async function renderLeaderboard(body){
   const players = allPlayers.filter(pl=>pl.nickname.toLowerCase() !== GM_NICKNAME.toLowerCase());
 
   const byCards = players.map(pl=>({nickname:pl.nickname, total: playerTotalCards(pl)}))
-    .sort((a,b)=>b.total-a.total).slice(0,20);
+    .sort((a,b)=>b.total-a.total).slice(0,10);
   const byCoins = players.map(pl=>({nickname:pl.nickname, coins: pl.coins||0}))
-    .sort((a,b)=>b.coins-a.coins).slice(0,20);
+    .sort((a,b)=>b.coins-a.coins).slice(0,10);
   const bySlotSpend = players.map(pl=>({nickname:pl.nickname, spend: pl.slotSpend||0}))
-    .sort((a,b)=>b.spend-a.spend).slice(0,20);
+    .sort((a,b)=>b.spend-a.spend).slice(0,10);
 
   const medal = i => i===0?'🥇':i===1?'🥈':i===2?'🥉':`#${i+1}`;
   const isMe = nick => state.nickname && nick.toLowerCase()===state.nickname.toLowerCase();
