@@ -230,6 +230,18 @@
     background:linear-gradient(180deg, rgba(10,8,16,0.05) 0%, rgba(10,8,16,0.15) 60%, rgba(10,8,16,0.78) 100%);
   }
   .mini-card > *{position:relative;z-index:1;}
+
+  .sc-node{
+    position:absolute;width:15%;aspect-ratio:1/1;margin-left:-7.5%;margin-top:-7.5%;
+    border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    border:1px solid var(--line);background:rgba(28,16,48,0.85);cursor:pointer;text-align:center;
+    transition:transform .15s ease;
+  }
+  .sc-node:hover{transform:scale(1.08);}
+  .sc-node-icon{font-size:16px;}
+  .sc-node-label{font-family:'Cinzel',serif;font-size:8px;color:var(--muted);margin-top:1px;}
+  .sc-node.unlocked{border-color:var(--gold);box-shadow:0 0 12px rgba(201,162,74,0.45);background:rgba(201,162,74,0.22);}
+  .sc-node.unlocked .sc-node-label{color:var(--gold-bright);}
   .mini-card .count{
     position:absolute;top:5px;right:6px;background:rgba(0,0,0,0.4);border-radius:999px;
     font-family:'Space Mono',monospace;font-size:10px;padding:1px 6px;color:var(--gold-bright);
@@ -743,6 +755,274 @@ const START_COINS = 200;
 const STREAK_BONUS = {3: 30, 7: 100, 14: 250, 30: 600};
 const SELL_PRICES = {common: 10, uncommon: 25, rare: 60, legendary: 150};
 
+// ---------- 賽季系統：星象幻境（階段一：賽季卡池 + 星軌結晶） ----------
+const CURRENT_SEASON_ID = 'season_2026_08'; // 換季只需改這個 id，舊賽季資料不會被覆蓋
+const SEASON_LABEL_ZH = '星象幻境';
+const SEASON_LABEL_EN = 'Astral Reverie';
+const DEFAULT_SEASON_CARDS = [
+  {id:'season_aries', name:'牡羊之火', nameEn:'Flame of Aries', icon:'🔥', rarity:'common'},
+  {id:'season_taurus', name:'金牛之土', nameEn:'Earth of Taurus', icon:'🌾', rarity:'common'},
+  {id:'season_gemini', name:'雙子之風', nameEn:'Wind of Gemini', icon:'🌬️', rarity:'uncommon'},
+  {id:'season_cancer', name:'巨蟹之水', nameEn:'Water of Cancer', icon:'💧', rarity:'uncommon'},
+  {id:'season_leo', name:'獅子之焰', nameEn:'Blaze of Leo', icon:'🦁', rarity:'rare'},
+  {id:'season_scorpio', name:'天蠍之刃', nameEn:'Blade of Scorpio', icon:'🦂', rarity:'rare'},
+  {id:'season_sagittarius', name:'射手之矢', nameEn:'Arrow of Sagittarius', icon:'🏹', rarity:'rare'},
+  {id:'season_astral_nexus', name:'星軌樞紐', nameEn:'Astral Nexus', icon:'🌌', rarity:'legendary'},
+];
+let SEASON_CARDS = DEFAULT_SEASON_CARDS.map(c=>({...c}));
+const SEASON_CARDS_BY_ID = {};
+SEASON_CARDS.forEach(c=>{ SEASON_CARDS_BY_ID[c.id] = c; });
+function rebuildSeasonCardIndex(){
+  Object.keys(SEASON_CARDS_BY_ID).forEach(k=>delete SEASON_CARDS_BY_ID[k]);
+  SEASON_CARDS.forEach(c=>{ SEASON_CARDS_BY_ID[c.id] = c; });
+}
+function seasonCardName(c){ return appLang === 'zh' ? c.name : (c.nameEn||c.name); }
+
+const DEFAULT_SEASON_DRAW_WEIGHTS = {common:50, uncommon:30, rare:16, legendary:4};
+const DEFAULT_SEASON_DRAW_COST = 15;
+// 每次抽賽季卡池，依稀有度掉落的「星軌結晶」數量
+const DEFAULT_SEASON_CRYSTAL_DROPS = {common:1, uncommon:2, rare:5, legendary:10};
+
+let SEASON_ACTIVE = true;
+let SEASON_DRAW_WEIGHTS = {...DEFAULT_SEASON_DRAW_WEIGHTS};
+let SEASON_DRAW_COST = DEFAULT_SEASON_DRAW_COST;
+let SEASON_CRYSTAL_DROPS = {...DEFAULT_SEASON_CRYSTAL_DROPS};
+
+function seasonKey(suffix){ return `config:${CURRENT_SEASON_ID}_${suffix}`; }
+
+async function loadSeasonConfig(){
+  try{
+    const active = await storage.get('config:season_current');
+    SEASON_ACTIVE = active ? (JSON.parse(active.value) === CURRENT_SEASON_ID) : true;
+  }catch(e){ SEASON_ACTIVE = true; }
+  try{
+    const r = await storage.get(seasonKey('cards'));
+    if(r){
+      const arr = JSON.parse(r.value);
+      if(Array.isArray(arr) && arr.length){ SEASON_CARDS = arr; rebuildSeasonCardIndex(); }
+    }
+  }catch(e){ /* keep defaults */ }
+  try{
+    const r = await storage.get(seasonKey('draw_settings'));
+    if(r){
+      const s = JSON.parse(r.value);
+      if(s.weights) RARITY_ORDER.forEach(rr=>{ if(typeof s.weights[rr]==='number' && s.weights[rr]>=0) SEASON_DRAW_WEIGHTS[rr] = s.weights[rr]; });
+      if(typeof s.cost === 'number' && s.cost >= 0) SEASON_DRAW_COST = s.cost;
+      if(s.crystalDrops) RARITY_ORDER.forEach(rr=>{ if(typeof s.crystalDrops[rr]==='number' && s.crystalDrops[rr]>=0) SEASON_CRYSTAL_DROPS[rr] = s.crystalDrops[rr]; });
+    }
+  }catch(e){ /* keep defaults */ }
+}
+async function saveSeasonActive(isActive){
+  SEASON_ACTIVE = isActive;
+  await storage.set('config:season_current', JSON.stringify(isActive ? CURRENT_SEASON_ID : ''));
+}
+async function saveSeasonDrawSettings(){
+  await storage.set(seasonKey('draw_settings'), JSON.stringify({
+    weights: SEASON_DRAW_WEIGHTS, cost: SEASON_DRAW_COST, crystalDrops: SEASON_CRYSTAL_DROPS
+  }));
+}
+function weightedSeasonDraw(){
+  const total = Object.values(SEASON_DRAW_WEIGHTS).reduce((a,b)=>a+b,0);
+  let roll = Math.random() * total;
+  let rarity = 'common';
+  for(const r of RARITY_ORDER){
+    if(roll < SEASON_DRAW_WEIGHTS[r]){ rarity = r; break; }
+    roll -= SEASON_DRAW_WEIGHTS[r];
+  }
+  const pool = SEASON_CARDS.filter(c=>c.rarity===rarity);
+  const usePool = pool.length ? pool : SEASON_CARDS;
+  return usePool[Math.floor(Math.random()*usePool.length)];
+}
+function ensureMaterials(p){
+  if(!p.materials) p.materials = {};
+  if(typeof p.materials.crystal !== 'number') p.materials.crystal = 0;
+  if(typeof p.materials.moon !== 'number') p.materials.moon = 0;
+  if(!p.seasonCards) p.seasonCards = {};
+  if(!p.starChart) p.starChart = {unlocked:[]};
+  return p.materials;
+}
+
+// ---------- 星盤解鎖樹（階段二）----------
+const STAR_CHART_ZODIAC = [
+  {id:'aries', label:'牡羊', labelEn:'Aries', element:'fire', angle:0},
+  {id:'taurus', label:'金牛', labelEn:'Taurus', element:'earth', angle:30},
+  {id:'gemini', label:'雙子', labelEn:'Gemini', element:'wind', angle:60},
+  {id:'cancer', label:'巨蟹', labelEn:'Cancer', element:'water', angle:90},
+  {id:'leo', label:'獅子', labelEn:'Leo', element:'fire', angle:120},
+  {id:'virgo', label:'處女', labelEn:'Virgo', element:'earth', angle:150},
+  {id:'libra', label:'天秤', labelEn:'Libra', element:'wind', angle:180},
+  {id:'scorpio', label:'天蠍', labelEn:'Scorpio', element:'water', angle:210},
+  {id:'sagittarius', label:'射手', labelEn:'Sagittarius', element:'fire', angle:240},
+  {id:'capricorn', label:'摩羯', labelEn:'Capricorn', element:'earth', angle:270},
+  {id:'aquarius', label:'水瓶', labelEn:'Aquarius', element:'wind', angle:300},
+  {id:'pisces', label:'雙魚', labelEn:'Pisces', element:'water', angle:330},
+];
+const STAR_CHART_ZODIAC_BY_ID = {};
+STAR_CHART_ZODIAC.forEach(z=>{ STAR_CHART_ZODIAC_BY_ID[z.id] = z; });
+const STAR_CHART_ELEMENT_LABEL = {
+  fire: {zh:'火象・金幣加成', en:'Fire · Coin Bonus', icon:'🔥'},
+  wind: {zh:'風象・結晶加成', en:'Wind · Crystal Bonus', icon:'🌬️'},
+  water: {zh:'水象・農業加速', en:'Water · Growth Speed', icon:'💧'},
+  earth: {zh:'土象・農業加量', en:'Earth · Harvest Yield', icon:'🌍'},
+};
+const DEFAULT_STAR_CHART_COST_TIERS = [80, 200, 400]; // 該元素第1/2/3個節點消耗的日月之輝
+const DEFAULT_STAR_CHART_BONUS_PER_NODE = {fire:5, wind:5, water:5, earth:10}; // 每點亮一個節點的百分比加成
+let STAR_CHART_COST_TIERS = [...DEFAULT_STAR_CHART_COST_TIERS];
+let STAR_CHART_BONUS_PER_NODE = {...DEFAULT_STAR_CHART_BONUS_PER_NODE};
+async function loadStarChartConfig(){
+  try{
+    const r = await storage.get(seasonKey('starchart'));
+    if(r){
+      const s = JSON.parse(r.value);
+      if(Array.isArray(s.costTiers) && s.costTiers.length===3) STAR_CHART_COST_TIERS = s.costTiers;
+      if(s.bonusPerNode) ['fire','wind','water','earth'].forEach(e=>{ if(typeof s.bonusPerNode[e]==='number' && s.bonusPerNode[e]>=0) STAR_CHART_BONUS_PER_NODE[e] = s.bonusPerNode[e]; });
+    }
+  }catch(e){ /* keep defaults */ }
+}
+async function saveStarChartConfig(){
+  await storage.set(seasonKey('starchart'), JSON.stringify({costTiers: STAR_CHART_COST_TIERS, bonusPerNode: STAR_CHART_BONUS_PER_NODE}));
+}
+function starChartUnlockedCountByElement(p, element){
+  ensureMaterials(p);
+  return p.starChart.unlocked.filter(id=>STAR_CHART_ZODIAC_BY_ID[id] && STAR_CHART_ZODIAC_BY_ID[id].element===element).length;
+}
+function starChartNodeCost(p, element){
+  const count = starChartUnlockedCountByElement(p, element);
+  return STAR_CHART_COST_TIERS[Math.min(count, STAR_CHART_COST_TIERS.length-1)];
+}
+function starChartBonusPercent(p, element){
+  ensureMaterials(p);
+  return starChartUnlockedCountByElement(p, element) * (STAR_CHART_BONUS_PER_NODE[element]||0);
+}
+function starChartCoinMultiplier(p){ return 1 + starChartBonusPercent(p,'fire')/100; }
+function starChartCrystalMultiplier(p){ return 1 + starChartBonusPercent(p,'wind')/100; }
+function starChartGrowMsMultiplier(p){ return Math.max(0.1, 1 - starChartBonusPercent(p,'water')/100); }
+function starChartYieldMultiplier(p){ return 1 + starChartBonusPercent(p,'earth')/100; }
+async function unlockStarChartNode(zodiacId){
+  const p = state.player;
+  ensureMaterials(p);
+  const z = STAR_CHART_ZODIAC_BY_ID[zodiacId];
+  if(!z) return;
+  if(p.starChart.unlocked.includes(zodiacId)){ showToast(tt('這個星座已經點亮了','This constellation is already lit')); return; }
+  const cost = starChartNodeCost(p, z.element);
+  if(p.materials.moon < cost){ showToast(tt(`日月之輝不足，需要 ${cost}`, `Not enough Sun-Moon Brilliance, need ${cost}`)); return; }
+  p.materials.moon -= cost;
+  p.starChart.unlocked.push(zodiacId);
+  await savePlayer(p);
+  render();
+  showToast(tt(`✦ 點亮「${tt(z.label,z.labelEn)}」！`, `✦ Lit up "${z.labelEn}"!`));
+}
+async function doSeasonDraw(){
+  const p = state.player;
+  ensureMaterials(p);
+  if(p.coins < SEASON_DRAW_COST){ showToast(tt('金幣不足，無法汲取星軌結晶','Not enough coins to draw Star-Trail Crystal')); return; }
+  const total = Object.values(SEASON_DRAW_WEIGHTS).reduce((a,b)=>a+b,0);
+  let roll = Math.random() * total;
+  let rarity = 'common';
+  for(const r of RARITY_ORDER){
+    if(roll < SEASON_DRAW_WEIGHTS[r]){ rarity = r; break; }
+    roll -= SEASON_DRAW_WEIGHTS[r];
+  }
+  p.coins -= SEASON_DRAW_COST;
+  const crystalGain = Math.round((SEASON_CRYSTAL_DROPS[rarity] || 0) * starChartCrystalMultiplier(p));
+  p.materials.crystal += crystalGain;
+  state.seasonDrawResult = {rarity, crystalGain};
+  await savePlayer(p);
+  render();
+  showToast(tt(`✨ 獲得 🔮 星軌結晶 x${crystalGain}`, `✨ Gained 🔮 Star-Trail Crystal x${crystalGain}`));
+}
+function renderSeason(body){
+  const p = state.player;
+  ensureMaterials(p);
+  if(!SEASON_ACTIVE){
+    body.innerHTML = `<div class="panel"><h2>${tt(SEASON_LABEL_ZH, SEASON_LABEL_EN)}</h2><p class="sub">${tt('目前沒有進行中的賽季，敬請期待。','No season is currently active. Stay tuned.')}</p></div>`;
+    return;
+  }
+  const result = state.seasonDrawResult;
+  let html = `<div class="panel draw-cta">
+    <h2>✦ ${tt(SEASON_LABEL_ZH, SEASON_LABEL_EN)}</h2>
+    <p class="sub">${tt('消耗金幣汲取「星軌結晶」——之後可用來對賽季 Boss 發動星象爆發。', 'Spend coins to draw "Star-Trail Crystal" - used later to unleash Astral Bursts on the season Boss.')}</p>
+    <div class="countdown" style="margin-bottom:10px;">🔮 ${tt('星軌結晶','Star-Trail Crystal')}：<b style="color:var(--gold-bright);">${p.materials.crystal}</b></div>`;
+  if(result){
+    html += `<div class="card-flip-row"><div class="flip-card flipped">
+      <div class="flip-card-inner"><div class="flip-face flip-back">✦</div>
+        <div class="flip-face flip-front cf-${result.rarity}">
+          <div class="card-face">
+            <span class="rarity-tag rar-${result.rarity}">${RARITY_LABEL[result.rarity]}</span>
+            <img src="assets/crystal.jpg" style="width:56px;height:56px;border-radius:50%;object-fit:cover;border:1px solid var(--gold);box-shadow:0 0 12px rgba(201,162,74,0.5);margin:4px auto;" alt="星軌結晶" />
+            <div class="name">${tt('星軌結晶','Star-Trail Crystal')} x${result.crystalGain}</div>
+          </div>
+        </div>
+      </div>
+    </div></div>
+    <div class="countdown" style="margin-bottom:10px;">${tt(`本次獲得 🔮 x${result.crystalGain}`, `Gained 🔮 x${result.crystalGain} this time`)}</div>`;
+  }
+  html += `<button class="btn" id="season-draw-btn" ${p.coins < SEASON_DRAW_COST ? 'disabled' : ''}>${tt(`汲取星軌結晶（✦ ${SEASON_DRAW_COST}）`, `Draw Star-Trail Crystal (✦ ${SEASON_DRAW_COST})`)}</button>
+  </div>`;
+  const seasonSeeds = Object.values(SEED_TYPES).filter(s=>s.seasonOnly);
+  html += `<div class="panel"><h2>🌙 ${tt('賽季種子','Season Seeds')}</h2>
+    <p class="sub">${tt('到花園種植賽季限定種子，收成獲得「日月之輝」，用於點亮星盤解鎖樹。', 'Plant season-exclusive seeds in your garden to harvest "Sun-Moon Brilliance" for lighting up the Star Chart.')}</p>
+    <div class="countdown" style="margin-bottom:10px;">🌙 ${tt('日月之輝','Sun-Moon Brilliance')}：<b style="color:var(--gold-bright);">${p.materials.moon}</b></div>
+    <div style="display:flex;gap:14px;flex-wrap:wrap;">
+      ${seasonSeeds.map(s=>`<div style="text-align:center;width:100px;">
+        <img src="${s.image}" style="width:72px;height:72px;border-radius:50%;object-fit:cover;border:1px solid var(--gold);box-shadow:0 0 12px rgba(201,162,74,0.35);" alt="${seedName(s)}" />
+        <div style="font-family:'Cinzel',serif;font-size:11px;color:var(--gold-bright);margin-top:6px;">${seedName(s)}</div>
+        <div style="font-size:10px;color:var(--muted);">🌙 ${s.moonBrillianceMin}-${s.moonBrillianceMax}</div>
+      </div>`).join('')}
+    </div>
+  </div>`;
+  body.innerHTML = html;
+  const btn = document.getElementById('season-draw-btn');
+  if(btn) btn.onclick = doSeasonDraw;
+}
+
+function renderStarChart(body){
+  const p = state.player;
+  ensureMaterials(p);
+  if(!SEASON_ACTIVE){
+    body.innerHTML = `<div class="panel"><h2>${tt('星盤解鎖樹','Star Chart')}</h2><p class="sub">${tt('目前沒有進行中的賽季。','No season is currently active.')}</p></div>`;
+    return;
+  }
+  const R = 42; // 百分比半徑
+  const nodesHtml = STAR_CHART_ZODIAC.map(z=>{
+    const angleRad = (z.angle/180)*Math.PI - Math.PI/2;
+    const x = (50 + R*Math.cos(angleRad)).toFixed(2);
+    const y = (50 + R*Math.sin(angleRad)).toFixed(2);
+    const unlocked = p.starChart.unlocked.includes(z.id);
+    const cost = starChartNodeCost(p, z.element);
+    const elLabel = STAR_CHART_ELEMENT_LABEL[z.element];
+    return `<div class="sc-node ${unlocked?'unlocked':'locked'}" data-zodiac="${z.id}" style="left:${x}%;top:${y}%;" title="${tt(z.label,z.labelEn)} · ${tt(elLabel.zh,elLabel.en)}${unlocked?'':` (${tt('消耗','Cost')} 🌙${cost})`}">
+      <div class="sc-node-icon">${elLabel.icon}</div>
+      <div class="sc-node-label">${tt(z.label,z.labelEn)}</div>
+    </div>`;
+  }).join('');
+  let html = `<div class="panel">
+    <h2>✦ ${tt('星盤解鎖樹','Star Chart Talent Tree')}</h2>
+    <p class="sub">${tt('消耗「日月之輝」一次性點亮 12 星座節點，各元素三連可疊加百分比加成，賽季結束將會重置。','Spend Sun-Moon Brilliance to permanently light each of the 12 zodiac nodes this season. Bonuses stack per element and reset when the season ends.')}</p>
+    <div class="countdown" style="margin-bottom:12px;">🌙 ${tt('日月之輝','Sun-Moon Brilliance')}：<b style="color:var(--gold-bright);">${p.materials.moon}</b></div>
+    <div class="sc-wheel-box" style="position:relative;width:100%;max-width:480px;aspect-ratio:1/1;margin:0 auto;border-radius:50%;overflow:hidden;border:1px solid var(--line);">
+      <img src="assets/star_wheel.jpg" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0.9;" alt="star chart" />
+      ${nodesHtml}
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:16px;">
+      ${['fire','wind','water','earth'].map(el=>{
+        const cnt = starChartUnlockedCountByElement(p, el);
+        const pct = starChartBonusPercent(p, el);
+        const lb = STAR_CHART_ELEMENT_LABEL[el];
+        return `<div class="countdown">${lb.icon} ${tt(lb.zh,lb.en)}：<b style="color:var(--gold-bright);">+${pct}%</b> (${cnt}/3)</div>`;
+      }).join('')}
+    </div>
+  </div>`;
+  body.innerHTML = html;
+  body.querySelectorAll('.sc-node').forEach(el=>{
+    el.onclick = ()=>{
+      const zid = el.dataset.zodiac;
+      if(p.starChart.unlocked.includes(zid)) return;
+      unlockStarChartNode(zid);
+    };
+  });
+}
+
 // ---------- 三牌共鳴 ----------
 const DEFAULT_SLOT_SETTINGS = {
   cost: 50,
@@ -941,9 +1221,17 @@ const ACHIEVEMENTS = [
 ];
 const ACHIEVEMENT_BY_KEY = Object.fromEntries(ACHIEVEMENTS.map(a=>[a.key,a]));
 const MAX_EQUIPPED_BADGES = 3;
+function ensureUnlockedBadges(p){
+  if(!p) return [];
+  if(!Array.isArray(p.unlockedBadges)) p.unlockedBadges = [];
+  return p.unlockedBadges;
+}
+function isBadgeUnlocked(p, key){
+  return ensureUnlockedBadges(p).includes(key);
+}
 function equippedBadgeKeys(p){
   if(!p) return [];
-  return (p.equippedBadges||[]).filter(k=>ACHIEVEMENT_BY_KEY[k] && ACHIEVEMENT_BY_KEY[k].check(p)).slice(0, MAX_EQUIPPED_BADGES);
+  return (p.equippedBadges||[]).filter(k=>ACHIEVEMENT_BY_KEY[k] && isBadgeUnlocked(p, k)).slice(0, MAX_EQUIPPED_BADGES);
 }
 function badgeInlineHtml(key, size){
   const a = ACHIEVEMENT_BY_KEY[key];
@@ -961,7 +1249,7 @@ async function toggleEquipBadge(key){
   const p = state.player;
   if(!p) return;
   const a = ACHIEVEMENT_BY_KEY[key];
-  if(!a || !a.check(p)){ showToast(tt('尚未解鎖此徽章 🔒','This badge is not unlocked yet 🔒')); return; }
+  if(!a || !isBadgeUnlocked(p, key)){ showToast(tt('尚未解鎖此徽章 🔒','This badge is not unlocked yet 🔒')); return; }
   p.equippedBadges = p.equippedBadges || [];
   const idx = p.equippedBadges.indexOf(key);
   if(idx >= 0){
@@ -976,21 +1264,22 @@ async function toggleEquipBadge(key){
   await savePlayer(p);
   renderTab();
 }
-let seenUnlockedBadges = null;
-function checkAchievementUnlocks(p){
+async function checkAchievementUnlocks(p){
   if(!p) return;
-  const unlockedKeys = ACHIEVEMENTS.filter(a=>a.check(p)).map(a=>a.key);
-  if(seenUnlockedBadges === null){
-    seenUnlockedBadges = new Set(unlockedKeys);
-    return;
-  }
-  unlockedKeys.forEach(k=>{
-    if(!seenUnlockedBadges.has(k)){
-      seenUnlockedBadges.add(k);
-      const a = ACHIEVEMENT_BY_KEY[k];
-      showToast(tt(`🏅 解鎖成就：${a.nameZh}！`, `🏅 Achievement unlocked: ${a.nameEn}!`), {legendary:true});
-      showAchievementUnlockModal(a.key);
+  ensureUnlockedBadges(p);
+  const newlyUnlocked = [];
+  ACHIEVEMENTS.forEach(a=>{
+    if(!p.unlockedBadges.includes(a.key) && a.check(p)){
+      p.unlockedBadges.push(a.key);
+      newlyUnlocked.push(a.key);
     }
+  });
+  if(newlyUnlocked.length === 0) return;
+  await savePlayer(p);
+  newlyUnlocked.forEach(k=>{
+    const a = ACHIEVEMENT_BY_KEY[k];
+    showToast(tt(`🏅 解鎖成就：${a.nameZh}！`, `🏅 Achievement unlocked: ${a.nameEn}!`), {legendary:true});
+    showAchievementUnlockModal(a.key);
   });
 }
 function showAchievementUnlockModal(key){
@@ -1025,10 +1314,10 @@ function renderAchievements(body){
   const equipped = p.equippedBadges || [];
   const html = `<div class="panel">
     <h2>${t('tabAchievements')}</h2>
-    <p class="sub">${tt(`達成條件即可解鎖徽章，最多可裝備 ${MAX_EQUIPPED_BADGES} 個顯示在名字旁邊（聊天頻道也會顯示）`, `Meet the conditions to unlock each badge - equip up to ${MAX_EQUIPPED_BADGES} to show next to your name (visible in chat too)`)}</p>
+    <p class="sub">${tt(`達成條件即可解鎖徽章，最多可裝備 ${MAX_EQUIPPED_BADGES} 個顯示在名字旁邊（聊天頻道也會顯示）。徽章一旦解鎖就會永久保留，即使之後賣掉相關卡牌或金幣減少也不會消失`, `Meet the conditions to unlock each badge - equip up to ${MAX_EQUIPPED_BADGES} to show next to your name (visible in chat too). Once unlocked, a badge is kept permanently, even if you later sell the related cards or your coins drop`)}</p>
     <div class="badge-grid">
       ${ACHIEVEMENTS.map(a=>{
-        const unlocked = a.check(p);
+        const unlocked = isBadgeUnlocked(p, a.key);
         const isEquipped = equipped.includes(a.key);
         return `<div class="badge-card ${unlocked?'unlocked':'locked'} ${isEquipped?'equipped':''}">
           <div class="badge-img-wrap"><img src="${a.image}" class="badge-img" alt="${escapeHtml(tt(a.nameZh,a.nameEn))}" /></div>
@@ -1136,6 +1425,21 @@ const SEED_TYPES = {
     cost:450, growMs: 24*60*60*1000, tierLevel:6,
     coinMin:1000, coinMax:1200, wither:false,
     unlockTotal: MAJOR_BLOOM_UNLOCK_TOTAL, uniqueUnlock:true,
+  },
+  // ---- 賽季限定種子（星象幻境）----
+  season_lily: {
+    key:'season_lily', nameZh:'星光鈴蘭', nameEn:'Star-Trail Lily', suitLabel:'星象幻境', icon:'🔔',
+    image:'assets/seed_lily.jpg',
+    cost:60, growMs: 4*60*60*1000, tierLevel:0, seasonOnly:true,
+    coinMin:0, coinMax:0, wither:false,
+    moonBrillianceMin:6, moonBrillianceMax:10,
+  },
+  season_sunflower: {
+    key:'season_sunflower', nameZh:'日蝕向日葵', nameEn:'Eclipse Sunflower', suitLabel:'星象幻境', icon:'🌻',
+    image:'assets/seed_sunflower.jpg',
+    cost:140, growMs: 10*60*60*1000, tierLevel:0, seasonOnly:true,
+    coinMin:0, coinMax:0, wither:false,
+    moonBrillianceMin:16, moonBrillianceMax:26,
   },
 };
 const DEFAULT_SEED_COSTS = {};
@@ -1362,6 +1666,10 @@ async function plantSeed(plotIndex, seedKey){
     showToast(tt(`花園等級需達 Lv.${seed.tierLevel} 才能解鎖此種子`, `Requires garden Lv.${seed.tierLevel} to unlock this seed`));
     return;
   }
+  if(seed.seasonOnly && !SEASON_ACTIVE){
+    showToast(tt('賽季已結束，無法再種植此種子','The season has ended - this seed can no longer be planted'));
+    return;
+  }
   if(seed.unlockTotal){
     const total = seed.uniqueUnlock ? playerUniqueCards(p) : playerTotalCards(p);
     if(total < seed.unlockTotal){
@@ -1375,9 +1683,10 @@ async function plantSeed(plotIndex, seedKey){
   if((p.coins||0) < seed.cost){ showToast(tt('金幣不足','Not enough coins')); return; }
   p.coins -= seed.cost;
   const now = Date.now();
+  const effectiveGrowMs = Math.round(seed.growMs * starChartGrowMsMultiplier(p));
   plot.seed = seedKey;
   plot.plantedAt = now;
-  plot.readyAt = now + seed.growMs;
+  plot.readyAt = now + effectiveGrowMs;
   plot.witherAt = seed.wither ? plot.readyAt + seed.witherMs : null;
   plot.waterLog = {};
   plot.stolenBy = [];
@@ -1402,8 +1711,16 @@ async function harvestPlot(plotIndex, opts){
   if(status === 'withered'){
     result = {withered:true, seedName: seedName(seed)};
   } else {
-    const coinGain = Math.floor(Math.random()*(seed.coinMax-seed.coinMin+1)) + seed.coinMin;
+    ensureMaterials(p);
+    let coinGain = Math.floor(Math.random()*(seed.coinMax-seed.coinMin+1)) + seed.coinMin;
+    coinGain = Math.round(coinGain * starChartCoinMultiplier(p) * starChartYieldMultiplier(p));
     p.coins = (p.coins||0) + coinGain;
+    let moonGain = 0;
+    if(seed.moonBrillianceMin){
+      moonGain = Math.floor(Math.random()*(seed.moonBrillianceMax-seed.moonBrillianceMin+1)) + seed.moonBrillianceMin;
+      moonGain = Math.round(moonGain * starChartYieldMultiplier(p));
+      p.materials.moon += moonGain;
+    }
     let bonusCard = null;
     if(seed.bonusCardChance && Math.random() < seed.bonusCardChance){
       const pool = DECK.filter(c=>seed.bonusCardRarities.includes(c.rarity));
@@ -1413,7 +1730,7 @@ async function harvestPlot(plotIndex, opts){
         bonusCard = card;
       }
     }
-    result = {withered:false, seedName: seedName(seed), coinGain, bonusCard};
+    result = {withered:false, seedName: seedName(seed), coinGain, bonusCard, moonGain};
     bumpQuest(p, 'harvest', 1);
     ensureStats(p).totalHarvests += 1;
   }
@@ -1430,6 +1747,7 @@ async function harvestOne(plotIndex){
     showToast(tt(`${result.seedName}已經枯萎了，白忙一場 🥀`, `${result.seedName} withered away - all for nothing 🥀`));
   } else {
     let msg = tt(`收成${result.seedName}，獲得 ✦${result.coinGain}`, `Harvested ${result.seedName} for ✦${result.coinGain}`);
+    if(result.moonGain) msg += tt(` + 🌙 日月之輝 x${result.moonGain}`, ` + 🌙 Sun-Moon Brilliance x${result.moonGain}`);
     if(result.bonusCard) msg += tt(` + 額外一張「${result.bonusCard.name}」！`, ` + a bonus "${result.bonusCard.name}"!`);
     showToast(msg);
   }
@@ -1441,7 +1759,7 @@ async function harvestAllReady(){
   if(!p) return;
   const farm = ensureFarm(p);
   const now = Date.now();
-  let coinTotal = 0, harvestedCount = 0, witheredCount = 0;
+  let coinTotal = 0, harvestedCount = 0, witheredCount = 0, moonTotal = 0;
   const bonusCards = [];
   for(let i=0;i<farm.length;i++){
     const status = plotStatus(farm[i], now);
@@ -1450,7 +1768,7 @@ async function harvestAllReady(){
     if(!result) continue;
     if(result.withered){ witheredCount++; }
     else{
-      harvestedCount++; coinTotal += result.coinGain;
+      harvestedCount++; coinTotal += result.coinGain; moonTotal += (result.moonGain||0);
       if(result.bonusCard) bonusCards.push(result.bonusCard.name);
     }
   }
@@ -1458,6 +1776,7 @@ async function harvestAllReady(){
   await savePlayer(p);
   let msg = '';
   if(harvestedCount>0) msg += tt(`收成 ${harvestedCount} 塊地，獲得 ✦${coinTotal}`, `Harvested ${harvestedCount} plot(s) for ✦${coinTotal}`);
+  if(moonTotal>0) msg += tt(` + 🌙 x${moonTotal}`, ` + 🌙 x${moonTotal}`);
   if(bonusCards.length) msg += tt(`（額外獲得：${bonusCards.join('、')}）`, ` (bonus: ${bonusCards.join(', ')})`);
   if(witheredCount>0) msg += `${msg?tt('；', '; '):''}${tt(`${witheredCount} 塊地作物枯萎了`, `${witheredCount} plot(s) withered`)}`;
   showToast(msg);
@@ -1568,14 +1887,17 @@ let state = {
 async function loadPlayer(nick){
   try{
     const res = await storage.get(playerKey(nick));
-    return res ? JSON.parse(res.value) : null;
+    if(!res) return null;
+    const p = JSON.parse(res.value);
+    ensureMaterials(p);
+    return p;
   }catch(e){ return null; }
 }
 async function savePlayer(p){
   await storage.set(playerKey(p.nickname), JSON.stringify(p));
 }
 function newPlayer(nick, passwordHash){
-  return {nickname:nick, passwordHash, coins:START_COINS, cards:{}, lastClaim:null, streak:0, joinedAt:Date.now(), slotSpend:0, farmLevel:0, stats:{totalHarvests:0, totalAuctionTrades:0}, equippedBadges:[]};
+  return {nickname:nick, passwordHash, coins:START_COINS, cards:{}, lastClaim:null, streak:0, joinedAt:Date.now(), slotSpend:0, farmLevel:0, stats:{totalHarvests:0, totalAuctionTrades:0}, equippedBadges:[], unlockedBadges:[], lastSeenChatAt:0, materials:{crystal:0}, seasonCards:{}};
 }
 function ensureStats(p){
   if(!p.stats) p.stats = {totalHarvests:0, totalAuctionTrades:0};
@@ -1937,9 +2259,12 @@ async function boot(){
   loadSlotConfig().catch(()=>{});
   loadQuestSettings().catch(()=>{});
   loadSeedPrices().catch(()=>{});
+  loadSeasonConfig().catch(()=>{});
+  loadStarChartConfig().catch(()=>{});
   initWinBroadcastPoll();
   initNotifPoll();
   initChatPoll();
+  initChatUnreadPoll();
 }
 
 async function doLogin(nick, password){
@@ -1971,7 +2296,6 @@ async function doLogin(nick, password){
 
     state.nickname = nick;
     state.player = p;
-    seenUnlockedBadges = null;
     try{ localStorage.setItem('my-nickname', nick); }catch(e){}
     render();
     fetchNotifications().then(notifs=>{
@@ -1986,6 +2310,11 @@ async function doLogin(nick, password){
         showAnnounceModal(ann);
       }
     }).catch(()=>{});
+    fetchChatMessages().then(messages=>{
+      const lastSeen = p.lastSeenChatAt || 0;
+      chatUnreadCount = messages.filter(m=>m.nickname !== state.nickname && m.createdAt > lastSeen).length;
+      updateChatBadgeDom();
+    }).catch(()=>{});
   }catch(err){
     showToast(tt('登入失敗，請檢查網路後再試一次 ⚠','Login failed, please check your connection and try again ⚠'));
     if(btn){ btn.disabled = false; btn.textContent = t('loginBtn'); }
@@ -1995,7 +2324,8 @@ async function doLogin(nick, password){
 
 function doLogout(){
   state.nickname = null; state.player = null; state.tab='home';
-  seenUnlockedBadges = null;
+  chatUnreadCount = 0;
+  notifUnreadCount = 0;
   try{ localStorage.removeItem('my-nickname'); }catch(e){}
   render();
 }
@@ -2062,6 +2392,7 @@ function flipCard(i){
 let lastSeenBroadcastTs = Date.now();
 let notifUnreadCount = 0;
 let notifBadgeSeenIds = new Set();
+let chatUnreadCount = 0;
 async function pullSlot(){
   if(state.player.coins < SLOT_SETTINGS.cost){ showToast(tt('金幣不足，無法共鳴','Not enough coins to resonate')); return; }
   const drawn = [weightedDraw(), weightedDraw(), weightedDraw()];
@@ -2244,8 +2575,34 @@ function initChatPoll(){
       await renderTab();
       const newInput = document.getElementById('chat-input');
       if(newInput && draft){ newInput.value = draft; if(hadFocus) newInput.focus(); }
+      markChatAsRead();
     }catch(e){ /* ignore */ }
   }, 4000);
+}
+function updateChatBadgeDom(){
+  const badge = document.getElementById('chat-tab-badge');
+  if(badge){ badge.style.display = chatUnreadCount>0 ? 'inline-flex' : 'none'; badge.textContent = chatUnreadCount>9?'9+':String(chatUnreadCount); }
+}
+async function markChatAsRead(){
+  if(!state.player) return;
+  chatUnreadCount = 0;
+  updateChatBadgeDom();
+  const now = Date.now();
+  if((state.player.lastSeenChatAt||0) >= now) return;
+  state.player.lastSeenChatAt = now;
+  try{ await savePlayer(state.player); }catch(e){ /* ignore */ }
+}
+function initChatUnreadPoll(){
+  setInterval(async ()=>{
+    if(!state.nickname || !state.player) return;
+    if(state.tab === 'chat') return; // already tracked as read while viewing
+    try{
+      const messages = await fetchChatMessages();
+      const lastSeen = state.player.lastSeenChatAt || 0;
+      chatUnreadCount = messages.filter(m=>m.nickname !== state.nickname && m.createdAt > lastSeen).length;
+      updateChatBadgeDom();
+    }catch(e){ /* ignore */ }
+  }, 8000);
 }
 
 async function fetchFriendRequests(){
@@ -2688,12 +3045,14 @@ async function render(){
     <div class="tabs">
       <div class="tab ${state.tab==='home'?'active':''}" data-tab="home">${t('tabHome')}</div>
       <div class="tab ${state.tab==='resonance'?'active':''}" data-tab="resonance">${t('tabResonance')}</div>
+      ${SEASON_ACTIVE ? `<div class="tab ${state.tab==='season'?'active':''}" data-tab="season">✦ ${tt(SEASON_LABEL_ZH, SEASON_LABEL_EN)}</div>` : ''}
+      ${SEASON_ACTIVE ? `<div class="tab ${state.tab==='starchart'?'active':''}" data-tab="starchart">🌌 ${tt('星盤','Star Chart')}</div>` : ''}
       <div class="tab ${state.tab==='collection'?'active':''}" data-tab="collection">${t('tabCollection')}</div>
       <div class="tab ${state.tab==='friends'?'active':''}" data-tab="friends">${t('tabFriends')}</div>
       <div class="tab ${state.tab==='auction'?'active':''}" data-tab="auction">${t('tabAuction')}</div>
       <div class="tab ${state.tab==='farm'?'active':''}" data-tab="farm">${t('tabFarm')}</div>
       <div class="tab ${state.tab==='leaderboard'?'active':''}" data-tab="leaderboard">${t('tabLeaderboard')}</div>
-      <div class="tab ${state.tab==='chat'?'active':''}" data-tab="chat">${t('tabChat')}</div>
+      <div class="tab ${state.tab==='chat'?'active':''}" data-tab="chat" style="position:relative;">${t('tabChat')}<span id="chat-tab-badge" style="display:${chatUnreadCount>0?'inline-flex':'none'};position:absolute;top:2px;right:2px;background:#e0455f;color:#fff;border-radius:999px;font-size:9px;line-height:1;padding:2px 5px;">${chatUnreadCount>9?'9+':chatUnreadCount}</span></div>
       <div class="tab ${state.tab==='achievements'?'active':''}" data-tab="achievements">${t('tabAchievements')}</div>
       ${isGM() ? `<div class="tab ${state.tab==='gm'?'active':''}" data-tab="gm">${t('tabGM')}</div>` : ''}
     </div>
@@ -2713,6 +3072,7 @@ async function render(){
       // refresh the tab can show stale data, and worse, a later savePlayer()
       // from this session could overwrite those external changes.
       await refreshPlayer();
+      if(state.tab === 'chat') markChatAsRead();
       render();
     };
   });
@@ -2752,6 +3112,8 @@ function renderTab(){
   const body = document.getElementById('tab-body');
   if(state.tab === 'home') return renderHome(body);
   if(state.tab === 'resonance') return renderResonance(body);
+  if(state.tab === 'season') return renderSeason(body);
+  if(state.tab === 'starchart') return renderStarChart(body);
   if(state.tab === 'collection') return renderCollection(body);
   if(state.tab === 'friends') return renderFriends(body);
   if(state.tab === 'auction') return renderAuction(body);
@@ -3763,6 +4125,56 @@ async function renderGM(body){
     </div>
   </div>`;
 
+  html += `<div class="panel">
+    <h2>✦ ${tt('賽季設定：星象幻境','Season Settings: Astral Reverie')}</h2>
+    <p class="sub">${tt(`目前賽季 ID：${CURRENT_SEASON_ID}（換季時修改程式碼中的 CURRENT_SEASON_ID 即可，舊賽季資料不會被覆蓋）`, `Current season ID: ${CURRENT_SEASON_ID} (change CURRENT_SEASON_ID in code to roll a new season - old season data is preserved)`)}</p>
+    <div class="form-row">
+      <label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" id="gm-season-active" ${SEASON_ACTIVE?'checked':''} /> ${tt('賽季開啟中（玩家可見賽季分頁）','Season active (players can see the season tab)')}</label>
+    </div>
+    <div class="farm-upgrade-title" style="margin-top:6px;">${tt('星軌結晶汲取設定','Crystal Draw Settings')}</div>
+    <div class="form-row">
+      <div><label>${tt('每次花費','Cost per draw')}</label><input type="number" id="gm-season-cost" value="${SEASON_DRAW_COST}" min="0" style="width:80px;" /></div>
+    </div>
+    <div class="form-row">
+      <div><label>${tt('普通權重','Common weight')}</label><input type="number" id="gm-season-w-common" value="${SEASON_DRAW_WEIGHTS.common}" min="0" style="width:70px;" /></div>
+      <div><label>${tt('罕見權重','Uncommon weight')}</label><input type="number" id="gm-season-w-uncommon" value="${SEASON_DRAW_WEIGHTS.uncommon}" min="0" style="width:70px;" /></div>
+      <div><label>${tt('稀有權重','Rare weight')}</label><input type="number" id="gm-season-w-rare" value="${SEASON_DRAW_WEIGHTS.rare}" min="0" style="width:70px;" /></div>
+      <div><label>${tt('史詩權重','Epic weight')}</label><input type="number" id="gm-season-w-legendary" value="${SEASON_DRAW_WEIGHTS.legendary}" min="0" style="width:70px;" /></div>
+    </div>
+    <div class="farm-upgrade-title" style="margin-top:10px;">🔮 ${tt('星軌結晶獲得量（依機率命中的稀有度）','Star-Trail Crystal amount (by rarity tier rolled)')}</div>
+    <div class="form-row">
+      <div><label>${tt('普通','Common')}</label><input type="number" id="gm-season-c-common" value="${SEASON_CRYSTAL_DROPS.common}" min="0" style="width:70px;" /></div>
+      <div><label>${tt('罕見','Uncommon')}</label><input type="number" id="gm-season-c-uncommon" value="${SEASON_CRYSTAL_DROPS.uncommon}" min="0" style="width:70px;" /></div>
+      <div><label>${tt('稀有','Rare')}</label><input type="number" id="gm-season-c-rare" value="${SEASON_CRYSTAL_DROPS.rare}" min="0" style="width:70px;" /></div>
+      <div><label>${tt('史詩','Epic')}</label><input type="number" id="gm-season-c-legendary" value="${SEASON_CRYSTAL_DROPS.legendary}" min="0" style="width:70px;" /></div>
+    </div>
+    <div class="form-row" style="margin-top:10px;">
+      <button class="btn small" id="gm-season-save-btn">${tt('儲存賽季設定','Save Season Settings')}</button>
+      <button class="btn small secondary" id="gm-season-reset-btn">${tt('還原預設值','Reset to Default')}</button>
+    </div>
+  </div>`;
+
+  html += `<div class="panel">
+    <h2>🌌 ${tt('星盤解鎖樹設定','Star Chart Settings')}</h2>
+    <div class="farm-upgrade-title">${tt('各元素節點解鎖成本（同元素第1/2/3個節點依序消耗，日月之輝）','Unlock cost per element node (1st/2nd/3rd within the same element, Sun-Moon Brilliance)')}</div>
+    <div class="form-row">
+      <div><label>${tt('第1個','1st')}</label><input type="number" id="gm-sc-cost-0" value="${STAR_CHART_COST_TIERS[0]}" min="0" style="width:80px;" /></div>
+      <div><label>${tt('第2個','2nd')}</label><input type="number" id="gm-sc-cost-1" value="${STAR_CHART_COST_TIERS[1]}" min="0" style="width:80px;" /></div>
+      <div><label>${tt('第3個','3rd')}</label><input type="number" id="gm-sc-cost-2" value="${STAR_CHART_COST_TIERS[2]}" min="0" style="width:80px;" /></div>
+    </div>
+    <div class="farm-upgrade-title" style="margin-top:10px;">${tt('每節點加成（百分比，同元素三個節點可疊加）','Bonus per node (percent, stacks up to 3 nodes per element)')}</div>
+    <div class="form-row">
+      <div><label>🔥 ${tt('火·金幣','Fire·Coin')}</label><input type="number" id="gm-sc-bonus-fire" value="${STAR_CHART_BONUS_PER_NODE.fire}" min="0" style="width:70px;" /></div>
+      <div><label>🌬️ ${tt('風·結晶','Wind·Crystal')}</label><input type="number" id="gm-sc-bonus-wind" value="${STAR_CHART_BONUS_PER_NODE.wind}" min="0" style="width:70px;" /></div>
+      <div><label>💧 ${tt('水·加速','Water·Speed')}</label><input type="number" id="gm-sc-bonus-water" value="${STAR_CHART_BONUS_PER_NODE.water}" min="0" style="width:70px;" /></div>
+      <div><label>🌍 ${tt('土·加量','Earth·Yield')}</label><input type="number" id="gm-sc-bonus-earth" value="${STAR_CHART_BONUS_PER_NODE.earth}" min="0" style="width:70px;" /></div>
+    </div>
+    <div class="form-row" style="margin-top:10px;">
+      <button class="btn small" id="gm-sc-save-btn">${tt('儲存星盤設定','Save Star Chart Settings')}</button>
+      <button class="btn small secondary" id="gm-sc-reset-btn">${tt('還原預設值','Reset to Default')}</button>
+    </div>
+  </div>`;
+
   body.innerHTML = html;
 
   wirePager(state.gmPlayersPage, gmPlayersTotalPages, 'gm-players-page', 'gmPlayersPage');
@@ -3901,6 +4313,73 @@ async function renderGM(body){
   if(seedResetBtn) seedResetBtn.onclick = async ()=>{
     await saveSeedPrices({...DEFAULT_SEED_COSTS});
     showToast(tt('已還原為預設種子價格','Reverted to default seed prices'));
+    renderTab();
+  };
+  const seasonActiveBox = document.getElementById('gm-season-active');
+  if(seasonActiveBox) seasonActiveBox.onchange = async ()=>{
+    await saveSeasonActive(seasonActiveBox.checked);
+    showToast(seasonActiveBox.checked ? tt('賽季已開啟','Season activated') : tt('賽季已關閉','Season deactivated'));
+    renderTab();
+  };
+  const seasonSaveBtn = document.getElementById('gm-season-save-btn');
+  if(seasonSaveBtn) seasonSaveBtn.onclick = async ()=>{
+    const cost = parseFloat(document.getElementById('gm-season-cost').value);
+    const w = {
+      common: parseFloat(document.getElementById('gm-season-w-common').value),
+      uncommon: parseFloat(document.getElementById('gm-season-w-uncommon').value),
+      rare: parseFloat(document.getElementById('gm-season-w-rare').value),
+      legendary: parseFloat(document.getElementById('gm-season-w-legendary').value),
+    };
+    const c = {
+      common: parseFloat(document.getElementById('gm-season-c-common').value),
+      uncommon: parseFloat(document.getElementById('gm-season-c-uncommon').value),
+      rare: parseFloat(document.getElementById('gm-season-c-rare').value),
+      legendary: parseFloat(document.getElementById('gm-season-c-legendary').value),
+    };
+    if(isNaN(cost) || cost < 0 || Object.values(w).some(v=>isNaN(v)||v<0) || Object.values(c).some(v=>isNaN(v)||v<0)){
+      showToast(tt('請輸入有效的非負數字','Please enter a valid non-negative number')); return;
+    }
+    if(Object.values(w).every(v=>v===0)){ showToast(tt('至少要有一個稀有度的權重大於 0','At least one rarity weight must be greater than 0')); return; }
+    SEASON_DRAW_COST = cost;
+    SEASON_DRAW_WEIGHTS = w;
+    SEASON_CRYSTAL_DROPS = c;
+    await saveSeasonDrawSettings();
+    showToast(tt('賽季抽卡設定已更新，即時對所有玩家生效 ⚡','Season draw settings updated, effective immediately for all players ⚡'));
+    renderTab();
+  };
+  const seasonResetBtn = document.getElementById('gm-season-reset-btn');
+  if(seasonResetBtn) seasonResetBtn.onclick = async ()=>{
+    SEASON_DRAW_COST = DEFAULT_SEASON_DRAW_COST;
+    SEASON_DRAW_WEIGHTS = {...DEFAULT_SEASON_DRAW_WEIGHTS};
+    SEASON_CRYSTAL_DROPS = {...DEFAULT_SEASON_CRYSTAL_DROPS};
+    await saveSeasonDrawSettings();
+    showToast(tt('已還原為預設賽季設定','Reverted to default season settings'));
+    renderTab();
+  };
+  const scSaveBtn = document.getElementById('gm-sc-save-btn');
+  if(scSaveBtn) scSaveBtn.onclick = async ()=>{
+    const costs = [0,1,2].map(i=>parseFloat(document.getElementById(`gm-sc-cost-${i}`).value));
+    const bonus = {
+      fire: parseFloat(document.getElementById('gm-sc-bonus-fire').value),
+      wind: parseFloat(document.getElementById('gm-sc-bonus-wind').value),
+      water: parseFloat(document.getElementById('gm-sc-bonus-water').value),
+      earth: parseFloat(document.getElementById('gm-sc-bonus-earth').value),
+    };
+    if(costs.some(v=>isNaN(v)||v<0) || Object.values(bonus).some(v=>isNaN(v)||v<0)){
+      showToast(tt('請輸入有效的非負數字','Please enter a valid non-negative number')); return;
+    }
+    STAR_CHART_COST_TIERS = costs;
+    STAR_CHART_BONUS_PER_NODE = bonus;
+    await saveStarChartConfig();
+    showToast(tt('星盤設定已更新','Star Chart settings updated'));
+    renderTab();
+  };
+  const scResetBtn = document.getElementById('gm-sc-reset-btn');
+  if(scResetBtn) scResetBtn.onclick = async ()=>{
+    STAR_CHART_COST_TIERS = [...DEFAULT_STAR_CHART_COST_TIERS];
+    STAR_CHART_BONUS_PER_NODE = {...DEFAULT_STAR_CHART_BONUS_PER_NODE};
+    await saveStarChartConfig();
+    showToast(tt('已還原為預設星盤設定','Reverted to default star chart settings'));
     renderTab();
   };
 }
