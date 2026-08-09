@@ -797,8 +797,66 @@ function rebuildSeasonCardIndex(){
   SEASON_CARDS.forEach(c=>{ SEASON_CARDS_BY_ID[c.id] = c; });
 }
 function seasonCardName(c){ return appLang === 'zh' ? c.name : (c.nameEn||c.name); }
+
+// 第 13 張・賽季傳說卡（集滿 12 張黃道卡後解鎖，卡面為循環播放的動態影片）
+const DEFAULT_SEASON_LEGENDARY_CARD = {
+  id:'season_ophiuchus',
+  name:'蛇夫座・持蛇者',
+  nameEn:'Ophiuchus · The Serpent Bearer',
+  video:'assets/zodiac/legendary_13.mp4',
+  webm:'', // 目前僅有 mp4（2.7MB，已足夠精簡，不需另外提供 webm）
+  poster:'', // 選填，影片載入前顯示的靜態縮圖路徑
+};
+let SEASON_LEGENDARY_CARD = {...DEFAULT_SEASON_LEGENDARY_CARD};
+function seasonLegendaryCardName(c){ return appLang === 'zh' ? c.name : (c.nameEn||c.name); }
+// 產生可循環自動播放的卡面影片 HTML；extraStyle 可疊加額外的 inline style（例如尺寸/圓角覆寫）
+function seasonLegendaryVideoMarkup(c, extraStyle){
+  const sources = [
+    c.webm ? `<source src="${c.webm}" type="video/webm">` : '',
+    c.video ? `<source src="${c.video}" type="video/mp4">` : '',
+  ].join('');
+  return `<video autoplay loop muted playsinline preload="metadata"${c.poster ? ` poster="${c.poster}"` : ''} style="width:100%;height:100%;object-fit:cover;border-radius:8px;${extraStyle||''}">${sources}</video>`;
+}
 const DEFAULT_SEASON_CARD_DRAW_COST = 100; // 每次抽卡消耗的貢獻點數
 let SEASON_CARD_DRAW_COST = DEFAULT_SEASON_CARD_DRAW_COST;
+let SEASON_MODAL_LIST = []; // 供賽季卡放大檢視彈窗的上一張/下一張導航使用
+function seasonCardById(id){
+  return SEASON_CARDS_BY_ID[id] || (SEASON_LEGENDARY_CARD.id === id ? SEASON_LEGENDARY_CARD : null);
+}
+// 賽季卡（12張黃道 + 第13張傳說卡）共用的收藏格markup，收藏頁與賽季頁都會用到
+function seasonCardsGridMarkup(p){
+  const isComplete = SEASON_CARDS.every(c=>p.seasonCards[c.id]);
+  const zodiacHtml = SEASON_CARDS.map(c=>{
+    const owned = p.seasonCards[c.id]||0;
+    return owned>0
+      ? `<div class="mini-card has-art owned" style="background-image:url('${c.image}');" data-card-id="${c.id}">
+          <span class="name">${seasonCardName(c)}</span>
+          <div class="count">x${owned}</div>
+        </div>`
+      : `<div class="mini-card locked" data-card-id="${c.id}">
+          <div class="icon">🔒</div>
+          <div class="name">${seasonCardName(c)}</div>
+        </div>`;
+  }).join('');
+  const legendHtml = isComplete
+    ? `<div class="mini-card owned" style="position:relative;overflow:hidden;border-color:var(--legendary-a);box-shadow:0 0 12px rgba(185,140,240,0.4);" data-card-id="${SEASON_LEGENDARY_CARD.id}">
+        ${seasonLegendaryVideoMarkup(SEASON_LEGENDARY_CARD, 'position:absolute;inset:0;z-index:0;border-radius:9px;')}
+        <div style="position:absolute;inset:0;z-index:1;border-radius:9px;background:linear-gradient(180deg, rgba(10,8,16,0.05) 0%, rgba(10,8,16,0.15) 60%, rgba(10,8,16,0.78) 100%);"></div>
+        <span class="name" style="position:relative;z-index:2;">${seasonLegendaryCardName(SEASON_LEGENDARY_CARD)}</span>
+      </div>`
+    : `<div class="mini-card locked" data-card-id="${SEASON_LEGENDARY_CARD.id}">
+        <div class="icon">🔒</div>
+        <div class="name">${tt('？？？（集滿12張解鎖）','??? (Unlock at 12/12)')}</div>
+      </div>`;
+  return zodiacHtml + legendHtml;
+}
+// 綁定賽季卡收藏格的點擊事件（收藏頁／賽季頁共用），root 為包含這些 .mini-card 的容器
+function bindSeasonCardClicks(root){
+  SEASON_MODAL_LIST = [...SEASON_CARDS.map(c=>c.id), SEASON_LEGENDARY_CARD.id];
+  root.querySelectorAll('.mini-card[data-card-id]').forEach(el=>{
+    el.onclick = ()=>openSeasonCardModal(el.dataset.cardId);
+  });
+}
 
 const DEFAULT_SEASON_DRAW_WEIGHTS = {common:50, uncommon:30, rare:16, legendary:4};
 const DEFAULT_SEASON_DRAW_COST = 15;
@@ -1152,9 +1210,16 @@ async function doSeasonCardDraw(){
   state.seasonCardDrawResult = card;
   await savePlayer(p);
   render();
-  showToast(completedNow
-    ? tt(`🎉 抽到「${seasonCardName(card)}」！12 張賽季卡已全部收集完成，第13張傳說卡已解鎖！`, `🎉 Drew "${seasonCardName(card)}"! All 12 season cards collected - the 13th legendary card is now unlocked!`)
-    : tt(`✨ 抽到「${seasonCardName(card)}」！`, `✨ Drew "${seasonCardName(card)}"!`));
+  if(completedNow){
+    setTimeout(()=>{
+      const legendEl = document.getElementById('season-legendary-reveal');
+      if(legendEl) legendEl.classList.add('legendary-reveal');
+      playLegendaryRevealFx();
+      showToast(tt(`🎉 抽到「${seasonCardName(card)}」！12 張賽季卡已全部收集完成，第13張傳說卡「${seasonLegendaryCardName(SEASON_LEGENDARY_CARD)}」已解鎖！`, `🎉 Drew "${seasonCardName(card)}"! All 12 season cards collected - the 13th legendary card "${seasonLegendaryCardName(SEASON_LEGENDARY_CARD)}" is now unlocked!`), {legendary:true});
+    }, 380);
+  } else {
+    showToast(tt(`✨ 抽到「${seasonCardName(card)}」！`, `✨ Drew "${seasonCardName(card)}"!`));
+  }
 }
 function renderSeason(body){
   const p = state.player;
@@ -1213,23 +1278,26 @@ function renderSeason(body){
     <div class="countdown" style="margin-bottom:10px;">${tt(`本次抽到「${seasonCardName(cardResult)}」`, `Drew "${seasonCardName(cardResult)}" this time`)}</div>`;
   }
   if(isComplete){
-    html += `<div class="countdown" style="margin-bottom:10px;color:var(--gold-bright);">🎉 ${tt('12 張賽季卡已全部收集完成！第 13 張傳說卡即將登場…', 'All 12 season cards collected! The 13th legendary card is coming soon...')}</div>`;
+    html += `<div class="countdown" style="margin-bottom:6px;color:var(--gold-bright);">🎉 ${tt('12 張賽季卡已全部收集完成！第 13 張傳說卡已解鎖：', 'All 12 season cards collected! The 13th legendary card is unlocked:')}</div>
+    <div class="card-flip-row">
+      <div class="flip-card" id="season-legendary-reveal" style="width:140px;">
+        <div class="flip-card-inner" style="transform:rotateY(180deg);">
+          <div class="flip-face flip-back">✦</div>
+          <div class="flip-face flip-front cf-legendary">
+            <div class="card-face has-art" style="padding:0;overflow:hidden;display:block;position:relative;">
+              ${seasonLegendaryVideoMarkup(SEASON_LEGENDARY_CARD)}
+              <span class="rarity-tag rar-legendary" style="position:absolute;top:8px;left:8px;">${RARITY_LABEL.legendary}</span>
+              <div class="name" style="position:absolute;bottom:8px;left:0;right:0;text-align:center;">${seasonLegendaryCardName(SEASON_LEGENDARY_CARD)}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>`;
   } else {
     html += `<button class="btn" id="season-card-draw-btn" ${p.materials.contrib < SEASON_CARD_DRAW_COST ? 'disabled' : ''}>${tt(`抽取賽季卡（🏅 ${SEASON_CARD_DRAW_COST}）`, `Draw Season Card (🏅 ${SEASON_CARD_DRAW_COST})`)}</button>`;
   }
   html += `<div class="grid" style="margin-top:14px;">
-    ${SEASON_CARDS.map(c=>{
-      const owned = p.seasonCards[c.id]||0;
-      return owned>0
-        ? `<div class="mini-card has-art owned" style="background-image:url('${c.image}');">
-            <span class="name">${seasonCardName(c)}</span>
-            <div class="count">x${owned}</div>
-          </div>`
-        : `<div class="mini-card locked">
-            <div class="icon">🔒</div>
-            <div class="name">${seasonCardName(c)}</div>
-          </div>`;
-    }).join('')}
+    ${seasonCardsGridMarkup(p)}
   </div>
   </div>`;
   body.innerHTML = html;
@@ -1237,6 +1305,7 @@ function renderSeason(body){
   if(btn) btn.onclick = doSeasonDraw;
   const cardBtn = document.getElementById('season-card-draw-btn');
   if(cardBtn) cardBtn.onclick = doSeasonCardDraw;
+  bindSeasonCardClicks(body);
 }
 
 function renderStarChart(body){
@@ -2413,6 +2482,72 @@ function openCardModal(cardId){
   if(sellExtraBtn) sellExtraBtn.onclick = ()=>sellCard(cardId, owned - 1);
 }
 
+// 賽季卡（12張黃道 + 第13張傳說卡）的放大檢視彈窗，與主收藏牌共用同一個彈窗 DOM，
+// 但不含出售功能（賽季卡目前沒有出售機制）
+function openSeasonCardModal(cardId){
+  const c = seasonCardById(cardId);
+  if(!c) return;
+  const p = state.player;
+  ensureMaterials(p);
+  const isLegendaryCard = c.id === SEASON_LEGENDARY_CARD.id;
+  const owned = isLegendaryCard
+    ? (SEASON_CARDS.every(sc=>p.seasonCards[sc.id]) ? 1 : 0)
+    : (p.seasonCards[c.id] || 0);
+  const name = isLegendaryCard ? seasonLegendaryCardName(c) : seasonCardName(c);
+  const content = document.getElementById('card-modal-content');
+  const showLegendaryFx = isLegendaryCard && owned > 0;
+
+  let mediaHtml;
+  if(owned > 0 && isLegendaryCard){
+    mediaHtml = `<div class="card-modal-img${showLegendaryFx?' legendary-img':''}" style="padding:0;overflow:hidden;">${seasonLegendaryVideoMarkup(c, 'height:auto;')}</div>`;
+  } else if(owned > 0){
+    mediaHtml = `<img src="${c.image}" alt="${escapeHtml(name)}" class="card-modal-img" />`;
+  } else {
+    mediaHtml = `<div class="card-modal-icon locked-img">🔒</div>`;
+  }
+
+  let bodyHtml = `
+    ${mediaHtml}
+    ${showLegendaryFx ? `<div class="legendary-modal-badge">✨ ${tt('傳說卡','Legendary Card')} ✨</div>` : ''}
+    <div class="card-modal-name">${owned>0 ? escapeHtml(name) : '???'}</div>
+    <div class="card-modal-rarity">${isLegendaryCard ? tt('傳說・第13張','Legendary · 13th Card') : tt('賽季卡・黃道十二宮','Season Card · Zodiac')}</div>
+  `;
+
+  if(owned > 0 && !isLegendaryCard){
+    bodyHtml += `<div class="card-modal-sell-box"><div style="font-size:12px;color:var(--muted);font-family:'Space Mono',monospace;">${tt(`持有 x${owned}`, `Owned x${owned}`)}</div></div>`;
+  } else if(owned === 0){
+    bodyHtml += `<div class="card-modal-locked-note">${isLegendaryCard ? tt('集滿 12 張賽季卡即可解鎖','Collect all 12 season cards to unlock') : tt('尚未擁有此卡，前往賽季頁抽取賽季卡試試','Not yet owned - try drawing season cards on the Season tab')}</div>`;
+  }
+
+  content.innerHTML = bodyHtml;
+
+  const idx = SEASON_MODAL_LIST.indexOf(cardId);
+  const hasList = idx !== -1 && SEASON_MODAL_LIST.length > 1;
+  let navHtml = '';
+  if(hasList){
+    navHtml = `
+      <button class="card-modal-nav prev" id="card-modal-prev">‹</button>
+      <button class="card-modal-nav next" id="card-modal-next">›</button>
+    `;
+  }
+  document.getElementById('card-modal-nav-slot').innerHTML = navHtml;
+  if(hasList){
+    document.getElementById('card-modal-prev').onclick = ()=>{
+      const prevIdx = (idx - 1 + SEASON_MODAL_LIST.length) % SEASON_MODAL_LIST.length;
+      openSeasonCardModal(SEASON_MODAL_LIST[prevIdx]);
+    };
+    document.getElementById('card-modal-next').onclick = ()=>{
+      const nextIdx = (idx + 1) % SEASON_MODAL_LIST.length;
+      openSeasonCardModal(SEASON_MODAL_LIST[nextIdx]);
+    };
+  }
+
+  document.getElementById('card-modal').style.display = 'flex';
+  const modalBox = document.querySelector('.card-modal-box');
+  if(modalBox) modalBox.classList.toggle('legendary-modal', showLegendaryFx);
+  if(showLegendaryFx) playLegendaryRevealFx();
+}
+
 function sellableExtraCommonUncommon(){
   const targets = ['common','uncommon'];
   const items = [];
@@ -3548,33 +3683,42 @@ function renderResonance(body){
 
 function renderCollection(body){
   const p = state.player;
-  const rarities = ['all', ...RARITY_ORDER];
+  ensureMaterials(p);
+  const rarities = ['all', ...RARITY_ORDER, 'season'];
+  const isSeasonFilter = state.filter === 'season';
   let filtered = DECK;
-  if(state.filter !== 'all') filtered = DECK.filter(c=>c.rarity===state.filter);
-  COLLECTION_MODAL_LIST = filtered.map(c=>c.id);
+  if(!isSeasonFilter && state.filter !== 'all') filtered = DECK.filter(c=>c.rarity===state.filter);
+  if(!isSeasonFilter) COLLECTION_MODAL_LIST = filtered.map(c=>c.id);
 
   const {totalQty: extraQty, totalCoins: extraCoins} = sellableExtraCommonUncommon();
+  const seasonOwnedCount = SEASON_CARDS.filter(c=>p.seasonCards[c.id]).length;
 
   let html = `<div class="panel">
     <h2>${t('collectionHeader')}</h2>
-    <p class="sub">${tt(`共 ${DECK.length} 張塔羅牌，收集齊全的占卜師才是真正的秘境嚮導 · 點擊已持有的卡片可直接出售：普通 ✦${SELL_PRICES.common} · 罕見 ✦${SELL_PRICES.uncommon} · 稀有 ✦${SELL_PRICES.rare} · 史詩 ✦${SELL_PRICES.legendary}`, `${DECK.length} tarot cards in total - only a true diviner completes the set. Click a card you own to sell it directly: Common ✦${SELL_PRICES.common} · Uncommon ✦${SELL_PRICES.uncommon} · Rare ✦${SELL_PRICES.rare} · Epic ✦${SELL_PRICES.legendary}`)}</p>
+    <p class="sub">${isSeasonFilter
+      ? tt(`本賽季共 13 張賽季卡（12 張黃道 + 1 張傳說卡），收集進度 ${seasonOwnedCount}/12，點擊卡片可放大檢視。`, `13 season cards this season (12 zodiac + 1 legendary). Progress: ${seasonOwnedCount}/12. Click a card to view it larger.`)
+      : tt(`共 ${DECK.length} 張塔羅牌，收集齊全的占卜師才是真正的秘境嚮導 · 點擊已持有的卡片可直接出售：普通 ✦${SELL_PRICES.common} · 罕見 ✦${SELL_PRICES.uncommon} · 稀有 ✦${SELL_PRICES.rare} · 史詩 ✦${SELL_PRICES.legendary}`, `${DECK.length} tarot cards in total - only a true diviner completes the set. Click a card you own to sell it directly: Common ✦${SELL_PRICES.common} · Uncommon ✦${SELL_PRICES.uncommon} · Rare ✦${SELL_PRICES.rare} · Epic ✦${SELL_PRICES.legendary}`)}</p>
     <div class="form-row" style="margin-bottom:14px;">
-      <button class="btn small secondary" id="sell-extra-common-uncommon-btn" ${extraQty===0?'disabled':''}>${tt('一鍵出售多餘普通／罕見卡','Sell extra Common/Uncommon')}${extraQty>0?`（${tt(`${extraQty} 張`,`x${extraQty}`)} · +✦${extraCoins}）`:''}</button>
+      <button class="btn small secondary" id="sell-extra-common-uncommon-btn" ${extraQty===0||isSeasonFilter?'disabled':''} ${isSeasonFilter?'style="display:none;"':''}>${tt('一鍵出售多餘普通／罕見卡','Sell extra Common/Uncommon')}${extraQty>0?`（${tt(`${extraQty} 張`,`x${extraQty}`)} · +✦${extraCoins}）`:''}</button>
     </div>
     <div class="filter-row">
-      ${rarities.map(r=>`<div class="chip-btn ${state.filter===r?'active':''}" data-filter="${r}">${r==='all'?tt('全部','All'):RARITY_LABEL[r]}</div>`).join('')}
+      ${rarities.map(r=>`<div class="chip-btn ${state.filter===r?'active':''}" data-filter="${r}">${r==='all'?tt('全部','All'):r==='season'?tt('賽季卡','Season'):RARITY_LABEL[r]}</div>`).join('')}
     </div>
     <div class="grid">
-      ${filtered.map(c=>cardMini(c.id, p.cards[c.id]||0)).join('')}
+      ${isSeasonFilter ? seasonCardsGridMarkup(p) : filtered.map(c=>cardMini(c.id, p.cards[c.id]||0)).join('')}
     </div>
   </div>`;
   body.innerHTML = html;
   document.querySelectorAll('.chip-btn').forEach(b=>{
     b.onclick = ()=>{ state.filter = b.dataset.filter; renderTab(); };
   });
-  document.querySelectorAll('.mini-card').forEach(el=>{
-    el.onclick = ()=>openCardModal(el.dataset.cardId);
-  });
+  if(isSeasonFilter){
+    bindSeasonCardClicks(body);
+  } else {
+    document.querySelectorAll('.mini-card').forEach(el=>{
+      el.onclick = ()=>openCardModal(el.dataset.cardId);
+    });
+  }
   const sellExtraCUBtn = document.getElementById('sell-extra-common-uncommon-btn');
   if(sellExtraCUBtn) sellExtraCUBtn.onclick = ()=>sellExtraCommonUncommon();
 }
