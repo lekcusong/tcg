@@ -912,6 +912,192 @@ async function unlockStarChartNode(zodiacId){
   render();
   showToast(tt(`✦ 點亮「${tt(z.label,z.labelEn)}」！`, `✦ Lit up "${z.labelEn}"!`));
 }
+
+// ---------- Boss 戰：星毒巨蛇（階段三）----------
+const BOSS_STAGE_META = [
+  {label:'星毒巨蛇', labelEn:'Star-Venom Serpent', img:'assets/boss_stage1.jpg', desc:'基礎形態，靈活快速，擅長毒素與範圍攻擊。', descEn:'Base form - agile and fast, favors poison and area attacks.'},
+  {label:'虛空蛇主', labelEn:'Void Serpent Lord', img:'assets/boss_stage2.jpg', desc:'力量覺醒，召喚蛇影，攻擊範圍擴大，毒性增強。', descEn:'Power awakened - summons serpent shades, wider attacks, stronger venom.'},
+  {label:'終焉蛇神', labelEn:'Doomsday Serpent God', img:'assets/boss_stage3.jpg', desc:'完全體形態，操控星辰與毒素，擁有毀滅性的力量。', descEn:'Final form - commands the stars and venom, wields devastating power.'},
+];
+const DEFAULT_BOSS_STAGE_HP = [8000, 15000, 25000];
+const DEFAULT_BOSS_DIFFICULTY_MULT = 1.25;
+const DEFAULT_BOSS_CRYSTAL_COST = 5;
+const DEFAULT_BOSS_BURST_DAMAGE = 500;
+const DEFAULT_BOSS_CONTRIB_PER_BURST = 50;
+const DEFAULT_BOSS_BASE_REWARD = {coins: 200, crystal: 10};
+const DEFAULT_BOSS_BONUS_POOL = {coins: 5000, crystal: 200};
+
+let BOSS_STAGE_HP = [...DEFAULT_BOSS_STAGE_HP];
+let BOSS_DIFFICULTY_MULT = DEFAULT_BOSS_DIFFICULTY_MULT;
+let BOSS_CRYSTAL_COST = DEFAULT_BOSS_CRYSTAL_COST;
+let BOSS_BURST_DAMAGE = DEFAULT_BOSS_BURST_DAMAGE;
+let BOSS_CONTRIB_PER_BURST = DEFAULT_BOSS_CONTRIB_PER_BURST;
+let BOSS_BASE_REWARD = {...DEFAULT_BOSS_BASE_REWARD};
+let BOSS_BONUS_POOL = {...DEFAULT_BOSS_BONUS_POOL};
+
+async function loadBossConfig(){
+  try{
+    const r = await storage.get(seasonKey('boss_settings'));
+    if(r){
+      const s = JSON.parse(r.value);
+      if(Array.isArray(s.stageHp) && s.stageHp.length===3) BOSS_STAGE_HP = s.stageHp;
+      if(typeof s.difficultyMult === 'number' && s.difficultyMult > 0) BOSS_DIFFICULTY_MULT = s.difficultyMult;
+      if(typeof s.crystalCost === 'number' && s.crystalCost >= 0) BOSS_CRYSTAL_COST = s.crystalCost;
+      if(typeof s.burstDamage === 'number' && s.burstDamage >= 0) BOSS_BURST_DAMAGE = s.burstDamage;
+      if(typeof s.contribPerBurst === 'number' && s.contribPerBurst >= 0) BOSS_CONTRIB_PER_BURST = s.contribPerBurst;
+      if(s.baseReward) BOSS_BASE_REWARD = s.baseReward;
+      if(s.bonusPool) BOSS_BONUS_POOL = s.bonusPool;
+    }
+  }catch(e){ /* keep defaults */ }
+}
+async function saveBossConfig(){
+  await storage.set(seasonKey('boss_settings'), JSON.stringify({
+    stageHp: BOSS_STAGE_HP, difficultyMult: BOSS_DIFFICULTY_MULT, crystalCost: BOSS_CRYSTAL_COST,
+    burstDamage: BOSS_BURST_DAMAGE, contribPerBurst: BOSS_CONTRIB_PER_BURST,
+    baseReward: BOSS_BASE_REWARD, bonusPool: BOSS_BONUS_POOL,
+  }));
+}
+function bossStageMaxHp(stage, cycle){
+  const base = BOSS_STAGE_HP[stage-1] || BOSS_STAGE_HP[0];
+  return Math.round(base * Math.pow(BOSS_DIFFICULTY_MULT, cycle-1));
+}
+async function loadBossState(){
+  try{
+    const r = await storage.get('boss:state');
+    if(r) return JSON.parse(r.value);
+  }catch(e){ /* fall through */ }
+  return null;
+}
+async function saveBossState(s){
+  await storage.set('boss:state', JSON.stringify(s));
+}
+async function ensureBossState(){
+  let s = await loadBossState();
+  if(!s || s.seasonId !== CURRENT_SEASON_ID){
+    s = {seasonId: CURRENT_SEASON_ID, cycle:1, stage:1, hp: bossStageMaxHp(1,1), maxHp: bossStageMaxHp(1,1)};
+    await saveBossState(s);
+  }
+  return s;
+}
+function bossContribKey(cycle, nickname){
+  return `boss:contrib:${CURRENT_SEASON_ID}:${cycle}:${nickname}`;
+}
+async function addBossContribution(nickname, cycle, points){
+  let current = 0;
+  try{
+    const r = await storage.get(bossContribKey(cycle, nickname));
+    if(r) current = parseFloat(r.value) || 0;
+  }catch(e){ /* start from 0 */ }
+  const next = current + points;
+  await storage.set(bossContribKey(cycle, nickname), JSON.stringify(next));
+  return next;
+}
+async function fetchBossContribList(cycle){
+  try{
+    const list = await storage.list(`boss:contrib:${CURRENT_SEASON_ID}:${cycle}:`);
+    if(!list || !list.keys) return [];
+    const entries = await Promise.all(list.keys.map(async k=>{
+      try{
+        const r = await storage.get(k);
+        const nickname = k.split(':').pop();
+        return r ? {nickname, points: parseFloat(r.value)||0} : null;
+      }catch(e){ return null; }
+    }));
+    return entries.filter(Boolean).sort((a,b)=>b.points-a.points);
+  }catch(e){ return []; }
+}
+async function doBossBurst(){
+  const p = state.player;
+  ensureMaterials(p);
+  if(p.materials.crystal < BOSS_CRYSTAL_COST){ showToast(tt(`星軌結晶不足，需要 ${BOSS_CRYSTAL_COST}`, `Not enough Star-Trail Crystal, need ${BOSS_CRYSTAL_COST}`)); return; }
+  let boss = await ensureBossState();
+  if(boss.hp <= 0){ showToast(tt('Boss 正在轉換階段，請稍後再試','The Boss is transitioning stages, try again shortly')); return; }
+  p.materials.crystal -= BOSS_CRYSTAL_COST;
+  await savePlayer(p);
+  boss.hp = Math.max(0, boss.hp - BOSS_BURST_DAMAGE);
+  const newContrib = await addBossContribution(p.nickname, boss.cycle, BOSS_CONTRIB_PER_BURST);
+  let defeatMsg = '';
+  if(boss.hp <= 0){
+    if(boss.stage < 3){
+      boss.stage += 1;
+      boss.maxHp = bossStageMaxHp(boss.stage, boss.cycle);
+      boss.hp = boss.maxHp;
+      await saveBossState(boss);
+      defeatMsg = tt(`⚔️ 「${BOSS_STAGE_META[boss.stage-2].label}」被擊破！Boss 進入「${BOSS_STAGE_META[boss.stage-1].label}」！`, `⚔️ "${BOSS_STAGE_META[boss.stage-2].labelEn}" defeated! The Boss enters "${BOSS_STAGE_META[boss.stage-1].labelEn}"!`);
+    } else {
+      const contribList = await fetchBossContribList(boss.cycle);
+      const totalContrib = contribList.reduce((a,c)=>a+c.points,0) || 1;
+      await Promise.all(contribList.map(async c=>{
+        const player = await loadPlayer(c.nickname);
+        if(!player) return;
+        ensureMaterials(player);
+        const share = c.points / totalContrib;
+        const bonusCoins = Math.round(BOSS_BONUS_POOL.coins * share);
+        const bonusCrystal = Math.round(BOSS_BONUS_POOL.crystal * share);
+        player.coins = (player.coins||0) + BOSS_BASE_REWARD.coins + bonusCoins;
+        player.materials.crystal += (BOSS_BASE_REWARD.crystal||0) + bonusCrystal;
+        await savePlayer(player);
+      }));
+      const nextCycle = boss.cycle + 1;
+      boss = {seasonId: CURRENT_SEASON_ID, cycle: nextCycle, stage:1, hp: bossStageMaxHp(1,nextCycle), maxHp: bossStageMaxHp(1,nextCycle)};
+      await saveBossState(boss);
+      defeatMsg = tt(`🎉 全服擊敗「終焉蛇神」！獎勵已依貢獻發放，Boss 第 ${nextCycle} 輪重新降臨（更難）！`, `🎉 The server has defeated the Doomsday Serpent God! Rewards distributed by contribution - Cycle ${nextCycle} begins (harder)!`);
+      if(state.player.nickname && contribList.find(c=>c.nickname===state.player.nickname)){
+        state.player = await loadPlayer(state.player.nickname);
+      }
+    }
+  } else {
+    await saveBossState(boss);
+  }
+  state.bossLastAttack = {damage: BOSS_BURST_DAMAGE, contrib: newContrib};
+  render();
+  showToast(defeatMsg || tt(`⚔️ 星象爆發造成 ${BOSS_BURST_DAMAGE} 傷害！貢獻點 +${BOSS_CONTRIB_PER_BURST}`, `⚔️ Astral Burst dealt ${BOSS_BURST_DAMAGE} damage! Contribution +${BOSS_CONTRIB_PER_BURST}`));
+}
+function renderBoss(body){
+  const p = state.player;
+  ensureMaterials(p);
+  if(!SEASON_ACTIVE){
+    body.innerHTML = `<div class="panel"><h2>${tt('Boss 戰','Boss Battle')}</h2><p class="sub">${tt('目前沒有進行中的賽季。','No season is currently active.')}</p></div>`;
+    return;
+  }
+  body.innerHTML = `<div class="panel"><p class="sub">${tt('讀取戰況中…','Loading battle status…')}</p></div>`;
+  (async ()=>{
+    const boss = await ensureBossState();
+    const meta = BOSS_STAGE_META[boss.stage-1];
+    const contribList = await fetchBossContribList(boss.cycle);
+    const myContrib = contribList.find(c=>c.nickname===p.nickname);
+    const pct = Math.max(0, Math.min(100, (boss.hp/boss.maxHp)*100));
+    let html = `<div class="panel">
+      <h2>⚔️ ${tt(SEASON_LABEL_ZH, SEASON_LABEL_EN)} · ${tt('全服 Boss 戰','Server Boss Battle')}</h2>
+      <p class="sub">${tt(`第 ${boss.cycle} 輪　第 ${boss.stage}/3 階段`, `Cycle ${boss.cycle} · Stage ${boss.stage}/3`)}</p>
+      <div style="text-align:center;">
+        <img src="${meta.img}" style="width:100%;max-width:340px;border-radius:14px;border:1px solid var(--gold);box-shadow:0 0 22px rgba(139,107,209,0.4);margin-bottom:10px;" alt="${meta.label}" />
+        <div style="font-family:'Cinzel Decorative',serif;color:var(--gold-bright);font-size:16px;">${tt(meta.label, meta.labelEn)}</div>
+        <p class="sub" style="margin-top:4px;">${tt(meta.desc, meta.descEn)}</p>
+      </div>
+      <div style="background:var(--bg-panel-raised, rgba(255,255,255,0.06));border-radius:999px;height:18px;overflow:hidden;border:1px solid var(--line);margin:12px 0 4px;">
+        <div style="height:100%;width:${pct}%;background:linear-gradient(90deg, var(--violet), var(--gold));"></div>
+      </div>
+      <div class="countdown" style="text-align:center;margin-bottom:12px;">${Math.max(0,boss.hp).toLocaleString()} / ${boss.maxHp.toLocaleString()} HP</div>
+      <div class="countdown" style="margin-bottom:10px;">🔮 ${tt('星軌結晶','Star-Trail Crystal')}：<b style="color:var(--gold-bright);">${p.materials.crystal}</b>　|　${tt('本輪貢獻','This cycle')}：<b style="color:var(--gold-bright);">${myContrib?myContrib.points:0}</b></div>
+      <button class="btn" id="boss-burst-btn" ${p.materials.crystal < BOSS_CRYSTAL_COST ? 'disabled' : ''}>${tt(`✦ 星象爆發（消耗🔮${BOSS_CRYSTAL_COST}，造成${BOSS_BURST_DAMAGE}傷害）`, `✦ Astral Burst (🔮${BOSS_CRYSTAL_COST} → ${BOSS_BURST_DAMAGE} dmg)`)}</button>
+    </div>`;
+    html += `<div class="panel"><h2>🏆 ${tt('本輪貢獻榜','This Cycle Leaderboard')}</h2>`;
+    if(contribList.length === 0){
+      html += `<p class="sub">${tt('還沒有人出手，快來搶頭香！','No one has attacked yet - be the first!')}</p>`;
+    } else {
+      html += `<div style="display:flex;flex-direction:column;gap:6px;">${contribList.slice(0,10).map((c,i)=>`
+        <div style="display:flex;justify-content:space-between;padding:6px 10px;border:1px solid var(--line);border-radius:8px;${c.nickname===p.nickname?'background:rgba(201,162,74,0.12);':''}">
+          <span>#${i+1} ${c.nickname}</span><span style="color:var(--gold-bright);">${c.points}</span>
+        </div>`).join('')}</div>`;
+    }
+    html += `</div>`;
+    body.innerHTML = html;
+    const btn = document.getElementById('boss-burst-btn');
+    if(btn) btn.onclick = doBossBurst;
+  })();
+}
+
 async function doSeasonDraw(){
   const p = state.player;
   ensureMaterials(p);
@@ -2261,6 +2447,7 @@ async function boot(){
   loadSeedPrices().catch(()=>{});
   loadSeasonConfig().catch(()=>{});
   loadStarChartConfig().catch(()=>{});
+  loadBossConfig().catch(()=>{});
   initWinBroadcastPoll();
   initNotifPoll();
   initChatPoll();
@@ -3047,6 +3234,7 @@ async function render(){
       <div class="tab ${state.tab==='resonance'?'active':''}" data-tab="resonance">${t('tabResonance')}</div>
       ${SEASON_ACTIVE ? `<div class="tab ${state.tab==='season'?'active':''}" data-tab="season">✦ ${tt(SEASON_LABEL_ZH, SEASON_LABEL_EN)}</div>` : ''}
       ${SEASON_ACTIVE ? `<div class="tab ${state.tab==='starchart'?'active':''}" data-tab="starchart">🌌 ${tt('星盤','Star Chart')}</div>` : ''}
+      ${SEASON_ACTIVE ? `<div class="tab ${state.tab==='boss'?'active':''}" data-tab="boss">⚔️ Boss</div>` : ''}
       <div class="tab ${state.tab==='collection'?'active':''}" data-tab="collection">${t('tabCollection')}</div>
       <div class="tab ${state.tab==='friends'?'active':''}" data-tab="friends">${t('tabFriends')}</div>
       <div class="tab ${state.tab==='auction'?'active':''}" data-tab="auction">${t('tabAuction')}</div>
@@ -3114,6 +3302,7 @@ function renderTab(){
   if(state.tab === 'resonance') return renderResonance(body);
   if(state.tab === 'season') return renderSeason(body);
   if(state.tab === 'starchart') return renderStarChart(body);
+  if(state.tab === 'boss') return renderBoss(body);
   if(state.tab === 'collection') return renderCollection(body);
   if(state.tab === 'friends') return renderFriends(body);
   if(state.tab === 'auction') return renderAuction(body);
@@ -4175,6 +4364,40 @@ async function renderGM(body){
     </div>
   </div>`;
 
+  html += `<div class="panel">
+    <h2>⚔️ ${tt('Boss 戰設定：星毒巨蛇','Boss Battle Settings')}</h2>
+    <div class="farm-upgrade-title">${tt('三階段血量上限（第1輪基準值）','Stage HP cap (baseline for cycle 1)')}</div>
+    <div class="form-row">
+      <div><label>${tt('第1階段','Stage 1')}</label><input type="number" id="gm-boss-hp-0" value="${BOSS_STAGE_HP[0]}" min="1" style="width:100px;" /></div>
+      <div><label>${tt('第2階段','Stage 2')}</label><input type="number" id="gm-boss-hp-1" value="${BOSS_STAGE_HP[1]}" min="1" style="width:100px;" /></div>
+      <div><label>${tt('第3階段','Stage 3')}</label><input type="number" id="gm-boss-hp-2" value="${BOSS_STAGE_HP[2]}" min="1" style="width:100px;" /></div>
+    </div>
+    <div class="form-row">
+      <div><label>${tt('每輪難度倍率','Difficulty mult / cycle')}</label><input type="number" id="gm-boss-diff" value="${BOSS_DIFFICULTY_MULT}" min="1" step="0.05" style="width:90px;" /></div>
+    </div>
+    <div class="farm-upgrade-title" style="margin-top:10px;">${tt('星象爆發設定','Astral Burst Settings')}</div>
+    <div class="form-row">
+      <div><label>${tt('消耗結晶','Crystal cost')}</label><input type="number" id="gm-boss-cost" value="${BOSS_CRYSTAL_COST}" min="0" style="width:80px;" /></div>
+      <div><label>${tt('固定傷害','Fixed damage')}</label><input type="number" id="gm-boss-dmg" value="${BOSS_BURST_DAMAGE}" min="0" style="width:90px;" /></div>
+      <div><label>${tt('貢獻點','Contribution')}</label><input type="number" id="gm-boss-contrib" value="${BOSS_CONTRIB_PER_BURST}" min="0" style="width:80px;" /></div>
+    </div>
+    <div class="farm-upgrade-title" style="margin-top:10px;">${tt('擊敗獎勵：基礎（人人有份，凡有貢獻皆得）','Defeat reward: base (flat, any contributor)')}</div>
+    <div class="form-row">
+      <div><label>✦ ${tt('金幣','Coins')}</label><input type="number" id="gm-boss-base-coins" value="${BOSS_BASE_REWARD.coins}" min="0" style="width:90px;" /></div>
+      <div><label>🔮 ${tt('結晶','Crystal')}</label><input type="number" id="gm-boss-base-crystal" value="${BOSS_BASE_REWARD.crystal}" min="0" style="width:90px;" /></div>
+    </div>
+    <div class="farm-upgrade-title" style="margin-top:10px;">${tt('擊敗獎勵：加碼獎池（依貢獻比例分配）','Defeat reward: bonus pool (split by contribution share)')}</div>
+    <div class="form-row">
+      <div><label>✦ ${tt('金幣總量','Total coins')}</label><input type="number" id="gm-boss-bonus-coins" value="${BOSS_BONUS_POOL.coins}" min="0" style="width:100px;" /></div>
+      <div><label>🔮 ${tt('結晶總量','Total crystal')}</label><input type="number" id="gm-boss-bonus-crystal" value="${BOSS_BONUS_POOL.crystal}" min="0" style="width:100px;" /></div>
+    </div>
+    <div class="form-row" style="margin-top:10px;">
+      <button class="btn small" id="gm-boss-save-btn">${tt('儲存 Boss 設定','Save Boss Settings')}</button>
+      <button class="btn small secondary" id="gm-boss-reset-btn">${tt('還原預設值','Reset to Default')}</button>
+      <button class="btn small secondary" id="gm-boss-force-reset-btn">${tt('強制重置本輪 Boss','Force Reset Current Boss')}</button>
+    </div>
+  </div>`;
+
   body.innerHTML = html;
 
   wirePager(state.gmPlayersPage, gmPlayersTotalPages, 'gm-players-page', 'gmPlayersPage');
@@ -4380,6 +4603,56 @@ async function renderGM(body){
     STAR_CHART_BONUS_PER_NODE = {...DEFAULT_STAR_CHART_BONUS_PER_NODE};
     await saveStarChartConfig();
     showToast(tt('已還原為預設星盤設定','Reverted to default star chart settings'));
+    renderTab();
+  };
+  const bossSaveBtn = document.getElementById('gm-boss-save-btn');
+  if(bossSaveBtn) bossSaveBtn.onclick = async ()=>{
+    const hp = [0,1,2].map(i=>parseFloat(document.getElementById(`gm-boss-hp-${i}`).value));
+    const diff = parseFloat(document.getElementById('gm-boss-diff').value);
+    const cost = parseFloat(document.getElementById('gm-boss-cost').value);
+    const dmg = parseFloat(document.getElementById('gm-boss-dmg').value);
+    const contrib = parseFloat(document.getElementById('gm-boss-contrib').value);
+    const baseCoins = parseFloat(document.getElementById('gm-boss-base-coins').value);
+    const baseCrystal = parseFloat(document.getElementById('gm-boss-base-crystal').value);
+    const bonusCoins = parseFloat(document.getElementById('gm-boss-bonus-coins').value);
+    const bonusCrystal = parseFloat(document.getElementById('gm-boss-bonus-crystal').value);
+    const nums = [...hp, diff, cost, dmg, contrib, baseCoins, baseCrystal, bonusCoins, bonusCrystal];
+    if(nums.some(v=>isNaN(v)||v<0) || diff <= 0){
+      showToast(tt('請輸入有效的非負數字','Please enter a valid non-negative number')); return;
+    }
+    BOSS_STAGE_HP = hp;
+    BOSS_DIFFICULTY_MULT = diff;
+    BOSS_CRYSTAL_COST = cost;
+    BOSS_BURST_DAMAGE = dmg;
+    BOSS_CONTRIB_PER_BURST = contrib;
+    BOSS_BASE_REWARD = {coins: baseCoins, crystal: baseCrystal};
+    BOSS_BONUS_POOL = {coins: bonusCoins, crystal: bonusCrystal};
+    await saveBossConfig();
+    showToast(tt('Boss 設定已更新','Boss settings updated'));
+    renderTab();
+  };
+  const bossResetBtn = document.getElementById('gm-boss-reset-btn');
+  if(bossResetBtn) bossResetBtn.onclick = async ()=>{
+    BOSS_STAGE_HP = [...DEFAULT_BOSS_STAGE_HP];
+    BOSS_DIFFICULTY_MULT = DEFAULT_BOSS_DIFFICULTY_MULT;
+    BOSS_CRYSTAL_COST = DEFAULT_BOSS_CRYSTAL_COST;
+    BOSS_BURST_DAMAGE = DEFAULT_BOSS_BURST_DAMAGE;
+    BOSS_CONTRIB_PER_BURST = DEFAULT_BOSS_CONTRIB_PER_BURST;
+    BOSS_BASE_REWARD = {...DEFAULT_BOSS_BASE_REWARD};
+    BOSS_BONUS_POOL = {...DEFAULT_BOSS_BONUS_POOL};
+    await saveBossConfig();
+    showToast(tt('已還原為預設 Boss 設定','Reverted to default boss settings'));
+    renderTab();
+  };
+  const bossForceResetBtn = document.getElementById('gm-boss-force-reset-btn');
+  if(bossForceResetBtn) bossForceResetBtn.onclick = async ()=>{
+    if(!confirm(tt('確定要強制重置本輪 Boss 血量嗎？（不會發放獎勵，貢獻榜保留）','Force reset current boss HP? (No rewards distributed, leaderboard kept)'))) return;
+    const boss = await ensureBossState();
+    boss.stage = 1;
+    boss.maxHp = bossStageMaxHp(1, boss.cycle);
+    boss.hp = boss.maxHp;
+    await saveBossState(boss);
+    showToast(tt('Boss 已重置回第 1 階段','Boss reset back to Stage 1'));
     renderTab();
   };
 }
