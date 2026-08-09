@@ -760,14 +760,18 @@ const CURRENT_SEASON_ID = 'season_2026_08'; // 換季只需改這個 id，舊賽
 const SEASON_LABEL_ZH = '星象幻境';
 const SEASON_LABEL_EN = 'Astral Reverie';
 const DEFAULT_SEASON_CARDS = [
-  {id:'season_aries', name:'牡羊之火', nameEn:'Flame of Aries', icon:'🔥', rarity:'common'},
-  {id:'season_taurus', name:'金牛之土', nameEn:'Earth of Taurus', icon:'🌾', rarity:'common'},
-  {id:'season_gemini', name:'雙子之風', nameEn:'Wind of Gemini', icon:'🌬️', rarity:'uncommon'},
-  {id:'season_cancer', name:'巨蟹之水', nameEn:'Water of Cancer', icon:'💧', rarity:'uncommon'},
-  {id:'season_leo', name:'獅子之焰', nameEn:'Blaze of Leo', icon:'🦁', rarity:'rare'},
-  {id:'season_scorpio', name:'天蠍之刃', nameEn:'Blade of Scorpio', icon:'🦂', rarity:'rare'},
-  {id:'season_sagittarius', name:'射手之矢', nameEn:'Arrow of Sagittarius', icon:'🏹', rarity:'rare'},
-  {id:'season_astral_nexus', name:'星軌樞紐', nameEn:'Astral Nexus', icon:'🌌', rarity:'legendary'},
+  {id:'season_aries', name:'牡羊座・燄焰戰士', nameEn:'Aries · The Flame Warrior', image:'assets/zodiac/aries.jpg'},
+  {id:'season_taurus', name:'金牛座・大地守衛', nameEn:'Taurus · The Earth Guardian', image:'assets/zodiac/taurus.jpg'},
+  {id:'season_gemini', name:'雙子座・雙生之魂', nameEn:'Gemini · The Twin Souls', image:'assets/zodiac/gemini.jpg'},
+  {id:'season_cancer', name:'巨蟹座・月之守望者', nameEn:'Cancer · The Moon Keeper', image:'assets/zodiac/cancer.jpg'},
+  {id:'season_leo', name:'獅子座・太陽之王', nameEn:'Leo · The Solar King', image:'assets/zodiac/leo.jpg'},
+  {id:'season_virgo', name:'處女座・星辰治療者', nameEn:'Virgo · The Star Healer', image:'assets/zodiac/virgo.jpg'},
+  {id:'season_libra', name:'天秤座・天界判官', nameEn:'Libra · The Celestial Judge', image:'assets/zodiac/libra.jpg'},
+  {id:'season_scorpio', name:'天蠍座・深淵使者', nameEn:'Scorpio · The Abyssal Herald', image:'assets/zodiac/scorpio.jpg'},
+  {id:'season_sagittarius', name:'射手座・星辰射手', nameEn:'Sagittarius · The Star Archer', image:'assets/zodiac/sagittarius.jpg'},
+  {id:'season_capricorn', name:'摩羯座・山嶽之主', nameEn:'Capricorn · The Mountain Lord', image:'assets/zodiac/capricorn.jpg'},
+  {id:'season_aquarius', name:'水瓶座・宇宙先知', nameEn:'Aquarius · The Cosmic Seer', image:'assets/zodiac/aquarius.jpg'},
+  {id:'season_pisces', name:'雙魚座・夢境旅人', nameEn:'Pisces · The Dream Wanderer', image:'assets/zodiac/pisces.jpg'},
 ];
 let SEASON_CARDS = DEFAULT_SEASON_CARDS.map(c=>({...c}));
 const SEASON_CARDS_BY_ID = {};
@@ -777,6 +781,8 @@ function rebuildSeasonCardIndex(){
   SEASON_CARDS.forEach(c=>{ SEASON_CARDS_BY_ID[c.id] = c; });
 }
 function seasonCardName(c){ return appLang === 'zh' ? c.name : (c.nameEn||c.name); }
+const DEFAULT_SEASON_CARD_DRAW_COST = 100; // 每次抽卡消耗的貢獻點數
+let SEASON_CARD_DRAW_COST = DEFAULT_SEASON_CARD_DRAW_COST;
 
 const DEFAULT_SEASON_DRAW_WEIGHTS = {common:50, uncommon:30, rare:16, legendary:4};
 const DEFAULT_SEASON_DRAW_COST = 15;
@@ -811,6 +817,13 @@ async function loadSeasonConfig(){
       if(s.crystalDrops) RARITY_ORDER.forEach(rr=>{ if(typeof s.crystalDrops[rr]==='number' && s.crystalDrops[rr]>=0) SEASON_CRYSTAL_DROPS[rr] = s.crystalDrops[rr]; });
     }
   }catch(e){ /* keep defaults */ }
+  try{
+    const r = await storage.get(seasonKey('card_draw_cost'));
+    if(r){
+      const v = parseFloat(r.value);
+      if(!isNaN(v) && v >= 0) SEASON_CARD_DRAW_COST = v;
+    }
+  }catch(e){ /* keep default */ }
 }
 async function saveSeasonActive(isActive){
   SEASON_ACTIVE = isActive;
@@ -821,22 +834,14 @@ async function saveSeasonDrawSettings(){
     weights: SEASON_DRAW_WEIGHTS, cost: SEASON_DRAW_COST, crystalDrops: SEASON_CRYSTAL_DROPS
   }));
 }
-function weightedSeasonDraw(){
-  const total = Object.values(SEASON_DRAW_WEIGHTS).reduce((a,b)=>a+b,0);
-  let roll = Math.random() * total;
-  let rarity = 'common';
-  for(const r of RARITY_ORDER){
-    if(roll < SEASON_DRAW_WEIGHTS[r]){ rarity = r; break; }
-    roll -= SEASON_DRAW_WEIGHTS[r];
-  }
-  const pool = SEASON_CARDS.filter(c=>c.rarity===rarity);
-  const usePool = pool.length ? pool : SEASON_CARDS;
-  return usePool[Math.floor(Math.random()*usePool.length)];
+async function saveSeasonCardDrawCost(){
+  await storage.set(seasonKey('card_draw_cost'), JSON.stringify(SEASON_CARD_DRAW_COST));
 }
 function ensureMaterials(p){
   if(!p.materials) p.materials = {};
   if(typeof p.materials.crystal !== 'number') p.materials.crystal = 0;
   if(typeof p.materials.moon !== 'number') p.materials.moon = 0;
+  if(typeof p.materials.contrib !== 'number') p.materials.contrib = 0;
   if(!p.seasonCards) p.seasonCards = {};
   if(!p.starChart) p.starChart = {unlocked:[]};
   return p.materials;
@@ -1013,6 +1018,7 @@ async function doBossBurst(){
   let boss = await ensureBossState();
   if(boss.hp <= 0){ showToast(tt('Boss 正在轉換階段，請稍後再試','The Boss is transitioning stages, try again shortly')); return; }
   p.materials.crystal -= BOSS_CRYSTAL_COST;
+  p.materials.contrib += BOSS_CONTRIB_PER_BURST; // 賽季總貢獻點（可花費，賽季結束才歸零）
   await savePlayer(p);
   boss.hp = Math.max(0, boss.hp - BOSS_BURST_DAMAGE);
   const newContrib = await addBossContribution(p.nickname, boss.cycle, BOSS_CONTRIB_PER_BURST);
@@ -1117,6 +1123,23 @@ async function doSeasonDraw(){
   render();
   showToast(tt(`✨ 獲得 🔮 星軌結晶 x${crystalGain}`, `✨ Gained 🔮 Star-Trail Crystal x${crystalGain}`));
 }
+async function doSeasonCardDraw(){
+  const p = state.player;
+  ensureMaterials(p);
+  const owned = SEASON_CARDS.filter(c=>!p.seasonCards[c.id]);
+  if(owned.length === 0){ showToast(tt('12 張賽季卡已全部收集完成！','All 12 season cards already collected!')); return; }
+  if(p.materials.contrib < SEASON_CARD_DRAW_COST){ showToast(tt(`貢獻點不足，需要 ${SEASON_CARD_DRAW_COST}`, `Not enough contribution points, need ${SEASON_CARD_DRAW_COST}`)); return; }
+  p.materials.contrib -= SEASON_CARD_DRAW_COST;
+  const card = owned[Math.floor(Math.random()*owned.length)];
+  p.seasonCards[card.id] = (p.seasonCards[card.id]||0) + 1;
+  const completedNow = SEASON_CARDS.every(c=>p.seasonCards[c.id]);
+  state.seasonCardDrawResult = card;
+  await savePlayer(p);
+  render();
+  showToast(completedNow
+    ? tt(`🎉 抽到「${seasonCardName(card)}」！12 張賽季卡已全部收集完成，第13張傳說卡已解鎖！`, `🎉 Drew "${seasonCardName(card)}"! All 12 season cards collected - the 13th legendary card is now unlocked!`)
+    : tt(`✨ 抽到「${seasonCardName(card)}」！`, `✨ Drew "${seasonCardName(card)}"!`));
+}
 function renderSeason(body){
   const p = state.player;
   ensureMaterials(p);
@@ -1157,9 +1180,47 @@ function renderSeason(body){
       </div>`).join('')}
     </div>
   </div>`;
+  const ownedCount = SEASON_CARDS.filter(c=>p.seasonCards[c.id]).length;
+  const isComplete = ownedCount === SEASON_CARDS.length;
+  const cardResult = state.seasonCardDrawResult;
+  html += `<div class="panel"><h2>🎴 ${tt('賽季卡池：黃道十二宮','Season Cards: Zodiac Twelve')}</h2>
+    <p class="sub">${tt('消耗貢獻點抽取賽季卡（保證抽到尚未收集的卡），集滿 12 張即可解鎖第 13 張傳說卡。', 'Spend contribution points to draw season cards (guaranteed to be a card you have not collected yet) - collect all 12 to unlock the 13th legendary card.')}</p>
+    <div class="countdown" style="margin-bottom:10px;">🏅 ${tt('貢獻點','Contribution')}：<b style="color:var(--gold-bright);">${p.materials.contrib}</b>　|　${tt('收集進度','Progress')}：<b style="color:var(--gold-bright);">${ownedCount}/12</b></div>`;
+  if(cardResult){
+    html += `<div class="card-flip-row"><div class="flip-card flipped">
+      <div class="flip-card-inner"><div class="flip-face flip-back">🎴</div>
+        <div class="flip-face flip-front">
+          <img src="${cardResult.image}" style="width:100%;height:100%;object-fit:cover;border-radius:8px;" alt="${seasonCardName(cardResult)}" />
+        </div>
+      </div>
+    </div></div>
+    <div class="countdown" style="margin-bottom:10px;">${tt(`本次抽到「${seasonCardName(cardResult)}」`, `Drew "${seasonCardName(cardResult)}" this time`)}</div>`;
+  }
+  if(isComplete){
+    html += `<div class="countdown" style="margin-bottom:10px;color:var(--gold-bright);">🎉 ${tt('12 張賽季卡已全部收集完成！第 13 張傳說卡即將登場…', 'All 12 season cards collected! The 13th legendary card is coming soon...')}</div>`;
+  } else {
+    html += `<button class="btn" id="season-card-draw-btn" ${p.materials.contrib < SEASON_CARD_DRAW_COST ? 'disabled' : ''}>${tt(`抽取賽季卡（🏅 ${SEASON_CARD_DRAW_COST}）`, `Draw Season Card (🏅 ${SEASON_CARD_DRAW_COST})`)}</button>`;
+  }
+  html += `<div class="grid" style="margin-top:14px;">
+    ${SEASON_CARDS.map(c=>{
+      const owned = p.seasonCards[c.id]||0;
+      return owned>0
+        ? `<div class="mini-card has-art owned" style="background-image:url('${c.image}');">
+            <span class="name">${seasonCardName(c)}</span>
+            <div class="count">x${owned}</div>
+          </div>`
+        : `<div class="mini-card locked">
+            <div class="icon">🔒</div>
+            <div class="name">${seasonCardName(c)}</div>
+          </div>`;
+    }).join('')}
+  </div>
+  </div>`;
   body.innerHTML = html;
   const btn = document.getElementById('season-draw-btn');
   if(btn) btn.onclick = doSeasonDraw;
+  const cardBtn = document.getElementById('season-card-draw-btn');
+  if(cardBtn) cardBtn.onclick = doSeasonCardDraw;
 }
 
 function renderStarChart(body){
@@ -4337,6 +4398,10 @@ async function renderGM(body){
       <div><label>${tt('稀有','Rare')}</label><input type="number" id="gm-season-c-rare" value="${SEASON_CRYSTAL_DROPS.rare}" min="0" style="width:70px;" /></div>
       <div><label>${tt('史詩','Epic')}</label><input type="number" id="gm-season-c-legendary" value="${SEASON_CRYSTAL_DROPS.legendary}" min="0" style="width:70px;" /></div>
     </div>
+    <div class="farm-upgrade-title" style="margin-top:10px;">🎴 ${tt('賽季卡池（貢獻點抽卡）','Season Cards (Contribution Draw)')}</div>
+    <div class="form-row">
+      <div><label>${tt('每次消耗貢獻點','Contribution cost per draw')}</label><input type="number" id="gm-season-card-cost" value="${SEASON_CARD_DRAW_COST}" min="0" style="width:90px;" /></div>
+    </div>
     <div class="form-row" style="margin-top:10px;">
       <button class="btn small" id="gm-season-save-btn">${tt('儲存賽季設定','Save Season Settings')}</button>
       <button class="btn small secondary" id="gm-season-reset-btn">${tt('還原預設值','Reset to Default')}</button>
@@ -4563,10 +4628,14 @@ async function renderGM(body){
       showToast(tt('請輸入有效的非負數字','Please enter a valid non-negative number')); return;
     }
     if(Object.values(w).every(v=>v===0)){ showToast(tt('至少要有一個稀有度的權重大於 0','At least one rarity weight must be greater than 0')); return; }
+    const cardCost = parseFloat(document.getElementById('gm-season-card-cost').value);
+    if(isNaN(cardCost) || cardCost < 0){ showToast(tt('請輸入有效的非負數字','Please enter a valid non-negative number')); return; }
     SEASON_DRAW_COST = cost;
     SEASON_DRAW_WEIGHTS = w;
     SEASON_CRYSTAL_DROPS = c;
+    SEASON_CARD_DRAW_COST = cardCost;
     await saveSeasonDrawSettings();
+    await saveSeasonCardDrawCost();
     showToast(tt('賽季抽卡設定已更新，即時對所有玩家生效 ⚡','Season draw settings updated, effective immediately for all players ⚡'));
     renderTab();
   };
@@ -4575,7 +4644,9 @@ async function renderGM(body){
     SEASON_DRAW_COST = DEFAULT_SEASON_DRAW_COST;
     SEASON_DRAW_WEIGHTS = {...DEFAULT_SEASON_DRAW_WEIGHTS};
     SEASON_CRYSTAL_DROPS = {...DEFAULT_SEASON_CRYSTAL_DROPS};
+    SEASON_CARD_DRAW_COST = DEFAULT_SEASON_CARD_DRAW_COST;
     await saveSeasonDrawSettings();
+    await saveSeasonCardDrawCost();
     showToast(tt('已還原為預設賽季設定','Reverted to default season settings'));
     renderTab();
   };
