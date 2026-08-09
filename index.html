@@ -411,6 +411,22 @@
   .farm-seed-btn:disabled{opacity:0.4;cursor:not-allowed;}
   .farm-seed-btn .fs-name{display:flex;align-items:center;gap:6px;}
   .farm-seed-btn .fs-cost{color:var(--gold);font-family:'Space Mono',monospace;white-space:nowrap;}
+  .farm-seed-tabs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;}
+  .farm-seed-tab{
+    background:var(--bg-panel);border:1px solid var(--line);border-radius:20px;
+    padding:5px 12px;font-size:12px;color:var(--cream);cursor:pointer;
+    font-family:'Space Mono',monospace;
+  }
+  .farm-seed-tab:hover{border-color:var(--gold);}
+  .farm-seed-tab.active{background:rgba(201,162,74,0.22);border-color:var(--gold);color:var(--gold-bright);}
+  .farm-seed-toggle-locked{
+    display:block;width:100%;background:none;border:1px dashed var(--line);border-radius:8px;
+    padding:5px 8px;margin-top:6px;font-size:11px;color:var(--muted);cursor:pointer;
+    font-family:'Space Mono',monospace;
+  }
+  .farm-seed-toggle-locked:hover{border-color:var(--gold);color:var(--gold-bright);}
+  .farm-seed-list.locked{margin-top:6px;opacity:0.85;}
+  .farm-seed-empty-note{font-size:11px;color:var(--muted);padding:8px 0;text-align:center;}
   .chat-box{max-height:380px;overflow-y:auto;display:flex;flex-direction:column;gap:10px;padding-right:4px;margin-bottom:4px;}
   .chat-msg{background:var(--bg-panel-raised);border:1px solid var(--line);border-radius:10px;padding:8px 12px;}
   .chat-msg.mine{border-color:var(--gold);}
@@ -1691,6 +1707,20 @@ const SEED_TYPES = {
 };
 const DEFAULT_SEED_COSTS = {};
 Object.keys(SEED_TYPES).forEach(k=>{ DEFAULT_SEED_COSTS[k] = SEED_TYPES[k].cost; });
+
+// ---- 種子分類（依花色分組，讓花園種子清單好掃視） ----
+function seedGroupKey(seed){
+  if(seed.key && seed.key.indexOf('season_') === 0) return 'season';
+  return seed.key.replace(/_sprout$|_bloom$/, '');
+}
+const SEED_GROUP_META = {
+  wands:     {icon:'🔥', zh:'火苗', en:'Flame'},
+  cups:      {icon:'💧', zh:'水波', en:'Water'},
+  swords:    {icon:'⚔',  zh:'風刃', en:'Wind'},
+  pentacles: {icon:'✦',  zh:'大地', en:'Earth'},
+  major:     {icon:'🌟', zh:'秘儀', en:'Arcana'},
+  season:    {icon:'🌙', zh:'賽季', en:'Season'},
+};
 async function loadSeedPrices(){
   try{
     const r = await storage.get('config:seed_prices');
@@ -3889,11 +3919,35 @@ async function renderFarm(body){
     `}
   </div>`;
 
+  // 花園種子分類篩選（共用一份，所有空地都套用同一個篩選結果）
+  const anyEmptyPlot = farm.some(pl => plotStatus(pl, now) === 'empty');
+  if(anyEmptyPlot){
+    const allSeeds = Object.values(SEED_TYPES).filter(s=>!s.seasonOnly || SEASON_ACTIVE);
+    const availableGroups = Array.from(new Set(allSeeds.map(seedGroupKey)));
+    if(!state.farmSeedGroup || !['all',...availableGroups].includes(state.farmSeedGroup)){
+      state.farmSeedGroup = 'all';
+    }
+    const activeGroup = state.farmSeedGroup;
+    html += `<div class="farm-seed-tabs">
+      <button class="farm-seed-tab ${activeGroup==='all'?'active':''}" data-seedtab="all">${tt('全部','All')}</button>
+      ${availableGroups.map(g=>{
+        const meta = SEED_GROUP_META[g] || {icon:'🌱', zh:g, en:g};
+        const label = appLang==='zh' ? meta.zh : meta.en;
+        return `<button class="farm-seed-tab ${activeGroup===g?'active':''}" data-seedtab="${g}">${meta.icon} ${label}</button>`;
+      }).join('')}
+    </div>`;
+  }
+
   html += `<div class="farm-grid">`;
   farm.forEach((plot, i)=>{
     const status = plotStatus(plot, now);
     if(status === 'empty'){
-      const seedButtons = Object.values(SEED_TYPES).map(seed=>{
+      const activeGroup = state.farmSeedGroup || 'all';
+      const showLocked = !!state.farmShowLocked;
+      const visibleSeeds = Object.values(SEED_TYPES)
+        .filter(s=>!s.seasonOnly || SEASON_ACTIVE)
+        .filter(s=> activeGroup==='all' || seedGroupKey(s)===activeGroup);
+      const built = visibleSeeds.map(seed=>{
         const levelLocked = (seed.tierLevel||0) > farmLevel;
         const collectionCheck = seed.uniqueUnlock ? uniqueTotal : total;
         const collectionLocked = seed.unlockTotal && collectionCheck < seed.unlockTotal;
@@ -3904,16 +3958,26 @@ async function renderFarm(body){
         if(levelLocked) label = tt(`需花園 Lv.${seed.tierLevel}`, `Needs garden Lv.${seed.tierLevel}`);
         else if(collectionLocked) label = seed.uniqueUnlock ? tt(`需超過 ${seed.unlockTotal-1} 種不同卡`, `Need >${seed.unlockTotal-1} unique cards`) : tt(`需收藏 ${seed.unlockTotal} 張`, `Need ${seed.unlockTotal} cards`);
         else label = tt(`成長 ${formatDuration(seed.growMs)}`, `Grows in ${formatDuration(seed.growMs)}`);
-        return `<button class="farm-seed-btn" data-plant="${i}" data-seed="${seed.key}" ${disabled?'disabled':''}>
+        const btnHtml = `<button class="farm-seed-btn" data-plant="${i}" data-seed="${seed.key}" ${disabled?'disabled':''}>
           <span class="fs-name">${seed.icon} ${seedName(seed)}${locked?' 🔒':''}<br/><span style="color:var(--muted);font-size:11px;">${label}</span></span>
           <span class="fs-cost">✦${seed.cost}</span>
         </button>`;
-      }).join('');
+        return {locked, html: btnHtml};
+      });
+      const unlockedHtml = built.filter(b=>!b.locked).map(b=>b.html).join('');
+      const lockedItems = built.filter(b=>b.locked);
+      const lockedHtml = lockedItems.map(b=>b.html).join('');
+      const seedListHtml = unlockedHtml || `<div class="farm-seed-empty-note">${tt('此分類目前沒有可種的種子','No plantable seeds in this category')}</div>`;
+      const lockedToggleHtml = lockedItems.length > 0
+        ? `<button class="farm-seed-toggle-locked" data-toggle-locked="1">${showLocked ? tt('隱藏已鎖定','Hide locked') : tt(`顯示已鎖定（${lockedItems.length}）`, `Show locked (${lockedItems.length})`)}</button>
+           ${showLocked ? `<div class="farm-seed-list locked">${lockedHtml}</div>` : ''}`
+        : '';
       html += `<div class="farm-plot">
         <div class="farm-plot-icon">🪴</div>
         <div class="farm-plot-name">${tt('空地','Empty plot')}</div>
         <div class="farm-plot-sub">${tt('選一顆種子種下','Choose a seed to plant')}</div>
-        <div class="farm-seed-list">${seedButtons}</div>
+        <div class="farm-seed-list">${seedListHtml}</div>
+        ${lockedToggleHtml}
       </div>`;
     } else {
       const seed = SEED_TYPES[plot.seed];
@@ -4047,6 +4111,18 @@ async function renderFarm(body){
   };
   document.querySelectorAll('[data-plant]').forEach(btn=>{
     btn.onclick = ()=>plantSeed(parseInt(btn.dataset.plant,10), btn.dataset.seed);
+  });
+  document.querySelectorAll('[data-seedtab]').forEach(btn=>{
+    btn.onclick = ()=>{
+      state.farmSeedGroup = btn.dataset.seedtab;
+      render();
+    };
+  });
+  document.querySelectorAll('[data-toggle-locked]').forEach(btn=>{
+    btn.onclick = ()=>{
+      state.farmShowLocked = !state.farmShowLocked;
+      render();
+    };
   });
   document.querySelectorAll('[data-harvest]').forEach(btn=>{
     btn.onclick = ()=>harvestOne(parseInt(btn.dataset.harvest,10));
