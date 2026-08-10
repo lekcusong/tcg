@@ -4103,6 +4103,38 @@ async function gmLookupPlayer(targetNick){
   return await loadPlayer(targetNick);
 }
 
+async function gmDeletePlayer(targetNick){
+  targetNick = (targetNick||'').trim();
+  if(!targetNick) return;
+  if(targetNick.toLowerCase() === GM_NICKNAME.toLowerCase()){
+    showToast(tt('無法刪除 GM 帳號','Cannot delete the GM account'));
+    return;
+  }
+  const p = await loadPlayer(targetNick);
+  if(!p){ showToast(tt('找不到此玩家','Player not found')); return; }
+  if(!confirm(tt(`確定要永久刪除玩家「${p.nickname}」嗎？此動作無法復原。`, `Permanently delete player "${p.nickname}"? This cannot be undone.`))) return;
+  await storage.delete(playerKey(p.nickname));
+  gmLookupResult = null;
+  showToast(tt('已刪除該玩家帳號','Player account deleted'));
+  renderTab();
+}
+
+async function gmResetPlayer(targetNick){
+  targetNick = (targetNick||'').trim();
+  if(!targetNick) return;
+  const p = await loadPlayer(targetNick);
+  if(!p){ showToast(tt('找不到此玩家','Player not found')); return; }
+  if(!confirm(tt(`確定要將玩家「${p.nickname}」重置為新帳號狀態嗎？（金幣、卡牌、進度等將全部清空，暱稱與密碼保留）`, `Reset player "${p.nickname}" to a fresh account state? (Coins, cards, and progress will be wiped; nickname and password stay.)`))) return;
+  const fresh = newPlayer(p.nickname, p.passwordHash);
+  await savePlayer(fresh);
+  gmLookupResult = {
+    nickname: fresh.nickname, coins: fresh.coins,
+    totalCards: 0, uniqueCards: 0
+  };
+  showToast(tt('已重置該玩家帳號','Player account has been reset'));
+  renderTab();
+}
+
 // ---------- Render ----------
 function el(html){
   const container = document.getElementById('app');
@@ -5228,6 +5260,10 @@ async function renderGM(body){
       <div class="listing">
         <div class="left"><div class="icon-box">👤</div><div class="meta"><div>${escapeHtml(gmLookupResult.nickname)}</div><div class="who">${tt(`✦ ${gmLookupResult.coins} 金幣 · 收藏 ${gmLookupResult.totalCards} 張（${gmLookupResult.uniqueCards} 種）`, `✦ ${gmLookupResult.coins} coins · ${gmLookupResult.totalCards} cards (${gmLookupResult.uniqueCards} unique)`)}</div></div></div>
       </div>
+      <div class="form-row">
+        <button class="btn small secondary" id="gm-reset-player-btn">${tt('重置此帳號','Reset This Account')}</button>
+        <button class="btn small" id="gm-delete-player-btn" style="border-color:var(--danger);color:var(--danger);">${tt('刪除此帳號','Delete This Account')}</button>
+      </div>
     ` : ''}
   </div>`;
 
@@ -5549,6 +5585,16 @@ async function renderGM(body){
       };
     }
     renderTab();
+  };
+  const resetPlayerBtn = document.getElementById('gm-reset-player-btn');
+  if(resetPlayerBtn) resetPlayerBtn.onclick = ()=>{
+    const nick = document.getElementById('gm-target-input').value;
+    gmResetPlayer(nick);
+  };
+  const deletePlayerBtn = document.getElementById('gm-delete-player-btn');
+  if(deletePlayerBtn) deletePlayerBtn.onclick = ()=>{
+    const nick = document.getElementById('gm-target-input').value;
+    gmDeletePlayer(nick);
   };
   const coinBtn = document.getElementById('gm-coin-btn');
   if(coinBtn) coinBtn.onclick = ()=>{
