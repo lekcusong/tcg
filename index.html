@@ -2232,6 +2232,10 @@ function getExpeditionRequiredCards(p, tier, durationKey){
   p.expeditionRolls[key] = cards;
   return {cards, changed:true};
 }
+// 遠征等級所需的累積經驗值表（EXP_TABLE[n] = 升到 Lv.n 所需的累積經驗）。
+// 最高等級 EXP_MAX_LEVEL 需 >= 所有遠征任務的 unlockLevel（目前最高為 10）。
+const EXP_MAX_LEVEL = 10;
+const EXP_TABLE = [0, 150, 400, 800, 1400, 2200, 3200, 4500, 6200, 8500, 12000];
 function expeditionNextLevelExp(level){
   return EXP_TABLE[Math.min(level+1, EXP_MAX_LEVEL)];
 }
@@ -3895,9 +3899,171 @@ function cardMini(cardId, count){
 }
 
 // ---------- GM ----------
-const GM_NICKNAME = 'lekcus';
+const GM_NICKNAME = 'GM';
+// 搬遷前的舊管理員暱稱，只用於下面的一次性帳號搬移功能，跟目前的 GM 權限判定無關。
+const LEGACY_GM_MIGRATE_NICK = 'lekcus';
 function isGM(){
   return !!state.nickname && state.nickname.toLowerCase() === GM_NICKNAME.toLowerCase();
+}
+// 一次性搬移：把舊帳號「lekcus」的所有資料（玩家紀錄、好友關係、好友邀請、
+// 好友交易、通知、聊天訊息、拍賣行、收購單、Boss 貢獻榜）全部改名成「GM」。
+// 執行後舊帳號 lekcus 會被刪除，之後請改用暱稱「GM」＋原本的密碼登入。
+async function migrateLekcusAccountToGM(){
+  const OLD = LEGACY_GM_MIGRATE_NICK;
+  const NEW = GM_NICKNAME;
+  const oldLower = OLD.toLowerCase();
+
+  // 1) 玩家主資料
+  try{
+    const r = await storage.get(playerKey(OLD));
+    if(r){
+      const p = JSON.parse(r.value);
+      p.nickname = NEW;
+      await storage.set(playerKey(NEW), JSON.stringify(p));
+      await storage.delete(playerKey(OLD));
+    }
+  }catch(e){ /* ignore */ }
+
+  // 2) 好友關係（key 本身就是依暱稱組成，要整個搬到新 key）
+  try{
+    const list = await storage.list('friendship:');
+    if(list && list.keys){
+      for(const k of list.keys){
+        const r = await storage.get(k);
+        if(!r) continue;
+        const f = JSON.parse(r.value);
+        let changed = false;
+        if(f.a && f.a.toLowerCase()===oldLower){ f.a = NEW; changed = true; }
+        if(f.b && f.b.toLowerCase()===oldLower){ f.b = NEW; changed = true; }
+        if(changed){
+          await storage.delete(k);
+          await storage.set(friendshipKey(f.a, f.b), JSON.stringify(f));
+        }
+      }
+    }
+  }catch(e){ /* ignore */ }
+
+  // 3) 好友邀請
+  try{
+    const list = await storage.list('freq:');
+    if(list && list.keys){
+      for(const k of list.keys){
+        const r = await storage.get(k);
+        if(!r) continue;
+        const req = JSON.parse(r.value);
+        let changed = false;
+        if(req.from && req.from.toLowerCase()===oldLower){ req.from = NEW; changed = true; }
+        if(req.to && req.to.toLowerCase()===oldLower){ req.to = NEW; changed = true; }
+        if(changed) await storage.set(k, JSON.stringify(req));
+      }
+    }
+  }catch(e){ /* ignore */ }
+
+  // 4) 好友交易
+  try{
+    const list = await storage.list('ftrade:');
+    if(list && list.keys){
+      for(const k of list.keys){
+        const r = await storage.get(k);
+        if(!r) continue;
+        const ft = JSON.parse(r.value);
+        let changed = false;
+        if(ft.from && ft.from.toLowerCase()===oldLower){ ft.from = NEW; changed = true; }
+        if(ft.to && ft.to.toLowerCase()===oldLower){ ft.to = NEW; changed = true; }
+        if(changed) await storage.set(k, JSON.stringify(ft));
+      }
+    }
+  }catch(e){ /* ignore */ }
+
+  // 5) 通知
+  try{
+    const list = await storage.list('notif:');
+    if(list && list.keys){
+      for(const k of list.keys){
+        const r = await storage.get(k);
+        if(!r) continue;
+        const n = JSON.parse(r.value);
+        let changed = false;
+        if(n.to && n.to.toLowerCase()===oldLower){ n.to = NEW; changed = true; }
+        if(n.from && n.from.toLowerCase()===oldLower){ n.from = NEW; changed = true; }
+        if(changed) await storage.set(k, JSON.stringify(n));
+      }
+    }
+  }catch(e){ /* ignore */ }
+
+  // 6) 聊天訊息
+  try{
+    const list = await storage.list('chat:');
+    if(list && list.keys){
+      for(const k of list.keys){
+        const r = await storage.get(k);
+        if(!r) continue;
+        const m = JSON.parse(r.value);
+        if(m.nickname && m.nickname.toLowerCase()===oldLower){
+          m.nickname = NEW;
+          await storage.set(k, JSON.stringify(m));
+        }
+      }
+    }
+  }catch(e){ /* ignore */ }
+
+  // 7) 拍賣行
+  try{
+    const list = await storage.list('auction:');
+    if(list && list.keys){
+      for(const k of list.keys){
+        const r = await storage.get(k);
+        if(!r) continue;
+        const a = JSON.parse(r.value);
+        let changed = false;
+        if(a.seller && a.seller.toLowerCase()===oldLower){ a.seller = NEW; changed = true; }
+        if(a.currentBidder && a.currentBidder.toLowerCase()===oldLower){ a.currentBidder = NEW; changed = true; }
+        if(changed) await storage.set(k, JSON.stringify(a));
+      }
+    }
+  }catch(e){ /* ignore */ }
+
+  // 8) 收購單
+  try{
+    const list = await storage.list('wtb:');
+    if(list && list.keys){
+      for(const k of list.keys){
+        const r = await storage.get(k);
+        if(!r) continue;
+        const w = JSON.parse(r.value);
+        if(w.buyer && w.buyer.toLowerCase()===oldLower){
+          w.buyer = NEW;
+          await storage.set(k, JSON.stringify(w));
+        }
+      }
+    }
+  }catch(e){ /* ignore */ }
+
+  // 9) Boss 貢獻榜（key 本身含暱稱，要搬 key）
+  try{
+    const list = await storage.list('boss:contrib:');
+    if(list && list.keys){
+      for(const k of list.keys){
+        if(k.toLowerCase().endsWith(':'+oldLower)){
+          const r = await storage.get(k);
+          if(!r) continue;
+          const newKey = k.slice(0, k.length - OLD.length) + NEW;
+          await storage.set(newKey, r.value);
+          await storage.delete(k);
+        }
+      }
+    }
+  }catch(e){ /* ignore */ }
+}
+async function runLekcusMigration(){
+  if(!confirm(tt(
+    '確定要把帳號「lekcus」的所有資料搬移成「GM」嗎？搬移後 lekcus 帳號會被刪除，之後請改用「GM」＋原本密碼登入。此動作無法復原。',
+    'Migrate all data from account "lekcus" to "GM"? The old "lekcus" account will be deleted afterwards - log back in with "GM" and your original password. This cannot be undone.'
+  ))) return;
+  showToast(tt('搬移中，請稍候…','Migrating, please wait…'));
+  await migrateLekcusAccountToGM();
+  showToast(tt('搬移完成！請重新登入，暱稱改用「GM」','Migration complete! Please log back in with the nickname "GM"'));
+  doLogout();
 }
 async function gmGrantCoins(targetNick, amount){
   if(!isGM()) return;
@@ -3981,6 +4147,7 @@ async function render(){
         <span class="name">${escapeHtml(p.nickname)}${nameWithBadgesHtml(p, 16)}</span>
         <span class="coin" id="player-coin">✦ ${p.coins}</span>
         <button id="notif-bell-btn" style="position:relative;">🔔<span id="notif-badge" style="display:${notifUnreadCount>0?'inline-flex':'none'};position:absolute;top:-4px;right:-4px;background:#e0455f;color:#fff;border-radius:999px;font-size:10px;line-height:1;padding:2px 5px;">${notifUnreadCount>9?'9+':notifUnreadCount}</span></button>
+        ${p.nickname.toLowerCase()===LEGACY_GM_MIGRATE_NICK ? `<button id="migrate-gm-btn" style="border-color:var(--danger);color:var(--danger);">${tt('搬移成 GM','Migrate to GM')}</button>` : ''}
         <button id="logout-btn">${t('logout')}</button>
       </div>
     </div>
@@ -4003,6 +4170,8 @@ async function render(){
     <div id="tab-body">${prevTabHtml}</div>
   `);
   document.getElementById('logout-btn').onclick = doLogout;
+  const migrateBtn = document.getElementById('migrate-gm-btn');
+  if(migrateBtn) migrateBtn.onclick = runLekcusMigration;
   const bellBtn = document.getElementById('notif-bell-btn');
   if(bellBtn){ bellBtn.onclick = async ()=>{ state.tab = 'friends'; await refreshPlayer(); render(); }; }
   document.querySelectorAll('.tab').forEach(t=>{
