@@ -2410,6 +2410,9 @@ const T = {
   createAuctionHeader: {zh:'建立拍賣', en:'Create Auction'},
   myAuctionsHeader: {zh:'我的拍賣', en:'My Auctions'},
   publicAuctionsHeader: {zh:'公開拍賣', en:'Public Auctions'},
+  createWtbHeader: {zh:'建立求購', en:'Create Buy Order'},
+  myWtbHeader: {zh:'我的求購', en:'My Buy Orders'},
+  publicWtbHeader: {zh:'公開求購', en:'Public Buy Orders'},
   gardenHeader: {zh:'🌱 占卜花園', en:'🌱 Tarot Garden'},
   friendGardenHeader: {zh:'🌿 好友花園', en:"🌿 Friends' Gardens"},
   leaderCollectionHeader: {zh:'🏆 收藏排行榜', en:'🏆 Collection Leaderboard'},
@@ -3018,6 +3021,7 @@ function notifText(n){
   if(n.type==='auction_sold') return tt(`${n.from} 以 ${n.price} 枚金幣${n.viaBuyout?'一口價直接購買了':'買走了'}你的『${n.cardName}』`, `${n.from} ${n.viaBuyout?'bought':'won'} your "${n.cardName}" for ✦${n.price}`);
   if(n.type==='auction_unsold') return tt(`你的『${n.cardName}』拍賣流標了，已退回你的收藏`, `Your "${n.cardName}" auction ended with no bids and was returned to your collection`);
   if(n.type==='auction_outbid') return tt(`你在『${n.cardName}』的出價已被 ${n.from} 超過（目前 ${n.price} 枚金幣）`, `Your bid on "${n.cardName}" was outbid by ${n.from} (now ✦${n.price})`);
+  if(n.type==='wtb_filled') return tt(`${n.from} 賣給了你 x${n.qty}『${n.cardName}』，花費 ${n.price*n.qty} 枚金幣`, `${n.from} sold you x${n.qty} "${n.cardName}" for ✦${n.price*n.qty}`);
   return tt(`${n.from} 在你的花園留下了紀錄`, `${n.from} left a note in your garden`);
 }
 function initNotifPoll(){
@@ -3445,6 +3449,93 @@ async function cancelAuction(auctionId){
   showToast(tt('已取消拍賣並取回卡片','Auction canceled and card returned'));
   render();
 }
+// ---------- Want-to-buy orders (reverse auction: buyer locks coins, sellers fulfill) ----------
+function allCardOptions(){
+  return DECK.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
+}
+async function createWantToBuy(cardId, pricePerCard, quantity, durMs){
+  if(!cardId){ showToast(tt('請選擇卡片','Please choose a card')); return; }
+  if(!pricePerCard || pricePerCard < 1){ showToast(tt('請輸入有效的收購單價','Please enter a valid price per card')); return; }
+  quantity = Math.floor(quantity);
+  if(!quantity || quantity < 1){ showToast(tt('請輸入有效的收購數量','Please enter a valid quantity')); return; }
+  const totalCost = pricePerCard * quantity;
+  if(totalCost > state.player.coins){ showToast(tt('遊戲幣不足以鎖定這筆收購款項','Not enough coins to lock this buy order')); return; }
+  state.player.coins -= totalCost;
+  await savePlayer(state.player);
+  const order = {
+    id: uid(), buyer: state.nickname, cardId,
+    pricePerCard, quantity, remaining: quantity,
+    createdAt: Date.now(), endsAt: Date.now() + durMs, status: 'active'
+  };
+  await storage.set(`wtb:${order.id}`, JSON.stringify(order));
+  showToast(tt('已建立求購單 📥','Buy order created 📥'));
+  render();
+}
+async function fetchWantToBuys(){
+  try{
+    const list = await storage.list('wtb:');
+    if(!list || !list.keys) return [];
+    const items = await Promise.all(list.keys.map(async k=>{
+      try{ const r = await storage.get(k); return r ? JSON.parse(r.value) : null; }
+      catch(e){ return null; }
+    }));
+    return items.filter(Boolean);
+  }catch(e){ return []; }
+}
+async function fulfillWantToBuy(orderId, sellQty){
+  const r = await storage.get(`wtb:${orderId}`);
+  if(!r){ showToast(tt('求購單不存在','Buy order does not exist')); return; }
+  const order = JSON.parse(r.value);
+  if(order.status !== 'active' || Date.now() > order.endsAt){ showToast(tt('這個求購單已結束','This buy order has ended')); return; }
+  if(order.buyer === state.nickname){ showToast(tt('不能賣給自己的求購單',"You can't fulfill your own buy order")); return; }
+  const owned = state.player.cards[order.cardId] || 0;
+  sellQty = Math.floor(sellQty) || 0;
+  if(sellQty < 1){ showToast(tt('請輸入有效的出售數量','Please enter a valid quantity')); return; }
+  if(sellQty > owned){ showToast(tt('你沒有這麼多這張卡',"You don't have that many of this card")); return; }
+  if(sellQty > order.remaining){ showToast(tt('超過這筆求購單剩餘的收購數量','Exceeds the remaining quantity on this buy order')); return; }
+  const total = order.pricePerCard * sellQty;
+  const cardName = (DECK_BY_ID[order.cardId] && DECK_BY_ID[order.cardId].name) || tt('未知卡片','Unknown card');
+  state.player.cards[order.cardId] = owned - sellQty;
+  state.player.coins += total;
+  bumpQuest(state.player, 'auction', 1);
+  ensureStats(state.player).totalAuctionTrades += 1;
+  await savePlayer(state.player);
+  const buyer = await loadPlayer(order.buyer);
+  if(buyer){
+    buyer.cards[order.cardId] = (buyer.cards[order.cardId]||0) + sellQty;
+    ensureStats(buyer).totalAuctionTrades += 1;
+    await savePlayer(buyer);
+  }
+  order.remaining -= sellQty;
+  if(order.remaining <= 0){ order.status = 'completed'; }
+  await storage.set(`wtb:${orderId}`, JSON.stringify(order));
+  await createNotification(order.buyer, state.nickname, 'wtb_filled', {cardName, price: order.pricePerCard, qty: sellQty});
+  showToast(tt(`已賣出 x${sellQty}「${cardName}」，獲得 ✦${total}`, `Sold x${sellQty} "${cardName}" for ✦${total}`));
+  render();
+}
+async function resolveWantToBuy(order){
+  if(order.status !== 'active' || Date.now() < order.endsAt) return;
+  if(order.remaining > 0){
+    const buyer = await loadPlayer(order.buyer);
+    if(buyer){ buyer.coins += order.pricePerCard * order.remaining; await savePlayer(buyer); }
+  }
+  order.status = 'expired';
+  await storage.set(`wtb:${order.id}`, JSON.stringify(order));
+}
+async function cancelWantToBuy(orderId){
+  const r = await storage.get(`wtb:${orderId}`);
+  if(!r) return;
+  const order = JSON.parse(r.value);
+  if(order.status !== 'active' || order.buyer !== state.nickname) return;
+  if(order.remaining > 0){
+    state.player.coins += order.pricePerCard * order.remaining;
+    await savePlayer(state.player);
+  }
+  order.status = 'cancelled';
+  await storage.set(`wtb:${orderId}`, JSON.stringify(order));
+  showToast(tt('已取消求購並退回剩餘金幣','Buy order cancelled, remaining coins refunded'));
+  render();
+}
 
 function fmtCountdown(ms){
   if(ms <= 0) return tt('已截標','Ended');
@@ -3862,7 +3953,7 @@ async function renderFriends(body){
       <h2>${t('gardenNotifHeader')}${unreadNotifCount>0?` <span style="color:#e0455f;font-size:12px;">(${unreadNotifCount})</span>`:''}</h2>
       ${recentNotifs.map(n=>`
         <div class="listing">
-          <div class="left"><div class="icon-box">${n.type==='friend_request'?'🕊':n.type==='steal'?'🌾':n.type==='water'?'🚿':n.type.startsWith('auction')?'💰':'🔔'}</div><div class="meta"><div>${escapeHtml(notifText(n))}</div><div class="who">${timeAgo(n.createdAt)}</div></div></div>
+          <div class="left"><div class="icon-box">${n.type==='friend_request'?'🕊':n.type==='steal'?'🌾':n.type==='water'?'🚿':(n.type.startsWith('auction')||n.type.startsWith('wtb'))?'💰':'🔔'}</div><div class="meta"><div>${escapeHtml(notifText(n))}</div><div class="who">${timeAgo(n.createdAt)}</div></div></div>
         </div>
       `).join('')}
       ${notifTotalPages > 1 ? `
@@ -4032,10 +4123,19 @@ async function renderAuction(body){
   for(const a of expired){ await resolveAuction(a); }
   if(expired.length) auctions = await fetchAuctions();
 
+  let wtbOrders = await fetchWantToBuys();
+  const expiredWtb = wtbOrders.filter(o=>o.status==='active' && Date.now() > o.endsAt);
+  for(const o of expiredWtb){ await resolveWantToBuy(o); }
+  if(expiredWtb.length) wtbOrders = await fetchWantToBuys();
+
   const active = auctions.filter(a=>a.status==='active');
   const myAuctions = active.filter(a=>a.seller===state.nickname);
   const otherAuctions = active.filter(a=>a.seller!==state.nickname);
   const owned = ownedCardOptions();
+
+  const activeWtb = wtbOrders.filter(o=>o.status==='active');
+  const myWtb = activeWtb.filter(o=>o.buyer===state.nickname);
+  const otherWtb = activeWtb.filter(o=>o.buyer!==state.nickname);
 
   let html = `<div class="panel">
     <h2>${t('createAuctionHeader')}</h2>
@@ -4097,6 +4197,58 @@ async function renderAuction(body){
     }).join('')}
   </div>`;
 
+  html += `<div class="panel">
+    <h2>📥 ${t('createWtbHeader')}</h2>
+    <p class="sub">${tt('指定卡片並開出收購單價與數量，金幣會先鎖定；其他占卜師可以直接把手上的卡賣給你。','Pick a card and set a price per card and quantity - coins are locked up front, and other diviners can sell that card straight to you.')}</p>
+    <div class="form-row">
+      <div><label>${tt('選擇卡片','Choose card')}</label><select id="wtb-card-select">${allCardOptions()}</select></div>
+      <div><label>${tt('收購單價','Price per card')}</label><input type="number" id="wtb-price-input" min="1" style="width:110px;" /></div>
+      <div><label>${tt('收購數量','Quantity')}</label><input type="number" id="wtb-qty-input" min="1" value="1" style="width:90px;" /></div>
+      <div><label>${tt('求購時長','Duration')}</label><select id="wtb-dur-select">${DURATIONS.map((d,i)=>`<option value="${i}">${tt(d.labelZh, d.labelEn)}</option>`).join('')}</select></div>
+      <button class="btn" id="wtb-create-btn">${tt('建立求購','Create Buy Order')}</button>
+    </div>
+  </div>`;
+
+  html += `<div class="panel">
+    <h2>${t('myWtbHeader')}</h2>
+    ${myWtb.length===0 ? `<div class="empty-note">${tt('尚未建立任何求購單','No buy orders created yet')}</div>` : myWtb.map(o=>{
+      const c = DECK_BY_ID[o.cardId];
+      const statusLine = tt(`收購 ✦${o.pricePerCard}/張 · 剩餘 ${o.remaining}/${o.quantity} 張`, `✦${o.pricePerCard}/card · ${o.remaining}/${o.quantity} left`);
+      return `<div class="listing">
+        <div class="left">
+          <div class="icon-box cf-${c.rarity}">${iconBoxInner(c)}</div>
+          <div class="meta"><div>${c.name}</div><div class="who">${statusLine}</div></div>
+        </div>
+        <div class="right">
+          <span class="timer">${fmtCountdown(o.endsAt - Date.now())}</span>
+          <button class="btn small secondary" data-cancel-wtb="${o.id}">${tt('取消','Cancel')}</button>
+        </div>
+      </div>`;
+    }).join('')}
+  </div>`;
+
+  html += `<div class="panel">
+    <h2>${t('publicWtbHeader')}</h2>
+    ${otherWtb.length===0 ? `<div class="empty-note">${tt('目前沒有進行中的求購','No active buy orders right now')}</div>` : otherWtb.map(o=>{
+      const c = DECK_BY_ID[o.cardId];
+      const ownedQty = state.player.cards[o.cardId] || 0;
+      const maxSell = Math.min(ownedQty, o.remaining);
+      const priceLine = tt(`收購 ✦${o.pricePerCard}/張 by ${escapeHtml(o.buyer)} · 剩餘 ${o.remaining}/${o.quantity} 張`, `✦${o.pricePerCard}/card by ${escapeHtml(o.buyer)} · ${o.remaining}/${o.quantity} left`);
+      return `<div class="listing">
+        <div class="left">
+          <div class="icon-box cf-${c.rarity}">${iconBoxInner(c)}</div>
+          <div class="meta"><div>${c.name}</div><div class="who">${priceLine} · <span class="timer">${fmtCountdown(o.endsAt-Date.now())}</span></div></div>
+        </div>
+        <div class="right">
+          ${maxSell > 0 ? `
+            <input type="number" min="1" max="${maxSell}" placeholder="1" style="width:70px;" data-wtb-sell-input="${o.id}" />
+            <button class="btn small" data-wtb-sell-btn="${o.id}">${tt('賣給他','Sell')}</button>
+          ` : `<span class="who">${tt('你沒有這張卡','You have none of this card')}</span>`}
+        </div>
+      </div>`;
+    }).join('')}
+  </div>`;
+
   body.innerHTML = html;
 
   const listBtn = document.getElementById('auc-list-btn');
@@ -4120,6 +4272,25 @@ async function renderAuction(body){
   });
   document.querySelectorAll('[data-buyout-btn]').forEach(b=>{
     b.onclick = ()=>buyoutAuction(b.dataset.buyoutBtn);
+  });
+  const wtbCreateBtn = document.getElementById('wtb-create-btn');
+  if(wtbCreateBtn) wtbCreateBtn.onclick = ()=>{
+    const cardId = document.getElementById('wtb-card-select').value;
+    const price = parseInt(document.getElementById('wtb-price-input').value);
+    const qty = parseInt(document.getElementById('wtb-qty-input').value);
+    const durIdx = parseInt(document.getElementById('wtb-dur-select').value);
+    createWantToBuy(cardId, price, qty, DURATIONS[durIdx].ms);
+  };
+  document.querySelectorAll('[data-cancel-wtb]').forEach(b=>{
+    b.onclick = ()=>cancelWantToBuy(b.dataset.cancelWtb);
+  });
+  document.querySelectorAll('[data-wtb-sell-btn]').forEach(b=>{
+    b.onclick = ()=>{
+      const oid = b.dataset.wtbSellBtn;
+      const input = document.querySelector(`[data-wtb-sell-input="${oid}"]`);
+      const qty = parseInt(input.value || input.placeholder);
+      fulfillWantToBuy(oid, qty);
+    };
   });
 }
 
