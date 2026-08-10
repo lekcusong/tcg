@@ -2092,11 +2092,13 @@ const EXPEDITION_BANNER_IMG = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAA
 const EXPEDITION_LABELS_ZH = ['遠征 I','遠征 II','遠征 III','遠征 IV','遠征 V','遠征 VI'];
 const EXPEDITION_LABELS_EN = ['Expedition I','Expedition II','Expedition III','Expedition IV','Expedition V','Expedition VI'];
 const EXPEDITION_DURATION_KEYS = ['d10m','d1h','d3h','d8h'];
+// rewardFactor：時長越短，每分鐘的報酬效率越高（鼓勵玩家常上線、短時間出征也划算）；
+// 時長越長雖然每分鐘效率下降，但總量仍然更多，適合掛機但不是最划算的選擇。
 const EXPEDITION_DURATION_META = {
-  d10m: {ms:10*60000,  labelZh:'10 分鐘', labelEn:'10 min',   rateAdj: 0.03},
-  d1h:  {ms:60*60000,  labelZh:'1 小時',  labelEn:'1 hour',   rateAdj: 0},
-  d3h:  {ms:180*60000, labelZh:'3 小時',  labelEn:'3 hours',  rateAdj:-0.03},
-  d8h:  {ms:480*60000, labelZh:'8 小時',  labelEn:'8 hours',  rateAdj:-0.06},
+  d10m: {ms:10*60000,  labelZh:'10 分鐘', labelEn:'10 min',   rateAdj: 0.03, rewardFactor:1.00},
+  d1h:  {ms:60*60000,  labelZh:'1 小時',  labelEn:'1 hour',   rateAdj: 0,    rewardFactor:0.65},
+  d3h:  {ms:180*60000, labelZh:'3 小時',  labelEn:'3 hours',  rateAdj:-0.03, rewardFactor:0.57},
+  d8h:  {ms:480*60000, labelZh:'8 小時',  labelEn:'8 hours',  rateAdj:-0.06, rewardFactor:0.50},
 };
 function expeditionDurationLabel(key){
   const meta = EXPEDITION_DURATION_META[key];
@@ -2111,26 +2113,27 @@ function buildExpeditionDurations(tier){
     const meta = EXPEDITION_DURATION_META[key];
     const minutes = meta.ms / 60000;
     const rate = Math.max(0.5, Math.min(0.99, tier.baseSuccessRate + meta.rateAdj));
+    const factor = meta.rewardFactor || 1;
     durations[key] = {
       durationMs: meta.ms,
       commonCount: tier.commonCount,
       uncommonCount: tier.uncommonCount,
       successRate: Math.round(rate * 100) / 100,
-      rewardCoinsMin: Math.max(1, Math.round(tier.coinPerMinMin * minutes)),
-      rewardCoinsMax: Math.max(1, Math.round(tier.coinPerMinMax * minutes)),
-      rewardExp: Math.max(1, Math.round(tier.expPerMin * minutes)),
-      failExp: Math.max(0, Math.round(tier.failExpPerMin * minutes)),
+      rewardCoinsMin: Math.max(1, Math.round(tier.coinPerMinMin * minutes * factor)),
+      rewardCoinsMax: Math.max(1, Math.round(tier.coinPerMinMax * minutes * factor)),
+      rewardExp: Math.max(1, Math.round(tier.expPerMin * minutes * factor)),
+      failExp: Math.max(0, Math.round(tier.failExpPerMin * minutes * factor)),
     };
   });
   return durations;
 }
 const EXPEDITION_TIER_BASE = [
-  {id:1, unlockLevel:0,  commonCount:3, uncommonCount:0, coinPerMinMin:8,    coinPerMinMax:15,   expPerMin:2.00, failExpPerMin:0.60, baseSuccessRate:0.95},
-  {id:2, unlockLevel:2,  commonCount:5, uncommonCount:0, coinPerMinMin:7.2,  coinPerMinMax:11.2, expPerMin:1.60, failExpPerMin:0.48, baseSuccessRate:0.93},
-  {id:3, unlockLevel:4,  commonCount:4, uncommonCount:1, coinPerMinMin:7.11, coinPerMinMax:10,   expPerMin:1.56, failExpPerMin:0.44, baseSuccessRate:0.90},
-  {id:4, unlockLevel:6,  commonCount:0, uncommonCount:3, coinPerMinMin:5.56, coinPerMinMax:7.78, expPerMin:1.22, failExpPerMin:0.36, baseSuccessRate:0.87},
-  {id:5, unlockLevel:8,  commonCount:4, uncommonCount:3, coinPerMinMin:4.44, coinPerMinMax:6.11, expPerMin:0.94, failExpPerMin:0.28, baseSuccessRate:0.82},
-  {id:6, unlockLevel:10, commonCount:0, uncommonCount:6, coinPerMinMin:3.61, coinPerMinMax:5.00, expPerMin:0.72, failExpPerMin:0.21, baseSuccessRate:0.75},
+  {id:1, unlockLevel:0,  commonCount:3, uncommonCount:0, coinPerMinMin:8,  coinPerMinMax:15, expPerMin:2.00, failExpPerMin:0.60, baseSuccessRate:0.95},
+  {id:2, unlockLevel:2,  commonCount:5, uncommonCount:0, coinPerMinMin:11, coinPerMinMax:19, expPerMin:2.60, failExpPerMin:0.78, baseSuccessRate:0.92},
+  {id:3, unlockLevel:4,  commonCount:4, uncommonCount:1, coinPerMinMin:15, coinPerMinMax:25, expPerMin:3.40, failExpPerMin:1.02, baseSuccessRate:0.89},
+  {id:4, unlockLevel:6,  commonCount:0, uncommonCount:3, coinPerMinMin:20, coinPerMinMax:33, expPerMin:4.40, failExpPerMin:1.32, baseSuccessRate:0.85},
+  {id:5, unlockLevel:8,  commonCount:4, uncommonCount:3, coinPerMinMin:27, coinPerMinMax:44, expPerMin:5.70, failExpPerMin:1.71, baseSuccessRate:0.80},
+  {id:6, unlockLevel:10, commonCount:0, uncommonCount:6, coinPerMinMin:36, coinPerMinMax:58, expPerMin:7.40, failExpPerMin:2.22, baseSuccessRate:0.74},
 ];
 const DEFAULT_EXPEDITION_QUESTS = EXPEDITION_TIER_BASE.map(tier=>({
   id: tier.id,
@@ -3900,170 +3903,8 @@ function cardMini(cardId, count){
 
 // ---------- GM ----------
 const GM_NICKNAME = 'GM';
-// 搬遷前的舊管理員暱稱，只用於下面的一次性帳號搬移功能，跟目前的 GM 權限判定無關。
-const LEGACY_GM_MIGRATE_NICK = 'lekcus';
 function isGM(){
   return !!state.nickname && state.nickname.toLowerCase() === GM_NICKNAME.toLowerCase();
-}
-// 一次性搬移：把舊帳號「lekcus」的所有資料（玩家紀錄、好友關係、好友邀請、
-// 好友交易、通知、聊天訊息、拍賣行、收購單、Boss 貢獻榜）全部改名成「GM」。
-// 執行後舊帳號 lekcus 會被刪除，之後請改用暱稱「GM」＋原本的密碼登入。
-async function migrateLekcusAccountToGM(){
-  const OLD = LEGACY_GM_MIGRATE_NICK;
-  const NEW = GM_NICKNAME;
-  const oldLower = OLD.toLowerCase();
-
-  // 1) 玩家主資料
-  try{
-    const r = await storage.get(playerKey(OLD));
-    if(r){
-      const p = JSON.parse(r.value);
-      p.nickname = NEW;
-      await storage.set(playerKey(NEW), JSON.stringify(p));
-      await storage.delete(playerKey(OLD));
-    }
-  }catch(e){ /* ignore */ }
-
-  // 2) 好友關係（key 本身就是依暱稱組成，要整個搬到新 key）
-  try{
-    const list = await storage.list('friendship:');
-    if(list && list.keys){
-      for(const k of list.keys){
-        const r = await storage.get(k);
-        if(!r) continue;
-        const f = JSON.parse(r.value);
-        let changed = false;
-        if(f.a && f.a.toLowerCase()===oldLower){ f.a = NEW; changed = true; }
-        if(f.b && f.b.toLowerCase()===oldLower){ f.b = NEW; changed = true; }
-        if(changed){
-          await storage.delete(k);
-          await storage.set(friendshipKey(f.a, f.b), JSON.stringify(f));
-        }
-      }
-    }
-  }catch(e){ /* ignore */ }
-
-  // 3) 好友邀請
-  try{
-    const list = await storage.list('freq:');
-    if(list && list.keys){
-      for(const k of list.keys){
-        const r = await storage.get(k);
-        if(!r) continue;
-        const req = JSON.parse(r.value);
-        let changed = false;
-        if(req.from && req.from.toLowerCase()===oldLower){ req.from = NEW; changed = true; }
-        if(req.to && req.to.toLowerCase()===oldLower){ req.to = NEW; changed = true; }
-        if(changed) await storage.set(k, JSON.stringify(req));
-      }
-    }
-  }catch(e){ /* ignore */ }
-
-  // 4) 好友交易
-  try{
-    const list = await storage.list('ftrade:');
-    if(list && list.keys){
-      for(const k of list.keys){
-        const r = await storage.get(k);
-        if(!r) continue;
-        const ft = JSON.parse(r.value);
-        let changed = false;
-        if(ft.from && ft.from.toLowerCase()===oldLower){ ft.from = NEW; changed = true; }
-        if(ft.to && ft.to.toLowerCase()===oldLower){ ft.to = NEW; changed = true; }
-        if(changed) await storage.set(k, JSON.stringify(ft));
-      }
-    }
-  }catch(e){ /* ignore */ }
-
-  // 5) 通知
-  try{
-    const list = await storage.list('notif:');
-    if(list && list.keys){
-      for(const k of list.keys){
-        const r = await storage.get(k);
-        if(!r) continue;
-        const n = JSON.parse(r.value);
-        let changed = false;
-        if(n.to && n.to.toLowerCase()===oldLower){ n.to = NEW; changed = true; }
-        if(n.from && n.from.toLowerCase()===oldLower){ n.from = NEW; changed = true; }
-        if(changed) await storage.set(k, JSON.stringify(n));
-      }
-    }
-  }catch(e){ /* ignore */ }
-
-  // 6) 聊天訊息
-  try{
-    const list = await storage.list('chat:');
-    if(list && list.keys){
-      for(const k of list.keys){
-        const r = await storage.get(k);
-        if(!r) continue;
-        const m = JSON.parse(r.value);
-        if(m.nickname && m.nickname.toLowerCase()===oldLower){
-          m.nickname = NEW;
-          await storage.set(k, JSON.stringify(m));
-        }
-      }
-    }
-  }catch(e){ /* ignore */ }
-
-  // 7) 拍賣行
-  try{
-    const list = await storage.list('auction:');
-    if(list && list.keys){
-      for(const k of list.keys){
-        const r = await storage.get(k);
-        if(!r) continue;
-        const a = JSON.parse(r.value);
-        let changed = false;
-        if(a.seller && a.seller.toLowerCase()===oldLower){ a.seller = NEW; changed = true; }
-        if(a.currentBidder && a.currentBidder.toLowerCase()===oldLower){ a.currentBidder = NEW; changed = true; }
-        if(changed) await storage.set(k, JSON.stringify(a));
-      }
-    }
-  }catch(e){ /* ignore */ }
-
-  // 8) 收購單
-  try{
-    const list = await storage.list('wtb:');
-    if(list && list.keys){
-      for(const k of list.keys){
-        const r = await storage.get(k);
-        if(!r) continue;
-        const w = JSON.parse(r.value);
-        if(w.buyer && w.buyer.toLowerCase()===oldLower){
-          w.buyer = NEW;
-          await storage.set(k, JSON.stringify(w));
-        }
-      }
-    }
-  }catch(e){ /* ignore */ }
-
-  // 9) Boss 貢獻榜（key 本身含暱稱，要搬 key）
-  try{
-    const list = await storage.list('boss:contrib:');
-    if(list && list.keys){
-      for(const k of list.keys){
-        if(k.toLowerCase().endsWith(':'+oldLower)){
-          const r = await storage.get(k);
-          if(!r) continue;
-          const newKey = k.slice(0, k.length - OLD.length) + NEW;
-          await storage.set(newKey, r.value);
-          await storage.delete(k);
-        }
-      }
-    }
-  }catch(e){ /* ignore */ }
-}
-async function runLekcusMigration(){
-  if(!confirm(tt(
-    '確定要把帳號「lekcus」的所有資料搬移成「GM」嗎？搬移後 lekcus 帳號會被刪除，之後請改用「GM」＋原本密碼登入。此動作無法復原。',
-    'Migrate all data from account "lekcus" to "GM"? The old "lekcus" account will be deleted afterwards - log back in with "GM" and your original password. This cannot be undone.'
-  ))) return;
-  showToast(tt('搬移中，請稍候…','Migrating, please wait…'));
-  await migrateLekcusAccountToGM();
-  showToast(tt('搬移完成！請重新登入，暱稱改用「GM」','Migration complete! Please log back in with the nickname "GM"'));
-  doLogout();
 }
 async function gmGrantCoins(targetNick, amount){
   if(!isGM()) return;
@@ -4179,7 +4020,6 @@ async function render(){
         <span class="name">${escapeHtml(p.nickname)}${nameWithBadgesHtml(p, 16)}</span>
         <span class="coin" id="player-coin">✦ ${p.coins}</span>
         <button id="notif-bell-btn" style="position:relative;">🔔<span id="notif-badge" style="display:${notifUnreadCount>0?'inline-flex':'none'};position:absolute;top:-4px;right:-4px;background:#e0455f;color:#fff;border-radius:999px;font-size:10px;line-height:1;padding:2px 5px;">${notifUnreadCount>9?'9+':notifUnreadCount}</span></button>
-        ${p.nickname.toLowerCase()===LEGACY_GM_MIGRATE_NICK ? `<button id="migrate-gm-btn" style="border-color:var(--danger);color:var(--danger);">${tt('搬移成 GM','Migrate to GM')}</button>` : ''}
         <button id="logout-btn">${t('logout')}</button>
       </div>
     </div>
@@ -4202,8 +4042,6 @@ async function render(){
     <div id="tab-body">${prevTabHtml}</div>
   `);
   document.getElementById('logout-btn').onclick = doLogout;
-  const migrateBtn = document.getElementById('migrate-gm-btn');
-  if(migrateBtn) migrateBtn.onclick = runLekcusMigration;
   const bellBtn = document.getElementById('notif-bell-btn');
   if(bellBtn){ bellBtn.onclick = async ()=>{ state.tab = 'friends'; await refreshPlayer(); render(); }; }
   document.querySelectorAll('.tab').forEach(t=>{
