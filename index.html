@@ -245,7 +245,17 @@
   .avatar-current{
     width:56px;height:56px;border-radius:50%;border:1px solid var(--gold);
     display:flex;align-items:center;justify-content:center;font-size:26px;
-    background:var(--bg-panel-raised);flex-shrink:0;
+    background:var(--bg-panel-raised);flex-shrink:0;overflow:hidden;
+  }
+  .avatar-img-inline{width:1em;height:1em;border-radius:50%;object-fit:cover;vertical-align:-0.2em;display:inline-block;}
+  .avatar-current .avatar-img-inline{width:100%;height:100%;}
+  .chat-avatar{width:20px;height:20px;border-radius:50%;overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:13px;background:var(--bg-void);flex-shrink:0;}
+  .avatar-opt.shop-avatar{background-size:cover;background-position:center;font-size:0;position:relative;}
+  .avatar-opt.shop-avatar.locked{opacity:0.5;filter:grayscale(0.7);}
+  .avatar-opt.shop-avatar .avatar-cost-tag{
+    position:absolute;bottom:2px;left:0;right:0;text-align:center;font-size:9px;
+    font-family:'Space Mono',monospace;color:var(--gold-bright);background:rgba(5,4,10,0.75);
+    padding:1px 0;line-height:1.3;
   }
   .mini-card{
     aspect-ratio: 2/3;border-radius:9px;display:flex;flex-direction:column;align-items:center;
@@ -811,19 +821,79 @@ function cardArtAttr(c){ return c.image ? ` style="background-image:url('${c.ima
 const AVATAR_PRESETS = [
   {id:'moon', icon:'🌙'}, {id:'sun', icon:'☀️'}, {id:'star', icon:'⭐'}, {id:'crystal-ball', icon:'🔮'},
   {id:'candle', icon:'🕯️'}, {id:'eye', icon:'👁️'}, {id:'owl', icon:'🦉'}, {id:'wolf', icon:'🐺'},
-  {id:'raven', icon:'🐦‍⬛'}, {id:'butterfly', icon:'🦋'}, {id:'snake', icon:'🐍'}, {id:'black-cat', icon:'🐈‍⬛'},
+  {id:'raven', icon:'🐦'}, {id:'butterfly', icon:'🦋'}, {id:'snake', icon:'🐍'}, {id:'black-cat', icon:'🐈'},
   {id:'sparkles', icon:'✨'}, {id:'rose', icon:'🥀'}, {id:'skull', icon:'💀'}, {id:'gem', icon:'💎'},
 ];
 const AVATAR_BY_ID = Object.fromEntries(AVATAR_PRESETS.map(a=>[a.id, a]));
 const DEFAULT_AVATAR_ID = AVATAR_PRESETS[0].id;
-function playerAvatarIcon(p){
-  const a = AVATAR_BY_ID[p && p.avatarId];
+function avatarIconHtml(avatarId){
+  const shopAvatar = SHOP_AVATAR_BY_ID[avatarId];
+  if(shopAvatar && shopAvatar.image) return `<img src="${shopAvatar.image}" alt="" class="avatar-img-inline" />`;
+  const a = AVATAR_BY_ID[avatarId];
   return a ? a.icon : AVATAR_PRESETS[0].icon;
 }
+function avatarBoxHtml(avatarId){
+  const shopAvatar = SHOP_AVATAR_BY_ID[avatarId];
+  if(shopAvatar && shopAvatar.image) return `<img src="${shopAvatar.image}" alt="" class="icon-box-img" />`;
+  const a = AVATAR_BY_ID[avatarId];
+  return a ? a.icon : AVATAR_PRESETS[0].icon;
+}
+function playerAvatarIcon(p){
+  return avatarIconHtml(p && p.avatarId);
+}
 async function setAvatar(avatarId){
-  if(!AVATAR_BY_ID[avatarId]) return;
+  if(!AVATAR_BY_ID[avatarId] && !SHOP_AVATAR_BY_ID[avatarId]) return;
+  if(SHOP_AVATAR_BY_ID[avatarId] && !isAvatarUnlocked(state.player, avatarId)){
+    showToast(tt('尚未購買這個頭像','You have not purchased this avatar yet'));
+    return;
+  }
   state.player.avatarId = avatarId;
   await savePlayer(state.player);
+  render();
+}
+
+// ---------- Avatar shop (GM-uploaded images, purchasable with 貢獻點 contribution points) ----------
+let SHOP_AVATARS = []; // [{id, image(dataUrl), name, cost}]
+let SHOP_AVATAR_BY_ID = {};
+async function loadAvatarShop(){
+  try{
+    const r = await storage.get('config:avatar_shop');
+    if(r){
+      const arr = JSON.parse(r.value);
+      if(Array.isArray(arr)) SHOP_AVATARS = arr;
+    } else {
+      SHOP_AVATARS = [];
+    }
+  }catch(e){ /* keep previous value */ }
+  SHOP_AVATAR_BY_ID = Object.fromEntries(SHOP_AVATARS.map(a=>[a.id, a]));
+}
+async function saveAvatarShop(){
+  await storage.set('config:avatar_shop', JSON.stringify(SHOP_AVATARS));
+  SHOP_AVATAR_BY_ID = Object.fromEntries(SHOP_AVATARS.map(a=>[a.id, a]));
+}
+function isAvatarUnlocked(p, avatarId){
+  if(AVATAR_BY_ID[avatarId]) return true; // 預設頭像永遠可用
+  return !!(p && Array.isArray(p.unlockedAvatars) && p.unlockedAvatars.includes(avatarId));
+}
+async function buyShopAvatar(avatarId){
+  const shopAvatar = SHOP_AVATAR_BY_ID[avatarId];
+  const p = state.player;
+  if(!shopAvatar || !p) return;
+  if(!Array.isArray(p.unlockedAvatars)) p.unlockedAvatars = [];
+  if(p.unlockedAvatars.includes(avatarId)){
+    // 已購買過，直接切換
+    await setAvatar(avatarId);
+    return;
+  }
+  if(!p.materials || typeof p.materials.contrib !== 'number' || p.materials.contrib < shopAvatar.cost){
+    showToast(tt(`貢獻點不足，需要 ${shopAvatar.cost}`, `Not enough contribution points, need ${shopAvatar.cost}`));
+    return;
+  }
+  p.materials.contrib -= shopAvatar.cost;
+  p.unlockedAvatars.push(avatarId);
+  p.avatarId = avatarId;
+  await savePlayer(p);
+  showToast(tt(`已購買頭像「${shopAvatar.name || avatarId}」✦`, `Avatar "${shopAvatar.name || avatarId}" purchased ✦`));
   render();
 }
 
@@ -1014,6 +1084,7 @@ function ensureMaterials(p){
   if(typeof p.materials.contrib !== 'number') p.materials.contrib = 0;
   if(!p.seasonCards) p.seasonCards = {};
   if(!p.starChart) p.starChart = {unlocked:[]};
+  if(!Array.isArray(p.unlockedAvatars)) p.unlockedAvatars = [];
   return p.materials;
 }
 
@@ -1590,7 +1661,9 @@ async function doBossBurst(useWeapon, accessoryCount){
     await saveBossState(boss);
   }
   state.bossLastAttack = {damage: burst.damage, contrib: newContrib};
-  render();
+  checkAchievementUnlocks(state.player);
+  renderTab();
+  updateHeaderCoins();
   if(defeatMsg){
     showToast(defeatMsg);
   } else {
@@ -1650,7 +1723,9 @@ async function doBossMegaBurst(useWeapon, accessoryCount){
     await saveBossState(boss);
   }
   state.bossLastAttack = {damage: burst.damage, contrib: newContrib};
-  render();
+  checkAchievementUnlocks(state.player);
+  renderTab();
+  updateHeaderCoins();
   if(defeatMsg){
     showToast(defeatMsg);
   } else {
@@ -3251,7 +3326,7 @@ async function savePlayer(p){
   await storage.set(playerKey(p.nickname), JSON.stringify(p));
 }
 function newPlayer(nick, passwordHash){
-  return {nickname:nick, passwordHash, coins:START_COINS, cards:{}, lastClaim:null, lastDrawCards:[], streak:0, joinedAt:Date.now(), slotSpend:0, farmLevel:0, avatarId:DEFAULT_AVATAR_ID, stats:{totalHarvests:0, totalAuctionTrades:0}, equippedBadges:[], unlockedBadges:[], lastSeenChatAt:0, lastActiveAt:Date.now(), materials:{crystal:0}, seasonCards:{}, expLevel:0, expExp:0, expedition:null, expeditionRolls:{},
+  return {nickname:nick, passwordHash, coins:START_COINS, cards:{}, lastClaim:null, lastDrawCards:[], streak:0, joinedAt:Date.now(), slotSpend:0, farmLevel:0, avatarId:DEFAULT_AVATAR_ID, unlockedAvatars:[], stats:{totalHarvests:0, totalAuctionTrades:0}, equippedBadges:[], unlockedBadges:[], lastSeenChatAt:0, lastActiveAt:Date.now(), materials:{crystal:0}, seasonCards:{}, expLevel:0, expExp:0, expedition:null, expeditionRolls:{},
     profession:null,
     professionProgress:{alchemist:{level:1,exp:0}, blacksmith:{level:1,exp:0}, carpenter:{level:1,exp:0}},
     professionMaterials:{herb:0, ore:0, lumber:0},
@@ -3758,6 +3833,7 @@ async function boot(){
   loadSeedPrices().catch(()=>{});
   loadSeasonConfig().catch(()=>{});
   loadDailyPopupImage().catch(()=>{});
+  loadAvatarShop().catch(()=>{});
   loadStarChartConfig().catch(()=>{});
   loadBossConfig().catch(()=>{});
   loadExpeditionConfig().catch(()=>{});
@@ -4071,7 +4147,7 @@ async function sendChatMessage(text){
   text = (text||'').trim();
   if(!text) return;
   if(text.length > 300){ showToast(tt('訊息請在300字以內','Message must be 300 characters or fewer')); return; }
-  const msg = {id: uid(), nickname: state.nickname, text, createdAt: Date.now(), isGM: isGM(), badges: equippedBadgeKeys(state.player)};
+  const msg = {id: uid(), nickname: state.nickname, text, createdAt: Date.now(), isGM: isGM(), badges: equippedBadgeKeys(state.player), avatarId: state.player && state.player.avatarId};
   try{
     await storage.set(chatKey(msg.id), JSON.stringify(msg));
   }catch(e){ showToast(tt('傳送失敗，請再試一次 ⚠','Failed to send - please try again ⚠')); return; }
@@ -4846,8 +4922,17 @@ async function render(){
   }
   if(expeditionTickInterval){ clearInterval(expeditionTickInterval); expeditionTickInterval = null; }
   if(state.tab === 'expedition'){
-    expeditionTickInterval = setInterval(()=>{
-      if(state.tab === 'expedition'){ renderTab(); }
+    expeditionTickInterval = setInterval(async ()=>{
+      if(state.tab === 'expedition'){
+        // 遠征頁每秒重繪倒數計時，會連帶重建「使用家具」勾選框並清掉勾選狀態；
+        // 重繪前先記住哪些勾選框被打勾，重繪後再還原，避免玩家勾了下一秒就消失。
+        const checkedIds = Array.from(document.querySelectorAll('input[type=checkbox][id^="furniture-cb-"]:checked')).map(el=>el.id);
+        await renderTab();
+        checkedIds.forEach(id=>{
+          const el = document.getElementById(id);
+          if(el && !el.disabled) el.checked = true;
+        });
+      }
       else { clearInterval(expeditionTickInterval); expeditionTickInterval = null; }
     }, 1000);
   }
@@ -4878,6 +4963,11 @@ function wirePager(current, total, idPrefix, pageField){
 }
 function escapeHtml(s){
   return String(s).replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+// 只更新 header 上的金幣顯示，不重繪整個 App（例如打 Boss 剛好拿到獎勵時使用）。
+function updateHeaderCoins(){
+  const coinEl = document.getElementById('player-coin');
+  if(coinEl && state.player) coinEl.textContent = `✦ ${state.player.coins}`;
 }
 
 function renderTab(){
@@ -5073,6 +5163,19 @@ function renderCollection(body){
     <div class="avatar-grid">
       ${AVATAR_PRESETS.map(a=>`<div class="avatar-opt${(p.avatarId||DEFAULT_AVATAR_ID)===a.id?' active':''}" data-avatar-id="${a.id}" title="${a.id}">${a.icon}</div>`).join('')}
     </div>
+    ${SHOP_AVATARS.filter(a=>!a.unlisted || isAvatarUnlocked(p, a.id)).length ? `
+      <h2 style="margin-top:20px;">${tt('🛍 頭像商店','🛍 Avatar Shop')}</h2>
+      <p class="sub">${tt(`用貢獻點購買限定頭像，購買後永久解鎖。目前貢獻點：`,`Spend contribution points to unlock limited avatars permanently. Current contribution:`)} <b style="color:var(--gold-bright);">🏅 ${p.materials && p.materials.contrib || 0}</b></p>
+      <div class="avatar-grid">
+        ${SHOP_AVATARS.filter(a=>!a.unlisted || isAvatarUnlocked(p, a.id)).map(a=>{
+          const unlocked = isAvatarUnlocked(p, a.id);
+          const active = (p.avatarId||DEFAULT_AVATAR_ID)===a.id;
+          return `<div class="avatar-opt shop-avatar${active?' active':''}${unlocked?'':' locked'}" data-shop-avatar-id="${a.id}" title="${escapeHtml(a.name||a.id)}" style="background-image:url('${a.image}')">
+            ${unlocked ? '' : `<div class="avatar-cost-tag">🏅${a.cost}</div>`}
+          </div>`;
+        }).join('')}
+      </div>
+    ` : ''}
   </div>`;
 
   html += `<div class="panel">
@@ -5091,8 +5194,11 @@ function renderCollection(body){
     </div>
   </div>`;
   body.innerHTML = html;
-  document.querySelectorAll('.avatar-opt').forEach(el=>{
+  document.querySelectorAll('.avatar-opt[data-avatar-id]').forEach(el=>{
     el.onclick = ()=>setAvatar(el.dataset.avatarId);
+  });
+  document.querySelectorAll('.avatar-opt[data-shop-avatar-id]').forEach(el=>{
+    el.onclick = ()=>buyShopAvatar(el.dataset.shopAvatarId);
   });
   document.querySelectorAll('.chip-btn').forEach(b=>{
     b.onclick = ()=>{ state.filter = b.dataset.filter; renderTab(); };
@@ -5199,7 +5305,7 @@ async function renderFriends(body){
       const fp = friendPlayersByNick[f];
       return `
       <div class="listing">
-        <div class="left"><div class="icon-box">✦</div><div class="meta"><div>${escapeHtml(f)}${fp ? nameWithBadgesHtml(fp, 16) : ''}</div><div class="who">${fp ? presenceHtml(fp) : ''}</div></div></div>
+        <div class="left"><div class="icon-box">${avatarBoxHtml(fp && fp.avatarId)}</div><div class="meta"><div>${escapeHtml(f)}${fp ? nameWithBadgesHtml(fp, 16) : ''}</div><div class="who">${fp ? presenceHtml(fp) : ''}</div></div></div>
         <div class="right">
           <button class="btn small" data-trade-with="${escapeHtml(f)}">${state.tradingWith===f ? tt('收合','Collapse') : tt('交易','Trade')}</button>
           <button class="btn small secondary" data-remove-friend="${escapeHtml(f)}">${t('remove')}</button>
@@ -5865,6 +5971,7 @@ async function renderChat(body){
       ${recent.length === 0 ? `<div class="empty-note">${tt('目前還沒有訊息，說點什麼吧！','No messages yet - say something!')}</div>` : recent.map(m=>`
         <div class="chat-msg${m.nickname.toLowerCase()===state.nickname.toLowerCase()?' mine':''}">
           <div class="chat-msg-head">
+            <div class="chat-avatar">${avatarBoxHtml(m.avatarId)}</div>
             <span class="chat-msg-name" style="${m.isGM?'color:var(--gold);':''}">${escapeHtml(m.nickname)}${m.isGM?' ⚡':''}</span>
             ${(m.badges||[]).length ? `<span class="badge-row" style="display:inline-flex;gap:2px;">${(m.badges||[]).map(k=>badgeInlineHtml(k,15)).join('')}</span>` : ''}
             <span class="chat-msg-time">${timeAgo(m.createdAt)}</span>
@@ -5943,6 +6050,38 @@ async function renderGM(body){
         ? `<button class="btn small" id="gm-daily-popup-enable-btn">${tt('啟用彈窗','Enable Popup')}</button>`
         : `<button class="btn small secondary" id="gm-daily-popup-disable-btn">${tt('停用彈窗（不顯示任何圖片）','Disable Popup (show nothing)')}</button>`
       }
+    </div>
+  </div>`;
+
+  await loadAvatarShop().catch(()=>{});
+  html += `<div class="panel">
+    <h2>${tt('🖼 頭像商店','🖼 Avatar Shop')}</h2>
+    <p class="sub">${tt('上傳自訂圖片頭像，設定貢獻點價格，玩家可在「頭像」分頁用貢獻點購買並永久解鎖','Upload custom image avatars and set a contribution-point price - players can buy and permanently unlock them from the Avatar tab')}</p>
+    ${SHOP_AVATARS.length ? `
+      <div class="badge-grid" style="margin-bottom:14px;">
+        ${SHOP_AVATARS.map(a=>`
+          <div class="badge-card${a.unlisted?' locked':''}">
+            <div class="badge-img-wrap"><img src="${a.image}" style="width:100%;height:100%;object-fit:cover;" /></div>
+            <div>${escapeHtml(a.name||a.id)}${a.unlisted?` <span class="who">(${tt('已下架','unlisted')})</span>`:''}</div>
+            <div class="who">🏅 ${a.cost}</div>
+            <button class="btn small secondary" data-shop-avatar-remove="${a.id}">${a.unlisted?tt('重新上架','Relist'):tt('下架','Remove')}</button>
+          </div>
+        `).join('')}
+      </div>
+    ` : `<div class="empty-note">${tt('目前商店沒有頭像','No avatars in the shop yet')}</div>`}
+    <div class="form-row">
+      <div style="flex:1;min-width:160px;"><label>${tt('頭像名稱','Avatar name')}</label><input type="text" id="gm-avatar-shop-name" placeholder="${tt('例如：黃金龍魂','e.g. Golden Dragon Spirit')}" maxlength="30" /></div>
+      <div style="min-width:120px;"><label>${tt('貢獻點價格','Contribution cost')}</label><input type="number" id="gm-avatar-shop-cost" min="1" value="500" /></div>
+    </div>
+    <div class="form-row">
+      <div style="flex:1;min-width:220px;">
+        <label>${tt('上傳圖片','Upload image')}</label>
+        <input type="file" id="gm-avatar-shop-file" accept="image/*" />
+        <div class="who" style="margin-top:4px;">${tt('建議使用方形圖片，檔案小於 500KB','Recommend a square image under 500KB')}</div>
+      </div>
+    </div>
+    <div class="form-row">
+      <button class="btn small" id="gm-avatar-shop-add-btn">${tt('上架頭像','Add to Shop')}</button>
     </div>
   </div>`;
 
@@ -6375,6 +6514,54 @@ async function renderGM(body){
     showToast(tt('已重新啟用每日彈窗','Daily popup re-enabled'));
     renderTab();
   };
+
+  const avatarShopAddBtn = document.getElementById('gm-avatar-shop-add-btn');
+  if(avatarShopAddBtn) avatarShopAddBtn.onclick = async ()=>{
+    const nameInput = document.getElementById('gm-avatar-shop-name');
+    const costInput = document.getElementById('gm-avatar-shop-cost');
+    const fileInput = document.getElementById('gm-avatar-shop-file');
+    const name = nameInput ? nameInput.value.trim() : '';
+    const cost = costInput ? parseInt(costInput.value, 10) : NaN;
+    const file = fileInput && fileInput.files && fileInput.files[0];
+    if(!name){ showToast(tt('請輸入頭像名稱','Please enter an avatar name')); return; }
+    if(isNaN(cost) || cost <= 0){ showToast(tt('請輸入有效的貢獻點價格','Please enter a valid contribution cost')); return; }
+    if(!file){ showToast(tt('請先選擇一張圖片','Please choose an image first')); return; }
+    if(!file.type || !file.type.startsWith('image/')){ showToast(tt('請選擇圖片檔案','Please choose an image file')); return; }
+    const MAX_BYTES = 1.5 * 1024 * 1024; // 頭像會存進商店清單且常駐載入，限制小一點
+    if(file.size > MAX_BYTES){ showToast(tt('圖片檔案過大，請壓縮到 1.5MB 以下','Image is too large, please compress it under 1.5MB')); return; }
+    avatarShopAddBtn.disabled = true;
+    avatarShopAddBtn.textContent = tt('上傳中...','Uploading...');
+    try{
+      const dataUrl = await new Promise((resolve, reject)=>{
+        const reader = new FileReader();
+        reader.onload = ()=>resolve(reader.result);
+        reader.onerror = ()=>reject(new Error('read failed'));
+        reader.readAsDataURL(file);
+      });
+      const id = 'shop_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,7);
+      SHOP_AVATARS.push({id, name, cost, image: dataUrl, unlisted:false});
+      await saveAvatarShop();
+      showToast(tt('頭像已上架 🖼','Avatar added to the shop 🖼'));
+      renderTab();
+    }catch(e){
+      showToast(tt('上傳失敗，請再試一次','Upload failed, please try again'));
+      avatarShopAddBtn.disabled = false;
+      avatarShopAddBtn.textContent = tt('上架頭像','Add to Shop');
+    }
+  };
+  document.querySelectorAll('[data-shop-avatar-remove]').forEach(btn=>{
+    btn.onclick = async ()=>{
+      const id = btn.dataset.shopAvatarRemove;
+      const shopAvatar = SHOP_AVATAR_BY_ID[id];
+      if(!shopAvatar) return;
+      const nowUnlisted = !shopAvatar.unlisted;
+      if(nowUnlisted && !confirm(tt('確定要下架這個頭像嗎？已購買的玩家仍可繼續使用，只是新玩家無法再購買','Remove this avatar from the shop? Players who already bought it can keep using it - it just will not be available for new purchases'))) return;
+      shopAvatar.unlisted = nowUnlisted;
+      await saveAvatarShop();
+      showToast(nowUnlisted ? tt('已下架','Removed from shop') : tt('已重新上架','Relisted in shop'));
+      renderTab();
+    };
+  });
 
   const annSaveBtn = document.getElementById('gm-ann-save-btn');
   if(annSaveBtn) annSaveBtn.onclick = async ()=>{
