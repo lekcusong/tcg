@@ -1035,8 +1035,8 @@ const DEFAULT_PROFESSION_DEFS = [
       {itemId:'weapon_common', icon:'⚔️', labelZh:'武器（common）', labelEn:'Weapon (Common)', materialCost:8, staminaCost:15, exp:15},
       {itemId:'accessory_common', icon:'💍', labelZh:'飾品（common）', labelEn:'Accessory (Common)', materialCost:5, staminaCost:10, exp:10},
     ]},
-  {id:'carpenter', icon:'🪵', labelZh:'木匠', labelEn:'Carpenter',
-    materialId:'lumber', materialIcon:'🪵', materialLabelZh:'木料', materialLabelEn:'Lumber',
+  {id:'carpenter', icon:'🔨', labelZh:'木匠', labelEn:'Carpenter',
+    materialId:'lumber', materialIcon:'🌳', materialLabelZh:'木料', materialLabelEn:'Lumber',
     recipes:[
       {itemId:'furniture_common', icon:'🪑', labelZh:'家具（common）', labelEn:'Furniture (Common)', materialCost:8, staminaCost:15, exp:15},
     ]},
@@ -1348,6 +1348,8 @@ const DEFAULT_BOSS_WEAPON_DMG_BONUS = 0.10;      // 使用武器：傷害 +10%
 const DEFAULT_BOSS_ACCESSORY_CRIT_PER = 0.05;    // 每消耗 1 個飾品：暴擊率 +5%
 const DEFAULT_BOSS_ACCESSORY_CRIT_DMG_BONUS = 0.20; // 觸發暴擊：傷害 +20%（不隨飾品數疊加倍率）
 const BOSS_ACCESSORY_MAX = 2;                    // 飾品最多可疊用 2 個
+const BOSS_MEGA_CRYSTAL_COST = 50;               // 星象超爆發：消耗結晶數
+const BOSS_MEGA_BURST_DAMAGE = 5000;             // 星象超爆發：固定傷害
 
 let BOSS_STAGE_HP = [...DEFAULT_BOSS_STAGE_HP];
 let BOSS_DIFFICULTY_MULT = DEFAULT_BOSS_DIFFICULTY_MULT;
@@ -1513,6 +1515,60 @@ async function doBossBurst(useWeapon, accessoryCount){
     showToast(tt(`⚔️ 星象爆發造成 ${burst.damage} 傷害！${extraTag}${critTag}　貢獻點 +${BOSS_CONTRIB_PER_BURST}`, `⚔️ Astral Burst dealt ${burst.damage} damage!${extraTag}${critTag}  Contribution +${BOSS_CONTRIB_PER_BURST}`));
   }
 }
+async function doBossMegaBurst(){
+  const p = state.player;
+  ensureMaterials(p);
+  if(p.materials.crystal < BOSS_MEGA_CRYSTAL_COST){ showToast(tt(`星軌結晶不足，需要 ${BOSS_MEGA_CRYSTAL_COST}`, `Not enough Star-Trail Crystal, need ${BOSS_MEGA_CRYSTAL_COST}`)); return; }
+  let boss = await ensureBossState();
+  if(boss.hp <= 0){ showToast(tt('Boss 正在轉換階段，請稍後再試','The Boss is transitioning stages, try again shortly')); return; }
+  p.materials.crystal -= BOSS_MEGA_CRYSTAL_COST;
+  const contribGain = Math.round(BOSS_CONTRIB_PER_BURST * (BOSS_MEGA_CRYSTAL_COST / Math.max(1, BOSS_CRYSTAL_COST)));
+  p.materials.contrib += contribGain; // 賽季總貢獻點（可花費，賽季結束才歸零）
+  const damage = BOSS_MEGA_BURST_DAMAGE;
+  await savePlayer(p);
+  boss.hp = Math.max(0, boss.hp - damage);
+  const newContrib = await addBossContribution(p.nickname, boss.cycle, contribGain);
+  let defeatMsg = '';
+  if(boss.hp <= 0){
+    if(boss.stage < 3){
+      boss.stage += 1;
+      boss.maxHp = bossStageMaxHp(boss.stage, boss.cycle);
+      boss.hp = boss.maxHp;
+      await saveBossState(boss);
+      defeatMsg = tt(`⚔️ 「${BOSS_STAGE_META[boss.stage-2].label}」被擊破！Boss 進入「${BOSS_STAGE_META[boss.stage-1].label}」！`, `⚔️ "${BOSS_STAGE_META[boss.stage-2].labelEn}" defeated! The Boss enters "${BOSS_STAGE_META[boss.stage-1].labelEn}"!`);
+    } else {
+      const contribList = await fetchBossContribList(boss.cycle);
+      const totalContrib = contribList.reduce((a,c)=>a+c.points,0) || 1;
+      await Promise.all(contribList.map(async c=>{
+        const player = await loadPlayer(c.nickname);
+        if(!player) return;
+        ensureMaterials(player);
+        const share = c.points / totalContrib;
+        const bonusCoins = Math.round(BOSS_BONUS_POOL.coins * share);
+        const bonusCrystal = Math.round(BOSS_BONUS_POOL.crystal * share);
+        player.coins = (player.coins||0) + BOSS_BASE_REWARD.coins + bonusCoins;
+        player.materials.crystal += (BOSS_BASE_REWARD.crystal||0) + bonusCrystal;
+        await savePlayer(player);
+      }));
+      const nextCycle = boss.cycle + 1;
+      boss = {seasonId: CURRENT_SEASON_ID, cycle: nextCycle, stage:1, hp: bossStageMaxHp(1,nextCycle), maxHp: bossStageMaxHp(1,nextCycle)};
+      await saveBossState(boss);
+      defeatMsg = tt(`🎉 全服擊敗「終焉蛇神」！獎勵已依貢獻發放，Boss 第 ${nextCycle} 輪重新降臨（更難）！`, `🎉 The server has defeated the Doomsday Serpent God! Rewards distributed by contribution - Cycle ${nextCycle} begins (harder)!`);
+      if(state.player.nickname && contribList.find(c=>c.nickname===state.player.nickname)){
+        state.player = await loadPlayer(state.player.nickname);
+      }
+    }
+  } else {
+    await saveBossState(boss);
+  }
+  state.bossLastAttack = {damage, contrib: newContrib};
+  render();
+  if(defeatMsg){
+    showToast(defeatMsg);
+  } else {
+    showToast(tt(`✦ 星象超爆發造成 ${damage.toLocaleString()} 傷害！　貢獻點 +${contribGain}`, `✦ Mega Astral Burst dealt ${damage.toLocaleString()} damage!  Contribution +${contribGain}`));
+  }
+}
 function renderBoss(body){
   const p = state.player;
   ensureMaterials(p);
@@ -1561,6 +1617,7 @@ function renderBoss(body){
         </div>`;
       })()}
       <button class="btn" id="boss-burst-btn" ${p.materials.crystal < BOSS_CRYSTAL_COST ? 'disabled' : ''}>${tt(`✦ 星象爆發（消耗🔮${BOSS_CRYSTAL_COST}，基礎造成${BOSS_BURST_DAMAGE}傷害）`, `✦ Astral Burst (🔮${BOSS_CRYSTAL_COST} → base ${BOSS_BURST_DAMAGE} dmg)`)}</button>
+      <button class="btn" id="boss-mega-burst-btn" style="margin-top:8px;border-color:var(--legendary-a);color:var(--legendary-a);" ${p.materials.crystal < BOSS_MEGA_CRYSTAL_COST ? 'disabled' : ''}>${tt(`✦✦ 星象超爆發（消耗🔮${BOSS_MEGA_CRYSTAL_COST}，造成${BOSS_MEGA_BURST_DAMAGE.toLocaleString()}傷害）`, `✦✦ Mega Astral Burst (🔮${BOSS_MEGA_CRYSTAL_COST} → ${BOSS_MEGA_BURST_DAMAGE.toLocaleString()} dmg)`)}</button>
     </div>`;
     html += `<div class="panel"><h2>🏆 ${tt('本輪貢獻榜','This Cycle Leaderboard')}</h2>`;
     if(contribList.length === 0){
@@ -1581,6 +1638,10 @@ function renderBoss(body){
         const accessoryCount = accessorySel ? parseInt(accessorySel.value, 10) || 0 : 0;
         doBossBurst(useWeapon, accessoryCount);
       };
+    }
+    const megaBtn = document.getElementById('boss-mega-burst-btn');
+    if(megaBtn){
+      megaBtn.onclick = ()=>{ doBossMegaBurst(); };
     }
   })();
 }
