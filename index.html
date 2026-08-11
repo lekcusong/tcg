@@ -1438,9 +1438,9 @@ async function fetchBossContribList(cycle){
   }catch(e){ return []; }
 }
 // 階段四：Boss 頁面武器/飾品使用 —— 計算這一擊實際傷害，並扣除消耗的職業成品
-function bossBurstDamage(p, useWeapon, accessoryCount){
+function bossBurstDamage(p, useWeapon, accessoryCount, baseDamage){
   ensureProfession(p);
-  let dmg = BOSS_BURST_DAMAGE;
+  let dmg = (typeof baseDamage === 'number') ? baseDamage : BOSS_BURST_DAMAGE;
   let usedWeapon = false;
   if(useWeapon && (p.professionItems.weapon_common||0) > 0){
     p.professionItems.weapon_common -= 1;
@@ -1515,7 +1515,7 @@ async function doBossBurst(useWeapon, accessoryCount){
     showToast(tt(`⚔️ 星象爆發造成 ${burst.damage} 傷害！${extraTag}${critTag}　貢獻點 +${BOSS_CONTRIB_PER_BURST}`, `⚔️ Astral Burst dealt ${burst.damage} damage!${extraTag}${critTag}  Contribution +${BOSS_CONTRIB_PER_BURST}`));
   }
 }
-async function doBossMegaBurst(){
+async function doBossMegaBurst(useWeapon, accessoryCount){
   const p = state.player;
   ensureMaterials(p);
   if(p.materials.crystal < BOSS_MEGA_CRYSTAL_COST){ showToast(tt(`星軌結晶不足，需要 ${BOSS_MEGA_CRYSTAL_COST}`, `Not enough Star-Trail Crystal, need ${BOSS_MEGA_CRYSTAL_COST}`)); return; }
@@ -1524,9 +1524,9 @@ async function doBossMegaBurst(){
   p.materials.crystal -= BOSS_MEGA_CRYSTAL_COST;
   const contribGain = Math.round(BOSS_CONTRIB_PER_BURST * (BOSS_MEGA_CRYSTAL_COST / Math.max(1, BOSS_CRYSTAL_COST)));
   p.materials.contrib += contribGain; // 賽季總貢獻點（可花費，賽季結束才歸零）
-  const damage = BOSS_MEGA_BURST_DAMAGE;
+  const burst = bossBurstDamage(p, useWeapon, accessoryCount, BOSS_MEGA_BURST_DAMAGE);
   await savePlayer(p);
-  boss.hp = Math.max(0, boss.hp - damage);
+  boss.hp = Math.max(0, boss.hp - burst.damage);
   const newContrib = await addBossContribution(p.nickname, boss.cycle, contribGain);
   let defeatMsg = '';
   if(boss.hp <= 0){
@@ -1561,12 +1561,17 @@ async function doBossMegaBurst(){
   } else {
     await saveBossState(boss);
   }
-  state.bossLastAttack = {damage, contrib: newContrib};
+  state.bossLastAttack = {damage: burst.damage, contrib: newContrib};
   render();
   if(defeatMsg){
     showToast(defeatMsg);
   } else {
-    showToast(tt(`✦ 星象超爆發造成 ${damage.toLocaleString()} 傷害！　貢獻點 +${contribGain}`, `✦ Mega Astral Burst dealt ${damage.toLocaleString()} damage!  Contribution +${contribGain}`));
+    const extras = [];
+    if(burst.usedWeapon) extras.push(tt('⚔️武器','⚔️Weapon'));
+    if(burst.accessoryUsed > 0) extras.push(tt(`💍飾品×${burst.accessoryUsed}`, `💍Accessory×${burst.accessoryUsed}`));
+    const critTag = burst.isCrit ? tt('　💥暴擊！','　💥Critical!') : '';
+    const extraTag = extras.length ? `（${extras.join('、')}）` : '';
+    showToast(tt(`✦✦ 星象超爆發造成 ${burst.damage.toLocaleString()} 傷害！${extraTag}${critTag}　貢獻點 +${contribGain}`, `✦✦ Mega Astral Burst dealt ${burst.damage.toLocaleString()} damage!${extraTag}${critTag}  Contribution +${contribGain}`));
   }
 }
 function renderBoss(body){
@@ -1617,7 +1622,7 @@ function renderBoss(body){
         </div>`;
       })()}
       <button class="btn" id="boss-burst-btn" ${p.materials.crystal < BOSS_CRYSTAL_COST ? 'disabled' : ''}>${tt(`✦ 星象爆發（消耗🔮${BOSS_CRYSTAL_COST}，基礎造成${BOSS_BURST_DAMAGE}傷害）`, `✦ Astral Burst (🔮${BOSS_CRYSTAL_COST} → base ${BOSS_BURST_DAMAGE} dmg)`)}</button>
-      <button class="btn" id="boss-mega-burst-btn" style="margin-top:8px;border-color:var(--legendary-a);color:var(--legendary-a);" ${p.materials.crystal < BOSS_MEGA_CRYSTAL_COST ? 'disabled' : ''}>${tt(`✦✦ 星象超爆發（消耗🔮${BOSS_MEGA_CRYSTAL_COST}，造成${BOSS_MEGA_BURST_DAMAGE.toLocaleString()}傷害）`, `✦✦ Mega Astral Burst (🔮${BOSS_MEGA_CRYSTAL_COST} → ${BOSS_MEGA_BURST_DAMAGE.toLocaleString()} dmg)`)}</button>
+      <button class="btn" id="boss-mega-burst-btn" style="margin-top:8px;border-color:var(--legendary-a);color:var(--legendary-a);" ${p.materials.crystal < BOSS_MEGA_CRYSTAL_COST ? 'disabled' : ''}>${tt(`✦✦ 星象超爆發（消耗🔮${BOSS_MEGA_CRYSTAL_COST}，基礎造成${BOSS_MEGA_BURST_DAMAGE.toLocaleString()}傷害）`, `✦✦ Mega Astral Burst (🔮${BOSS_MEGA_CRYSTAL_COST} → base ${BOSS_MEGA_BURST_DAMAGE.toLocaleString()} dmg)`)}</button>
     </div>`;
     html += `<div class="panel"><h2>🏆 ${tt('本輪貢獻榜','This Cycle Leaderboard')}</h2>`;
     if(contribList.length === 0){
@@ -1641,7 +1646,12 @@ function renderBoss(body){
     }
     const megaBtn = document.getElementById('boss-mega-burst-btn');
     if(megaBtn){
-      megaBtn.onclick = ()=>{ doBossMegaBurst(); };
+      megaBtn.onclick = ()=>{
+        const useWeapon = !!document.getElementById('boss-use-weapon')?.checked;
+        const accessorySel = document.getElementById('boss-use-accessory');
+        const accessoryCount = accessorySel ? parseInt(accessorySel.value, 10) || 0 : 0;
+        doBossMegaBurst(useWeapon, accessoryCount);
+      };
     }
   })();
 }
