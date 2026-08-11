@@ -1347,9 +1347,16 @@ const DEFAULT_BOSS_BONUS_POOL = {coins: 5000, crystal: 200};
 const DEFAULT_BOSS_WEAPON_DMG_BONUS = 0.10;      // 使用武器：傷害 +10%
 const DEFAULT_BOSS_ACCESSORY_CRIT_PER = 0.05;    // 每消耗 1 個飾品：暴擊率 +5%
 const DEFAULT_BOSS_ACCESSORY_CRIT_DMG_BONUS = 0.20; // 觸發暴擊：傷害 +20%（不隨飾品數疊加倍率）
-const BOSS_ACCESSORY_MAX = 2;                    // 飾品最多可疊用 2 個
-const BOSS_MEGA_CRYSTAL_COST = 50;               // 星象超爆發：消耗結晶數
-const BOSS_MEGA_BURST_DAMAGE = 5000;             // 星象超爆發：固定傷害
+const BOSS_ACCESSORY_MAX = 2;                    // 飾品最多可疊用 2 個（一般星象爆發）
+const DEFAULT_BOSS_MEGA_CRYSTAL_COST = 50;       // 星象超爆發：消耗結晶數
+const DEFAULT_BOSS_MEGA_BURST_DAMAGE = 6000;     // 星象超爆發：固定傷害
+const DEFAULT_BOSS_MEGA_WEAPON_COST = 10;        // 星象超爆發：使用武器需消耗的武器數量
+const DEFAULT_BOSS_MEGA_ACCESSORY_MAX = 10;      // 星象超爆發：飾品最多可疊用數量
+
+let BOSS_MEGA_CRYSTAL_COST = DEFAULT_BOSS_MEGA_CRYSTAL_COST;
+let BOSS_MEGA_BURST_DAMAGE = DEFAULT_BOSS_MEGA_BURST_DAMAGE;
+let BOSS_MEGA_WEAPON_COST = DEFAULT_BOSS_MEGA_WEAPON_COST;
+let BOSS_MEGA_ACCESSORY_MAX = DEFAULT_BOSS_MEGA_ACCESSORY_MAX;
 
 let BOSS_STAGE_HP = [...DEFAULT_BOSS_STAGE_HP];
 let BOSS_DIFFICULTY_MULT = DEFAULT_BOSS_DIFFICULTY_MULT;
@@ -1377,6 +1384,10 @@ async function loadBossConfig(){
       if(typeof s.weaponDmgBonus === 'number' && s.weaponDmgBonus >= 0) BOSS_WEAPON_DMG_BONUS = s.weaponDmgBonus;
       if(typeof s.accessoryCritPer === 'number' && s.accessoryCritPer >= 0) BOSS_ACCESSORY_CRIT_PER = s.accessoryCritPer;
       if(typeof s.accessoryCritDmgBonus === 'number' && s.accessoryCritDmgBonus >= 0) BOSS_ACCESSORY_CRIT_DMG_BONUS = s.accessoryCritDmgBonus;
+      if(typeof s.megaCrystalCost === 'number' && s.megaCrystalCost >= 0) BOSS_MEGA_CRYSTAL_COST = s.megaCrystalCost;
+      if(typeof s.megaBurstDamage === 'number' && s.megaBurstDamage >= 0) BOSS_MEGA_BURST_DAMAGE = s.megaBurstDamage;
+      if(typeof s.megaWeaponCost === 'number' && s.megaWeaponCost >= 0) BOSS_MEGA_WEAPON_COST = s.megaWeaponCost;
+      if(typeof s.megaAccessoryMax === 'number' && s.megaAccessoryMax >= 0) BOSS_MEGA_ACCESSORY_MAX = s.megaAccessoryMax;
     }
   }catch(e){ /* keep defaults */ }
 }
@@ -1386,6 +1397,8 @@ async function saveBossConfig(){
     burstDamage: BOSS_BURST_DAMAGE, contribPerBurst: BOSS_CONTRIB_PER_BURST,
     baseReward: BOSS_BASE_REWARD, bonusPool: BOSS_BONUS_POOL,
     weaponDmgBonus: BOSS_WEAPON_DMG_BONUS, accessoryCritPer: BOSS_ACCESSORY_CRIT_PER, accessoryCritDmgBonus: BOSS_ACCESSORY_CRIT_DMG_BONUS,
+    megaCrystalCost: BOSS_MEGA_CRYSTAL_COST, megaBurstDamage: BOSS_MEGA_BURST_DAMAGE,
+    megaWeaponCost: BOSS_MEGA_WEAPON_COST, megaAccessoryMax: BOSS_MEGA_ACCESSORY_MAX,
   }));
 }
 function bossStageMaxHp(stage, cycle){
@@ -1438,16 +1451,18 @@ async function fetchBossContribList(cycle){
   }catch(e){ return []; }
 }
 // 階段四：Boss 頁面武器/飾品使用 —— 計算這一擊實際傷害，並扣除消耗的職業成品
-function bossBurstDamage(p, useWeapon, accessoryCount, baseDamage){
+function bossBurstDamage(p, useWeapon, accessoryCount, baseDamage, weaponCost, accessoryMax){
   ensureProfession(p);
   let dmg = (typeof baseDamage === 'number') ? baseDamage : BOSS_BURST_DAMAGE;
+  const wCost = (typeof weaponCost === 'number') ? weaponCost : 1;
+  const aMax = (typeof accessoryMax === 'number') ? accessoryMax : BOSS_ACCESSORY_MAX;
   let usedWeapon = false;
-  if(useWeapon && (p.professionItems.weapon_common||0) > 0){
-    p.professionItems.weapon_common -= 1;
+  if(useWeapon && (p.professionItems.weapon_common||0) >= wCost){
+    p.professionItems.weapon_common -= wCost;
     dmg *= (1 + BOSS_WEAPON_DMG_BONUS);
     usedWeapon = true;
   }
-  const n = Math.min(Math.max(0, accessoryCount|0), p.professionItems.accessory_common||0, BOSS_ACCESSORY_MAX);
+  const n = Math.min(Math.max(0, accessoryCount|0), p.professionItems.accessory_common||0, aMax);
   let critChance = 0;
   if(n > 0){
     p.professionItems.accessory_common -= n;
@@ -1455,7 +1470,7 @@ function bossBurstDamage(p, useWeapon, accessoryCount, baseDamage){
   }
   const isCrit = Math.random() < critChance;
   if(isCrit) dmg *= (1 + BOSS_ACCESSORY_CRIT_DMG_BONUS);
-  return {damage: Math.round(dmg), usedWeapon, accessoryUsed: n, isCrit};
+  return {damage: Math.round(dmg), usedWeapon, weaponUsed: usedWeapon ? wCost : 0, accessoryUsed: n, isCrit};
 }
 async function doBossBurst(useWeapon, accessoryCount){
   const p = state.player;
@@ -1524,7 +1539,7 @@ async function doBossMegaBurst(useWeapon, accessoryCount){
   p.materials.crystal -= BOSS_MEGA_CRYSTAL_COST;
   const contribGain = Math.round(BOSS_CONTRIB_PER_BURST * (BOSS_MEGA_CRYSTAL_COST / Math.max(1, BOSS_CRYSTAL_COST)));
   p.materials.contrib += contribGain; // 賽季總貢獻點（可花費，賽季結束才歸零）
-  const burst = bossBurstDamage(p, useWeapon, accessoryCount, BOSS_MEGA_BURST_DAMAGE);
+  const burst = bossBurstDamage(p, useWeapon, accessoryCount, BOSS_MEGA_BURST_DAMAGE, BOSS_MEGA_WEAPON_COST, BOSS_MEGA_ACCESSORY_MAX);
   await savePlayer(p);
   boss.hp = Math.max(0, boss.hp - burst.damage);
   const newContrib = await addBossContribution(p.nickname, boss.cycle, contribGain);
@@ -1567,7 +1582,7 @@ async function doBossMegaBurst(useWeapon, accessoryCount){
     showToast(defeatMsg);
   } else {
     const extras = [];
-    if(burst.usedWeapon) extras.push(tt('⚔️武器','⚔️Weapon'));
+    if(burst.usedWeapon) extras.push(tt(`⚔️武器×${burst.weaponUsed}`, `⚔️Weapon×${burst.weaponUsed}`));
     if(burst.accessoryUsed > 0) extras.push(tt(`💍飾品×${burst.accessoryUsed}`, `💍Accessory×${burst.accessoryUsed}`));
     const critTag = burst.isCrit ? tt('　💥暴擊！','　💥Critical!') : '';
     const extraTag = extras.length ? `（${extras.join('、')}）` : '';
@@ -1605,19 +1620,19 @@ function renderBoss(body){
       ${(()=>{
         const weaponQty = p.professionItems.weapon_common||0;
         const accessoryQty = p.professionItems.accessory_common||0;
-        const accessoryMax = Math.min(accessoryQty, BOSS_ACCESSORY_MAX);
+        const accessorySelectMax = Math.min(accessoryQty, Math.max(BOSS_ACCESSORY_MAX, BOSS_MEGA_ACCESSORY_MAX));
         const accessoryOptions = [];
-        for(let i=0;i<=accessoryMax;i++){
+        for(let i=0;i<=accessorySelectMax;i++){
           accessoryOptions.push(`<option value="${i}">${i}</option>`);
         }
         return `<div style="border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:10px;display:flex;flex-direction:column;gap:8px;">
           <label style="display:flex;align-items:center;gap:8px;${weaponQty>0?'':'opacity:0.5;'}">
             <input type="checkbox" id="boss-use-weapon" ${weaponQty>0?'':'disabled'} />
-            ${tt(`⚔️ 使用武器（傷害 +${Math.round(BOSS_WEAPON_DMG_BONUS*100)}%，庫存 ${weaponQty}）`, `⚔️ Use Weapon (+${Math.round(BOSS_WEAPON_DMG_BONUS*100)}% dmg, stock ${weaponQty})`)}
+            ${tt(`⚔️ 使用武器（一般爆發消耗1把／超爆發消耗${BOSS_MEGA_WEAPON_COST}把，傷害 +${Math.round(BOSS_WEAPON_DMG_BONUS*100)}%，庫存 ${weaponQty}）`, `⚔️ Use Weapon (Burst: 1 / Mega Burst: ${BOSS_MEGA_WEAPON_COST}, +${Math.round(BOSS_WEAPON_DMG_BONUS*100)}% dmg, stock ${weaponQty})`)}
           </label>
           <label style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;${accessoryQty>0?'':'opacity:0.5;'}">
-            ${tt(`💍 使用飾品（每個暴擊率 +${Math.round(BOSS_ACCESSORY_CRIT_PER*100)}%，暴擊傷害 +${Math.round(BOSS_ACCESSORY_CRIT_DMG_BONUS*100)}%，庫存 ${accessoryQty}）`, `💍 Use Accessories (+${Math.round(BOSS_ACCESSORY_CRIT_PER*100)}% crit each, +${Math.round(BOSS_ACCESSORY_CRIT_DMG_BONUS*100)}% crit dmg, stock ${accessoryQty})`)}：
-            <select id="boss-use-accessory" ${accessoryMax>0?'':'disabled'}>${accessoryOptions.join('')}</select>
+            ${tt(`💍 使用飾品（一般爆發最多疊用${BOSS_ACCESSORY_MAX}個／超爆發最多疊用${BOSS_MEGA_ACCESSORY_MAX}個，每個暴擊率 +${Math.round(BOSS_ACCESSORY_CRIT_PER*100)}%，暴擊傷害 +${Math.round(BOSS_ACCESSORY_CRIT_DMG_BONUS*100)}%，庫存 ${accessoryQty}）`, `💍 Use Accessories (Burst max ${BOSS_ACCESSORY_MAX} / Mega Burst max ${BOSS_MEGA_ACCESSORY_MAX}, +${Math.round(BOSS_ACCESSORY_CRIT_PER*100)}% crit each, +${Math.round(BOSS_ACCESSORY_CRIT_DMG_BONUS*100)}% crit dmg, stock ${accessoryQty})`)}：
+            <select id="boss-use-accessory" ${accessorySelectMax>0?'':'disabled'}>${accessoryOptions.join('')}</select>
           </label>
         </div>`;
       })()}
@@ -2656,10 +2671,17 @@ function expeditionRollKey(tierId, durationKey){ return `${tierId}_${durationKey
 // 每個任務需要 commonCount 張不同的 common 卡 + uncommonCount 張不同的 uncommon 卡，
 // 這些卡牌由系統隨機抽定、每種各需 1 張；玩家若沒有該卡，需要去拍賣行收購。
 // 同一階的四種時長選項共用相同的卡牌需求數量。
-function expeditionQuestCardCount(variant){
-  return (variant.commonCount||0) + (variant.uncommonCount||0);
+// 3小時遠征額外需要 1 張 rare 卡；8小時遠征額外需要 1 張 legendary（頂級稀有度）卡
+function expeditionExtraCardsForDuration(durationKey){
+  if(durationKey === 'd3h') return {rare:1, legendary:0};
+  if(durationKey === 'd8h') return {rare:0, legendary:1};
+  return {rare:0, legendary:0};
 }
-function rollExpeditionRequiredCards(variant){
+function expeditionQuestCardCount(variant, durationKey){
+  const extra = expeditionExtraCardsForDuration(durationKey);
+  return (variant.commonCount||0) + (variant.uncommonCount||0) + extra.rare + extra.legendary;
+}
+function rollExpeditionRequiredCards(variant, durationKey){
   const picks = [];
   const used = new Set();
   function pickFrom(rarity, count){
@@ -2673,6 +2695,9 @@ function rollExpeditionRequiredCards(variant){
   }
   if(variant.commonCount > 0) pickFrom('common', variant.commonCount);
   if(variant.uncommonCount > 0) pickFrom('uncommon', variant.uncommonCount);
+  const extra = expeditionExtraCardsForDuration(durationKey);
+  if(extra.rare > 0) pickFrom('rare', extra.rare);
+  if(extra.legendary > 0) pickFrom('legendary', extra.legendary);
   return picks;
 }
 // 取得（必要時重新產生）某個任務＋時長目前指定的出征卡牌清單。
@@ -2681,11 +2706,11 @@ function getExpeditionRequiredCards(p, tier, durationKey){
   ensureExpedition(p);
   const variant = tier.durations[durationKey];
   const key = expeditionRollKey(tier.id, durationKey);
-  const wanted = expeditionQuestCardCount(variant);
+  const wanted = expeditionQuestCardCount(variant, durationKey);
   const existing = p.expeditionRolls[key];
   const valid = Array.isArray(existing) && existing.length === wanted && existing.every(id=>DECK_BY_ID[id]);
   if(valid) return {cards: existing, changed:false};
-  const cards = rollExpeditionRequiredCards(variant);
+  const cards = rollExpeditionRequiredCards(variant, durationKey);
   p.expeditionRolls[key] = cards;
   return {cards, changed:true};
 }
@@ -2736,7 +2761,7 @@ async function confirmStartExpedition(tierId, durationKey, useFurniture){
   const now = Date.now();
   p.expedition = {tierId: tier.id, durationKey, startAt: now, readyAt: now + variant.durationMs, staked};
   // 這批卡牌已經帶出去了，重新替這個任務＋時長隨機指定下一批出征所需卡牌
-  p.expeditionRolls[expeditionRollKey(tier.id, durationKey)] = rollExpeditionRequiredCards(variant);
+  p.expeditionRolls[expeditionRollKey(tier.id, durationKey)] = rollExpeditionRequiredCards(variant, durationKey);
   await savePlayer(p);
   showToast(tt(`🧭 已派出「${expeditionTierLabel(tier)}・${expeditionDurationLabel(durationKey)}」${furnitureUsed?'（🪑已使用家具，時長 -10%）':''}，${formatDuration(variant.durationMs)} 後回來查看結果`, `🧭 Sent out on "${expeditionTierLabel(tier)} · ${expeditionDurationLabel(durationKey)}"${furnitureUsed?' (🪑Furniture used, -10% duration)':''} - check back in ${formatDuration(variant.durationMs)}`));
   render();
@@ -2816,8 +2841,12 @@ async function renderExpedition(body){
       }
     </div>`;
   } else {
-    const unlocked = EXPEDITION_QUESTS.filter(q=>(p.expLevel||0) >= q.unlockLevel);
-    const locked = EXPEDITION_QUESTS.filter(q=>(p.expLevel||0) < q.unlockLevel);
+    // 升級後只顯示「當前等級」對應的那個任務（已解鎖任務中，解鎖門檻最高的一個），
+    // 較低等級、已經超越的任務不再顯示。
+    const eligible = EXPEDITION_QUESTS.filter(q=>(p.expLevel||0) >= q.unlockLevel);
+    const currentTier = eligible.length ? eligible.reduce((a,b)=> b.unlockLevel > a.unlockLevel ? b : a) : null;
+    const unlocked = currentTier ? [currentTier] : [];
+    const locked = EXPEDITION_QUESTS.filter(q=> !currentTier || q.unlockLevel > currentTier.unlockLevel);
 
     // 為每個已解鎖的任務＋時長組合準備（必要時重新產生）系統指定的出征卡牌
     let rollsChanged = false;
@@ -6026,6 +6055,13 @@ async function renderGM(body){
       <div><label>${tt('固定傷害','Fixed damage')}</label><input type="number" id="gm-boss-dmg" value="${BOSS_BURST_DAMAGE}" min="0" style="width:90px;" /></div>
       <div><label>${tt('貢獻點','Contribution')}</label><input type="number" id="gm-boss-contrib" value="${BOSS_CONTRIB_PER_BURST}" min="0" style="width:80px;" /></div>
     </div>
+    <div class="farm-upgrade-title" style="margin-top:10px;">${tt('星象超爆發設定','Mega Astral Burst Settings')}</div>
+    <div class="form-row">
+      <div><label>${tt('消耗結晶','Crystal cost')}</label><input type="number" id="gm-boss-mega-cost" value="${BOSS_MEGA_CRYSTAL_COST}" min="0" style="width:80px;" /></div>
+      <div><label>${tt('固定傷害','Fixed damage')}</label><input type="number" id="gm-boss-mega-dmg" value="${BOSS_MEGA_BURST_DAMAGE}" min="0" style="width:90px;" /></div>
+      <div><label>⚔️ ${tt('使用武器需消耗','Weapon cost')}</label><input type="number" id="gm-boss-mega-weapon-cost" value="${BOSS_MEGA_WEAPON_COST}" min="0" style="width:80px;" /></div>
+      <div><label>💍 ${tt('飾品最多疊用','Accessory max stack')}</label><input type="number" id="gm-boss-mega-accessory-max" value="${BOSS_MEGA_ACCESSORY_MAX}" min="0" style="width:80px;" /></div>
+    </div>
     <div class="farm-upgrade-title" style="margin-top:10px;">${tt('職業武器／飾品加成（Boss 戰）','Profession Weapon/Accessory Bonuses (Boss Battle)')}</div>
     <div class="form-row">
       <div><label>⚔️ ${tt('武器：傷害加成 %','Weapon: damage bonus %')}</label><input type="number" id="gm-boss-weapon-pct" value="${Math.round(BOSS_WEAPON_DMG_BONUS*100)}" min="0" style="width:90px;" /></div>
@@ -6371,10 +6407,14 @@ async function renderGM(body){
     const baseCrystal = parseFloat(document.getElementById('gm-boss-base-crystal').value);
     const bonusCoins = parseFloat(document.getElementById('gm-boss-bonus-coins').value);
     const bonusCrystal = parseFloat(document.getElementById('gm-boss-bonus-crystal').value);
+    const megaCost = parseFloat(document.getElementById('gm-boss-mega-cost').value);
+    const megaDmg = parseFloat(document.getElementById('gm-boss-mega-dmg').value);
+    const megaWeaponCost = parseFloat(document.getElementById('gm-boss-mega-weapon-cost').value);
+    const megaAccessoryMax = parseFloat(document.getElementById('gm-boss-mega-accessory-max').value);
     const weaponPct = parseFloat(document.getElementById('gm-boss-weapon-pct').value);
     const accCritPct = parseFloat(document.getElementById('gm-boss-accessory-crit-pct').value);
     const accCritDmgPct = parseFloat(document.getElementById('gm-boss-accessory-critdmg-pct').value);
-    const nums = [...hp, diff, cost, dmg, contrib, baseCoins, baseCrystal, bonusCoins, bonusCrystal, weaponPct, accCritPct, accCritDmgPct];
+    const nums = [...hp, diff, cost, dmg, contrib, megaCost, megaDmg, megaWeaponCost, megaAccessoryMax, baseCoins, baseCrystal, bonusCoins, bonusCrystal, weaponPct, accCritPct, accCritDmgPct];
     if(nums.some(v=>isNaN(v)||v<0) || diff <= 0){
       showToast(tt('請輸入有效的非負數字','Please enter a valid non-negative number')); return;
     }
@@ -6383,6 +6423,10 @@ async function renderGM(body){
     BOSS_CRYSTAL_COST = cost;
     BOSS_BURST_DAMAGE = dmg;
     BOSS_CONTRIB_PER_BURST = contrib;
+    BOSS_MEGA_CRYSTAL_COST = megaCost;
+    BOSS_MEGA_BURST_DAMAGE = megaDmg;
+    BOSS_MEGA_WEAPON_COST = megaWeaponCost;
+    BOSS_MEGA_ACCESSORY_MAX = megaAccessoryMax;
     BOSS_BASE_REWARD = {coins: baseCoins, crystal: baseCrystal};
     BOSS_BONUS_POOL = {coins: bonusCoins, crystal: bonusCrystal};
     BOSS_WEAPON_DMG_BONUS = weaponPct / 100;
@@ -6399,6 +6443,10 @@ async function renderGM(body){
     BOSS_CRYSTAL_COST = DEFAULT_BOSS_CRYSTAL_COST;
     BOSS_BURST_DAMAGE = DEFAULT_BOSS_BURST_DAMAGE;
     BOSS_CONTRIB_PER_BURST = DEFAULT_BOSS_CONTRIB_PER_BURST;
+    BOSS_MEGA_CRYSTAL_COST = DEFAULT_BOSS_MEGA_CRYSTAL_COST;
+    BOSS_MEGA_BURST_DAMAGE = DEFAULT_BOSS_MEGA_BURST_DAMAGE;
+    BOSS_MEGA_WEAPON_COST = DEFAULT_BOSS_MEGA_WEAPON_COST;
+    BOSS_MEGA_ACCESSORY_MAX = DEFAULT_BOSS_MEGA_ACCESSORY_MAX;
     BOSS_BASE_REWARD = {...DEFAULT_BOSS_BASE_REWARD};
     BOSS_BONUS_POOL = {...DEFAULT_BOSS_BONUS_POOL};
     BOSS_WEAPON_DMG_BONUS = DEFAULT_BOSS_WEAPON_DMG_BONUS;
