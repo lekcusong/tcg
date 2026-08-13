@@ -1853,16 +1853,31 @@ async function saveBossStateCAS(prevRaw, newState){
   const rows = await res.json();
   return Array.isArray(rows) && rows.length > 0;
 }
+// 產生一個「這次 boss:state 生命週期」專屬的識別碼。只要 boss:state 文件曾經
+// 遺失/被刪除/被重建過一次，新建出來的這份狀態就會拿到一個全新的 runId，
+// 之後所有貢獻榜的 key 都會把 runId 一起串進去 —— 這樣即使日後又打到跟「上一輪
+// 人生」一樣的 cycle 編號（例如都到了第 2 輪），也絕對不會撞到舊那份人生留下的
+// 孤兒貢獻資料（那些舊 key 因為 runId 不同，永遠不會再被讀到）。
+function genRunId(){
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+}
 async function ensureBossState(){
   let s = await loadBossState();
   if(!s || s.seasonId !== CURRENT_SEASON_ID){
-    s = {seasonId: CURRENT_SEASON_ID, cycle:1, stage:1, hp: bossStageMaxHp(1,1), maxHp: bossStageMaxHp(1,1)};
+    s = {seasonId: CURRENT_SEASON_ID, runId: genRunId(), cycle:1, stage:1, hp: bossStageMaxHp(1,1), maxHp: bossStageMaxHp(1,1)};
+    await saveBossState(s);
+  } else if(!s.runId){
+    // 遷移：既有的舊 boss:state 沒有 runId 欄位（此修正上線前就存在的資料）。
+    // 補發一個 runId 並存回去 —— 這麼做的同時，也會讓它目前這個 cycle 底下、
+    // 沿用舊版無 runId key 格式所留下的任何孤兒貢獻資料自動失效（新 key 帶了
+    // 新 runId，不會再讀到那些舊資料），順便把當下這輪的貢獻榜洗乾淨。
+    s.runId = genRunId();
     await saveBossState(s);
   }
   return s;
 }
-function bossContribKey(cycle, nickname){
-  return `boss:contrib:${CURRENT_SEASON_ID}:${cycle}:${nickname}`;
+function bossContribKey(runId, cycle, nickname){
+  return `boss:contrib:${CURRENT_SEASON_ID}:${runId}:${cycle}:${nickname}`;
 }
 // 同一位玩家可能在極短時間內連續攻擊（一般爆發／超爆發各觸發一次
 // addBossContribution），原本的 read-then-write 是 client 端算好 next 就直接
@@ -1904,8 +1919,8 @@ async function bossContribCAS(key, prevRaw, nextValue){
   const rows = await res.json();
   return Array.isArray(rows) && rows.length > 0;
 }
-async function addBossContribution(nickname, cycle, points){
-  const key = bossContribKey(cycle, nickname);
+async function addBossContribution(nickname, runId, cycle, points){
+  const key = bossContribKey(runId, cycle, nickname);
   for(let attempt = 0; attempt < 8; attempt++){
     let currentRaw = null, current = 0;
     try{
@@ -1919,9 +1934,9 @@ async function addBossContribution(nickname, cycle, points){
   }
   throw new Error('boss contribution contention exceeded retries');
 }
-async function fetchBossContribList(cycle){
+async function fetchBossContribList(runId, cycle){
   try{
-    const list = await storage.list(`boss:contrib:${CURRENT_SEASON_ID}:${cycle}:`);
+    const list = await storage.list(`boss:contrib:${CURRENT_SEASON_ID}:${runId}:${cycle}:`);
     if(!list || !list.keys) return [];
     const entries = await Promise.all(list.keys.map(async k=>{
       try{
@@ -1993,8 +2008,8 @@ async function resolveBossAttack(damage){
   throw new Error('boss state contention exceeded retries');
 }
 
-async function settleBossReward(cycle){
-  const contribList = await fetchBossContribList(cycle);
+async function settleBossReward(runId, cycle){
+  const contribList = await fetchBossContribList(runId, cycle);
   const totalContrib = contribList.reduce((a,c)=>a+c.points,0) || 1;
   await Promise.all(contribList.map(async c=>{
     const player = await loadPlayer(c.nickname);
@@ -2040,11 +2055,11 @@ async function performBossAttack(useWeapon, accessoryCount, baseDamage, weaponCo
   const { prevBoss, newBoss, cycleCompleteFor } = result;
   // 這次的貢獻點永遠算在「打到的那一輪」（prevBoss.cycle）身上，
   // 就算這一擊剛好把 cycle 往前推進，貢獻也不會變成孤兒資料
-  const newContrib = await addBossContribution(p.nickname, prevBoss.cycle, contribGain);
+  const newContrib = await addBossContribution(p.nickname, prevBoss.runId, prevBoss.cycle, contribGain);
 
   let defeatMsg = '';
   if(cycleCompleteFor){
-    const contribList = await settleBossReward(cycleCompleteFor);
+    const contribList = await settleBossReward(prevBoss.runId, cycleCompleteFor);
     defeatMsg = tt(`🎉 全服擊敗「終焉蛇神」！獎勵已依貢獻發放，Boss 第 ${newBoss.cycle} 輪重新降臨（更難）！`, `🎉 The server has defeated the Doomsday Serpent God! Rewards distributed by contribution - Cycle ${newBoss.cycle} begins (harder)!`);
     if(state.player.nickname && contribList.find(c=>c.nickname===state.player.nickname)){
       state.player = await loadPlayer(state.player.nickname);
@@ -2102,7 +2117,7 @@ function renderBoss(body){
   (async ()=>{
     const boss = await ensureBossState();
     const meta = BOSS_STAGE_META[boss.stage-1];
-    const contribList = await fetchBossContribList(boss.cycle);
+    const contribList = await fetchBossContribList(boss.runId, boss.cycle);
     const myContrib = contribList.find(c=>c.nickname===p.nickname);
     const pct = Math.max(0, Math.min(100, (boss.hp/boss.maxHp)*100));
     let html = `<div class="panel">
