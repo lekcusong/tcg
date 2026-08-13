@@ -1864,15 +1864,60 @@ async function ensureBossState(){
 function bossContribKey(cycle, nickname){
   return `boss:contrib:${CURRENT_SEASON_ID}:${cycle}:${nickname}`;
 }
+// 同一位玩家可能在極短時間內連續攻擊（一般爆發／超爆發各觸發一次
+// addBossContribution），原本的 read-then-write 是 client 端算好 next 就直接
+// storage.set 覆蓋整個 value，兩次呼叫幾乎同時發生時，後寫入的會拿著自己
+// 讀到的舊 current 覆蓋掉前一次剛寫入的加總，導致貢獻點少算（跟 boss:state
+// 原本的競態是同一類問題）。這裡改成跟 saveBossStateCAS 一樣的樂觀鎖：
+// 用 PostgREST 的 value=eq.prevRaw 當條件寫入，寫入前若該筆資料已被
+// 別人改動則 0 rows 命中、視為衝突，回到迴圈重讀最新值再加總重試；
+// 若該 key 根本還不存在（玩家這輪第一次攻擊），改用 ignore-duplicates 的
+// insert，插入失敗（代表被別人搶先建立）一樣視為衝突並重讀重試。
+async function bossContribCAS(key, prevRaw, nextValue){
+  if(prevRaw === null){
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/kv_store`, {
+      method: 'POST',
+      headers: {
+        ...SB_HEADERS,
+        'Content-Type': 'application/json',
+        Prefer: 'return=representation,resolution=ignore-duplicates',
+      },
+      body: JSON.stringify({ key, value: JSON.stringify(nextValue), updated_at: new Date().toISOString() }),
+    });
+    if(!res.ok) throw new Error('contrib insert failed: ' + res.status);
+    const rows = await res.json();
+    return Array.isArray(rows) && rows.length > 0;
+  }
+  const res = await fetch(
+    `${SUPABASE_URL}/rest/v1/kv_store?key=eq.${encodeURIComponent(key)}&value=eq.${encodeURIComponent(prevRaw)}`,
+    {
+      method: 'PATCH',
+      headers: {
+        ...SB_HEADERS,
+        'Content-Type': 'application/json',
+        Prefer: 'return=representation',
+      },
+      body: JSON.stringify({ value: JSON.stringify(nextValue), updated_at: new Date().toISOString() }),
+    }
+  );
+  if(!res.ok) throw new Error('contrib CAS update failed: ' + res.status);
+  const rows = await res.json();
+  return Array.isArray(rows) && rows.length > 0;
+}
 async function addBossContribution(nickname, cycle, points){
-  let current = 0;
-  try{
-    const r = await storage.get(bossContribKey(cycle, nickname));
-    if(r) current = parseFloat(r.value) || 0;
-  }catch(e){ /* start from 0 */ }
-  const next = current + points;
-  await storage.set(bossContribKey(cycle, nickname), JSON.stringify(next));
-  return next;
+  const key = bossContribKey(cycle, nickname);
+  for(let attempt = 0; attempt < 8; attempt++){
+    let currentRaw = null, current = 0;
+    try{
+      const r = await storage.get(key);
+      if(r){ currentRaw = r.value; current = parseFloat(r.value) || 0; }
+    }catch(e){ /* 讀不到視為該 key 不存在，currentRaw 維持 null 走 insert 分支 */ }
+    const next = current + points;
+    const applied = await bossContribCAS(key, currentRaw, next);
+    if(applied) return next;
+    // 沒搶到：這段期間已有別人的攻擊先寫入/建立了這個 key，回到迴圈重讀最新值再加總重試
+  }
+  throw new Error('boss contribution contention exceeded retries');
 }
 async function fetchBossContribList(cycle){
   try{
@@ -2034,6 +2079,13 @@ async function doBossBurst(useWeapon, accessoryCount){
 async function doBossMegaBurst(useWeapon, accessoryCount){
   await performBossAttack(useWeapon, accessoryCount, BOSS_MEGA_BURST_DAMAGE, BOSS_MEGA_WEAPON_COST, BOSS_MEGA_ACCESSORY_MAX, true);
 }
+// renderBoss 內有多個 await（ensureBossState / fetchBossContribList），
+// 若使用者在等待期間切走分頁又切回來、或短時間內重複觸發渲染，
+// 舊的那次非同步呼叫仍會在背景跑完，若不比對序號直接寫 DOM，
+// 就可能用「先發起但後完成」的舊資料覆蓋掉新畫面（畫面回退/閃爍）。
+// 每次呼叫 renderBoss 都令 bossRenderGen 遞增並記下自己的 myGen，
+// 等到真的要寫 DOM 前才比對 myGen 是否仍是最新，不是就直接丟棄。
+let bossRenderGen = 0;
 function renderBoss(body){
   const p = state.player;
   ensureMaterials(p);
@@ -2042,6 +2094,7 @@ function renderBoss(body){
     body.innerHTML = `<div class="panel"><h2>${tt('Boss 戰','Boss Battle')}</h2><p class="sub">${tt('目前沒有進行中的賽季。','No season is currently active.')}</p></div>`;
     return;
   }
+  const myGen = ++bossRenderGen;
   const bossAlreadyRendered = !!document.getElementById('boss-burst-btn');
   if(!bossAlreadyRendered){
     body.innerHTML = `<div class="panel"><p class="sub">${tt('讀取戰況中…','Loading battle status…')}</p></div>`;
@@ -2102,25 +2155,45 @@ function renderBoss(body){
         </div>`).join('')}</div>`;
     }
     html += `</div>`;
+    if(myGen !== bossRenderGen) return; // 已經有更新的一次 renderBoss 呼叫了，這份是過期結果，丟棄不寫 DOM
     const bossScrollY = window.scrollY;
     body.innerHTML = html;
     if(bossAlreadyRendered) window.scrollTo(0, bossScrollY);
+    // 點擊後立刻把兩顆按鈕都 disable，避免使用者在 performBossAttack 還沒
+    // resolve（尤其 resolveBossAttack 內有 CAS 重試、可能要好幾輪 await）
+    // 之前手滑連點，一次點擊觸發多次扣結晶/多次攻擊。等 performBossAttack
+    // resolve 後在 finally 裡強制 renderTab() 一次，依當下最新的
+    // state.player.materials.crystal 重新計算按鈕該不該恢復可點——
+    // 不論 performBossAttack 是成功、因結晶不足提早 return、還是 catch 到
+    // CAS 重試失敗，都會走到這裡重新計算，不會卡死在 disabled 狀態。
     const btn = document.getElementById('boss-burst-btn');
+    const megaBtn = document.getElementById('boss-mega-burst-btn');
     if(btn){
-      btn.onclick = ()=>{
+      btn.onclick = async ()=>{
         const useWeapon = !!document.getElementById('boss-use-weapon')?.checked;
         const accessorySel = document.getElementById('boss-use-accessory');
         const accessoryCount = accessorySel ? parseInt(accessorySel.value, 10) || 0 : 0;
-        doBossBurst(useWeapon, accessoryCount);
+        btn.disabled = true;
+        if(megaBtn) megaBtn.disabled = true;
+        try{
+          await doBossBurst(useWeapon, accessoryCount);
+        } finally {
+          renderTab();
+        }
       };
     }
-    const megaBtn = document.getElementById('boss-mega-burst-btn');
     if(megaBtn){
-      megaBtn.onclick = ()=>{
+      megaBtn.onclick = async ()=>{
         const useWeapon = !!document.getElementById('boss-use-weapon')?.checked;
         const accessorySel = document.getElementById('boss-use-accessory');
         const accessoryCount = accessorySel ? parseInt(accessorySel.value, 10) || 0 : 0;
-        doBossMegaBurst(useWeapon, accessoryCount);
+        megaBtn.disabled = true;
+        if(btn) btn.disabled = true;
+        try{
+          await doBossMegaBurst(useWeapon, accessoryCount);
+        } finally {
+          renderTab();
+        }
       };
     }
   })();
