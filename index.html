@@ -548,6 +548,11 @@
     0%,100%{ box-shadow:0 0 6px 2px rgba(74,144,226,0.55), 0 2px 10px rgba(0,0,0,0.45); }
     50%{ box-shadow:0 0 20px 8px rgba(74,144,226,0.95), 0 2px 10px rgba(0,0,0,0.45); }
   }
+  .badge-glow-green{border-color:#4fb286 !important;animation: badge-green-glow 1.8s ease-in-out infinite;}
+  @keyframes badge-green-glow{
+    0%,100%{ box-shadow:0 0 6px 2px rgba(79,178,134,0.55), 0 2px 10px rgba(0,0,0,0.45); }
+    50%{ box-shadow:0 0 20px 8px rgba(79,178,134,0.95), 0 2px 10px rgba(0,0,0,0.45); }
+  }
   .badge-img{width:100%;height:100%;object-fit:cover;display:block;}
   .badge-name{font-family:'Cinzel',serif;font-weight:700;font-size:13px;color:var(--gold-bright);margin-top:2px;}
   .badge-desc{font-size:11px;color:var(--muted);line-height:1.4;min-height:30px;}
@@ -1216,7 +1221,7 @@ const EXPEDITION_CHOICE_EVENT_POOL = [
   {id:'trap', icon:'🕳️', labelZh:'陷阱', labelEn:'Trap', options:[
     {id:'avoid',     labelZh:'小心繞開',      labelEn:'Avoid',        descZh:'不變', descEn:'No change'},
     {id:'push',      labelZh:'闖過去',        labelEn:'Push through', descZh:'50%機率獎勵+30%／50%機率獎勵-30%', descEn:'50% reward +30% / 50% reward -30%', gamble:{successPct:0.5, winRewardPctDelta:0.30, loseRewardPctDelta:-0.30}},
-    {id:'accessory', labelZh:'耗1件飾品庫存', labelEn:'Spend 1 Accessory', descZh:'規避風險，不變（需飾品庫存≥1）', descEn:'Avoid risk, no change (needs Accessory ≥1)', requiresItem:'accessory_common', itemCost:1},
+    {id:'accessory', labelZh:'耗1件飾品庫存', labelEn:'Spend 1 Accessory', descZh:'免疫陷阱風險，並獲得獎勵+15%（需飾品庫存≥1）', descEn:'Immune to trap risk, and reward +15% (needs Accessory ≥1)', requiresItem:'accessory_common', itemCost:1, rewardPctDelta:0.15},
   ]},
   {id:'merchant', icon:'🧙', labelZh:'神秘商人', labelEn:'Mysterious Merchant', options:[
     {id:'ignore',       labelZh:'無視離開',                 labelEn:'Ignore',            descZh:'不變', descEn:'No change'},
@@ -1284,7 +1289,7 @@ function resolveExpeditionEventOption(p, event, optionId){
   if(opt.instantCoins) p.coins = (p.coins||0) + opt.instantCoins;
 
   let successDelta = opt.successDelta || 0;
-  let rewardPctDelta = 0;
+  let rewardPctDelta = opt.rewardPctDelta || 0;
   let gambleWin = null;
   if(opt.gamble){
     gambleWin = Math.random() < opt.gamble.successPct;
@@ -1351,6 +1356,16 @@ function applyProfessionExpGain(p, professionId, gain){
     leveled = true;
   }
   return leveled;
+}
+
+// 🎲 職業等級加成：每級（超過Lv.1）製作時有機率完全不消耗材料（仍正常獲得成品與經驗），機率隨等級疊加、封頂
+const DEFAULT_PROFESSION_MATERIAL_SAVE_PER_LEVEL = 0.03; // 每級 +3%
+const DEFAULT_PROFESSION_MATERIAL_SAVE_CAP = 0.30; // 封頂 30%
+let PROFESSION_MATERIAL_SAVE_PER_LEVEL = DEFAULT_PROFESSION_MATERIAL_SAVE_PER_LEVEL;
+let PROFESSION_MATERIAL_SAVE_CAP = DEFAULT_PROFESSION_MATERIAL_SAVE_CAP;
+function professionMaterialSaveChance(level){
+  const lv = Math.max(1, level||1);
+  return Math.min(PROFESSION_MATERIAL_SAVE_CAP, Math.max(0, (lv-1) * PROFESSION_MATERIAL_SAVE_PER_LEVEL));
 }
 
 // 依離線/被動經過時間補算體力回復（每 PROFESSION_STAMINA_REGEN_MS 回 1 點，最高 staminaMax）
@@ -1538,12 +1553,15 @@ async function produceProfessionItem(itemId){
     showToast(tt('體力不足','Not enough stamina'));
     return;
   }
-  p.professionMaterials[def.materialId] -= recipe.materialCost;
+  const prog = p.professionProgress[p.profession];
+  const saveChance = professionMaterialSaveChance(prog && prog.level);
+  const materialSaved = Math.random() < saveChance;
+  if(!materialSaved) p.professionMaterials[def.materialId] -= recipe.materialCost;
   p.stamina -= recipe.staminaCost;
   p.professionItems[itemId] = (p.professionItems[itemId]||0) + 1;
   const leveled = applyProfessionExpGain(p, p.profession, recipe.exp);
   await savePlayer(p);
-  showToast(tt(`🔨 生產完成：${recipe.icon} ${professionRecipeLabel(recipe)} +1${leveled ? `，${professionLabel(def)}等級提升！` : ''}`, `🔨 Produced: ${recipe.icon} ${professionRecipeLabel(recipe)} +1${leveled ? `, ${professionLabel(def)} leveled up!` : ''}`));
+  showToast(tt(`🔨 生產完成：${recipe.icon} ${professionRecipeLabel(recipe)} +1${materialSaved ? `（✨材料未消耗）` : ''}${leveled ? `，${professionLabel(def)}等級提升！` : ''}`, `🔨 Produced: ${recipe.icon} ${professionRecipeLabel(recipe)} +1${materialSaved ? ` (✨material not consumed)` : ''}${leveled ? `, ${professionLabel(def)} leveled up!` : ''}`));
   render();
 }
 
@@ -1603,6 +1621,7 @@ async function renderProfession(body){
     const nextExp = professionNextLevelExp(prog.level);
     const curBase = PROFESSION_EXP_TABLE[prog.level] || 0;
     const pct = isMax ? 100 : Math.max(0, Math.min(100, ((prog.exp-curBase)/(nextExp-curBase))*100));
+    const saveChance = professionMaterialSaveChance(prog.level);
 
     html += `<div class="panel">
       <h2>${def.icon} ${professionLabel(def)}</h2>
@@ -1613,6 +1632,7 @@ async function renderProfession(body){
         </div>
         <div class="countdown" style="font-size:11px;">${tt(`經驗 ${prog.exp} / ${nextExp}`, `Exp ${prog.exp} / ${nextExp}`)}</div>
       `}
+      <div class="countdown" style="font-size:11px;margin-top:4px;color:var(--gold-bright);">${tt(`✨ 製作省料機率：${Math.round(saveChance*100)}%`, `✨ Material-save chance: ${Math.round(saveChance*100)}%`)}</div>
     </div>`;
 
     html += `<div class="panel"><h2>${tt('生產','Production')}</h2><p class="sub">${tt('目前配方皆為初級項目，之後會開放更高階配方。','Only entry-level recipes are open for now - higher tiers will follow.')}</p>`;
@@ -2668,7 +2688,7 @@ const ACHIEVEMENTS = [
     nameZh: '遠征連勝之魂', nameEn: 'Expedition Winning Streak',
     descZh: '遠征連續成功 5 次', descEn: 'Succeed 5 expeditions in a row',
     image: ACHIEVEMENT_IMAGES.expedition_streak5,
-    glow: 'blue',
+    glow: 'green',
     check(p){ return (p.expeditionStreak||0) >= 5; },
     progress(p){ return `${Math.min(5, p.expeditionStreak||0)}/5`; },
   },
@@ -2686,6 +2706,7 @@ const ACHIEVEMENT_BY_KEY = Object.fromEntries(ACHIEVEMENTS.map(a=>[a.key,a]));
 function badgeGlowClass(a){
   if(a.glow === 'red') return ' badge-glow-red';
   if(a.glow === 'blue') return ' badge-glow-blue';
+  if(a.glow === 'green') return ' badge-glow-green';
   if(a.glow) return ' badge-glow-gold';
   return '';
 }
@@ -4939,6 +4960,7 @@ async function boot(){
   loadExpeditionConfig().catch(()=>{});
   loadExpeditionRoguelikeConfig().catch(()=>{});
   loadProfessionConfig().catch(()=>{});
+  loadAuctionConfig().catch(()=>{});
   initWinBroadcastPoll();
   initSlotJackpotPoll();
   initNotifPoll();
@@ -5651,6 +5673,25 @@ const DURATIONS = [
   {labelZh:'6 小時', labelEn:'6 hours', ms: 6*3600*1000},
   {labelZh:'24 小時', labelEn:'24 hours', ms: 24*3600*1000},
 ];
+// 拍賣行成交手續費：賣家成交金額會被抽走這個比例（直接從遊戲幣總量中消失，作為金幣回收機制），
+// 避免玩家間買賣完全不影響金幣總量、加速通膨。GM 可在後台調整。
+const DEFAULT_AUCTION_FEE_PCT = 0.08;
+let AUCTION_FEE_PCT = DEFAULT_AUCTION_FEE_PCT;
+async function loadAuctionConfig(){
+  try{
+    const r = await storage.get('config:auction_fee');
+    if(r){
+      const s = JSON.parse(r.value);
+      if(typeof s.feePct === 'number' && s.feePct >= 0 && s.feePct <= 1) AUCTION_FEE_PCT = s.feePct;
+    }
+  }catch(e){ /* keep defaults */ }
+}
+async function saveAuctionConfig(){
+  await storage.set('config:auction_fee', JSON.stringify({feePct: AUCTION_FEE_PCT}));
+}
+function auctionFeeAmount(price){
+  return Math.min(price, Math.round((price||0) * AUCTION_FEE_PCT));
+}
 async function listAuction(itemType, itemId, qty, startBid, buyoutPrice, durMs){
   if(!itemId){ showToast(tt('請選擇物品','Please choose an item')); return; }
   if(itemType !== 'material' && itemType !== 'professionItem') itemType = 'card';
@@ -5746,14 +5787,16 @@ async function buyoutAuction(auctionId){
   bumpQuest(state.player, 'auction', 1);
   ensureStats(state.player).totalAuctionTrades += 1;
   await savePlayer(state.player);
+  const fee = auctionFeeAmount(price);
+  const payout = price - fee;
   const seller = await loadPlayer(auction.seller);
-  if(seller){ seller.coins += price; ensureStats(seller).totalAuctionTrades += 1; await savePlayer(seller); }
+  if(seller){ seller.coins += payout; ensureStats(seller).totalAuctionTrades += 1; await savePlayer(seller); }
   auction.status = 'completed';
   auction.currentBid = price;
   auction.currentBidder = state.nickname;
   auction.viaBuyout = true;
   await storage.set(`auction:${auctionId}`, JSON.stringify(auction));
-  await createNotification(auction.seller, state.nickname, 'auction_sold', {cardName: itemName, price, viaBuyout:true});
+  await createNotification(auction.seller, state.nickname, 'auction_sold', {cardName: itemName, price: payout, viaBuyout:true});
   showToast(tt('購買成功！✦','Purchase successful! ✦'));
   render();
 }
@@ -5767,9 +5810,11 @@ async function resolveAuction(auction){
       ensureStats(winner).totalAuctionTrades += 1;
       await savePlayer(winner);
     }
+    const fee = auctionFeeAmount(auction.currentBid);
+    const payout = auction.currentBid - fee;
     const seller = await loadPlayer(auction.seller);
-    if(seller){ seller.coins += auction.currentBid; ensureStats(seller).totalAuctionTrades += 1; await savePlayer(seller); }
-    await createNotification(auction.seller, auction.currentBidder, 'auction_sold', {cardName: itemName, price: auction.currentBid});
+    if(seller){ seller.coins += payout; ensureStats(seller).totalAuctionTrades += 1; await savePlayer(seller); }
+    await createNotification(auction.seller, auction.currentBidder, 'auction_sold', {cardName: itemName, price: payout});
     await createNotification(auction.currentBidder, auction.seller, 'auction_won', {cardName: itemName, price: auction.currentBid});
   } else {
     const seller = await loadPlayer(auction.seller);
@@ -6710,6 +6755,7 @@ async function renderAuction(body){
   <div class="panel">
     <h2>${t('createAuctionHeader')}</h2>
     <p class="sub">${tt('設定起標價、一口價（至少填一個），讓其他占卜師競標或直接購買你的卡片、材料或職業成品','Set a starting bid and/or a buyout price (at least one), so other diviners can bid on or directly buy your cards, materials, or profession items')}</p>
+    <p class="sub" style="color:var(--muted);">${tt(`💰 成交後將收取 ${Math.round(AUCTION_FEE_PCT*100)}% 手續費，實際到手金額會略低於成交價`, `💰 A ${Math.round(AUCTION_FEE_PCT*100)}% fee is charged on sale — you'll receive slightly less than the final price`)}</p>
     <div class="form-row" style="margin-bottom:2px;">
       <div><label>${tt('物品類型','Item type')}</label>
         <select id="auc-type-select">
@@ -7754,6 +7800,18 @@ async function renderGM(body){
   </div>`;
 
   html += `<div class="panel">
+    <h2>🔨 ${tt('拍賣行手續費設定','Auction House Fee Settings')}</h2>
+    <p class="sub">${tt('成交後從賣家收取的手續費比例，直接從遊戲幣總量中回收（不會轉給任何人），可用來緩解通膨。即時對所有玩家生效。','Percentage fee charged to the seller on each sale, removed from the coin economy entirely (not given to anyone) — helps curb inflation. Effective immediately for all players.')}</p>
+    <div class="form-row">
+      <div><label>${tt('手續費 %','Fee %')}</label><input type="number" id="gm-auction-fee" value="${Math.round(AUCTION_FEE_PCT*100)}" min="0" max="100" style="width:90px;" /></div>
+    </div>
+    <div class="form-row" style="margin-top:6px;">
+      <button class="btn small" id="gm-auction-fee-save-btn">${tt('儲存手續費設定','Save Fee Settings')}</button>
+      <button class="btn small secondary" id="gm-auction-fee-reset-btn">${tt('還原預設值','Reset to Default')}</button>
+    </div>
+  </div>`;
+
+  html += `<div class="panel">
     <h2>🧭 ${tt('遠征玩法設定','Expedition Settings')}</h2>
     <p class="sub">${tt('設定各等級解鎖門檻、所需 Common/Uncommon/Rare/Epic 卡牌數量；每個等級底下的 10分鐘／1小時／3小時／8小時 四種時長可分別設定成功率與獎勵，即時對所有玩家生效','Configure each tier\'s unlock level and required Common/Uncommon/Rare/Epic cards; each tier\'s 10min/1h/3h/8h duration options can have their own success rate and rewards - effective immediately for all players')}</p>
     ${(()=>{
@@ -8347,6 +8405,24 @@ async function renderGM(body){
     boss.hp = boss.maxHp;
     await saveBossState(boss);
     showToast(tt('Boss 已重置回第 1 階段','Boss reset back to Stage 1'));
+    renderTab();
+  };
+  const aucFeeSaveBtn = document.getElementById('gm-auction-fee-save-btn');
+  if(aucFeeSaveBtn) aucFeeSaveBtn.onclick = async ()=>{
+    const feePct = parseFloat(document.getElementById('gm-auction-fee').value);
+    if(isNaN(feePct) || feePct < 0 || feePct > 100){
+      showToast(tt('請輸入 0-100 之間的有效數字','Please enter a valid number between 0 and 100')); return;
+    }
+    AUCTION_FEE_PCT = feePct / 100;
+    await saveAuctionConfig();
+    showToast(tt('拍賣行手續費設定已更新，即時對所有玩家生效 ⚡','Auction fee settings updated, effective immediately for all players ⚡'));
+    renderTab();
+  };
+  const aucFeeResetBtn = document.getElementById('gm-auction-fee-reset-btn');
+  if(aucFeeResetBtn) aucFeeResetBtn.onclick = async ()=>{
+    AUCTION_FEE_PCT = DEFAULT_AUCTION_FEE_PCT;
+    await saveAuctionConfig();
+    showToast(tt('已還原為預設手續費設定','Reverted to default fee settings'));
     renderTab();
   };
   const expSaveBtn = document.getElementById('gm-exp-save-btn');
