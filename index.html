@@ -1819,8 +1819,39 @@ async function loadBossState(){
   }catch(e){ /* fall through */ }
   return null;
 }
+// 讀出 boss:state 時保留原始字串，供樂觀鎖 (CAS) 比對用
+async function loadBossStateRaw(){
+  try{
+    const r = await storage.get('boss:state');
+    if(r) return {state: JSON.parse(r.value), raw: r.value};
+  }catch(e){ /* fall through */ }
+  return {state: null, raw: null};
+}
 async function saveBossState(s){
   await storage.set('boss:state', JSON.stringify(s));
+}
+// 只有在資料庫現存值仍等於 prevRaw 時才寫入 newState（Compare-And-Swap）。
+// 這是為了修掉多名玩家同時打王時的 read-modify-write 競態：
+// 兩人同時讀到同一份舊 boss，各自算完傷害後都直接覆蓋寫回，
+// 後寫入的人會把先寫入的人（可能剛好觸發破關、進入下一輪）的結果蓋掉，
+// 導致「Boss 血量/階段跳回之前的進度」、破關獎勵重複發放、貢獻算到孤兒 cycle 等問題。
+// 回傳 true 代表這次寫入成功搶到；false 代表寫入前已被別人改動，需重讀最新狀態後重試。
+async function saveBossStateCAS(prevRaw, newState){
+  const res = await fetch(
+    `${SUPABASE_URL}/rest/v1/kv_store?key=eq.boss:state&value=eq.${encodeURIComponent(prevRaw)}`,
+    {
+      method: 'PATCH',
+      headers: {
+        ...SB_HEADERS,
+        'Content-Type': 'application/json',
+        Prefer: 'return=representation',
+      },
+      body: JSON.stringify({ value: JSON.stringify(newState), updated_at: new Date().toISOString() }),
+    }
+  );
+  if(!res.ok) throw new Error('storage CAS update failed: ' + res.status);
+  const rows = await res.json();
+  return Array.isArray(rows) && rows.length > 0;
 }
 async function ensureBossState(){
   let s = await loadBossState();
@@ -1879,53 +1910,104 @@ function bossBurstDamage(p, useWeapon, accessoryCount, baseDamage, weaponCost, a
   if(isCrit) dmg *= (1 + BOSS_ACCESSORY_CRIT_DMG_BONUS);
   return {damage: Math.round(dmg), usedWeapon, weaponUsed: usedWeapon ? wCost : 0, accessoryUsed: n, isCrit};
 }
-async function doBossBurst(useWeapon, accessoryCount){
+
+// 核心：用樂觀鎖 (CAS) 處理單次攻擊對 boss:state 的讀-改-寫。
+// 每次重試都會重新讀取「當下最新」的 boss 狀態並在其基礎上扣血/判斷破關，
+// 只有寫入當下 boss:state 仍等於自己讀到的那份時才會成功；
+// 沒搶到的人會立刻重讀最新狀態、在最新進度上重新計算後再試一次，
+// 而不是直接拿舊快照覆蓋，因此不會發生「後手覆蓋先手」的進度倒退。
+async function resolveBossAttack(damage){
+  for(let attempt = 0; attempt < 8; attempt++){
+    const {state: boss, raw} = await loadBossStateRaw();
+    if(!boss || !raw){
+      await ensureBossState();
+      continue;
+    }
+    if(boss.hp <= 0) continue; // 理論上不會出現（結算與重置在同一次寫入內完成），保底重試
+    const newBoss = {...boss};
+    newBoss.hp = Math.max(0, boss.hp - damage);
+    let cycleCompleteFor = null;
+    if(newBoss.hp <= 0){
+      if(newBoss.stage < 3){
+        newBoss.stage += 1;
+        newBoss.maxHp = bossStageMaxHp(newBoss.stage, newBoss.cycle);
+        newBoss.hp = newBoss.maxHp;
+      } else {
+        cycleCompleteFor = newBoss.cycle;
+        const nextCycle = newBoss.cycle + 1;
+        newBoss.cycle = nextCycle;
+        newBoss.stage = 1;
+        newBoss.maxHp = bossStageMaxHp(1, nextCycle);
+        newBoss.hp = newBoss.maxHp;
+      }
+    }
+    const applied = await saveBossStateCAS(raw, newBoss);
+    if(applied) return {prevBoss: boss, newBoss, cycleCompleteFor};
+    // 沒搶到：這段期間已經有別人先寫入了，回到迴圈開頭重讀最新狀態再試
+  }
+  throw new Error('boss state contention exceeded retries');
+}
+
+async function settleBossReward(cycle){
+  const contribList = await fetchBossContribList(cycle);
+  const totalContrib = contribList.reduce((a,c)=>a+c.points,0) || 1;
+  await Promise.all(contribList.map(async c=>{
+    const player = await loadPlayer(c.nickname);
+    if(!player) return;
+    ensureMaterials(player);
+    const share = c.points / totalContrib;
+    const bonusCoins = Math.round(BOSS_BONUS_POOL.coins * share);
+    const bonusCrystal = Math.round(BOSS_BONUS_POOL.crystal * share);
+    player.coins = (player.coins||0) + BOSS_BASE_REWARD.coins + bonusCoins;
+    player.materials.crystal += (BOSS_BASE_REWARD.crystal||0) + bonusCrystal;
+    await savePlayer(player);
+    await createNotification(c.nickname, 'system', 'boss_reward', {coins: BOSS_BASE_REWARD.coins + bonusCoins, crystal: (BOSS_BASE_REWARD.crystal||0) + bonusCrystal});
+  }));
+  return contribList;
+}
+
+// 共用的攻擊流程：一般爆發與超爆發只差在傷害/消耗參數，其餘（CAS 重試、
+// 貢獻結算、破關發獎、UI 訊息）完全共用，避免兩份幾乎一樣的程式各修一次。
+async function performBossAttack(useWeapon, accessoryCount, baseDamage, weaponCost, accessoryMax, isMega){
   const p = state.player;
   ensureMaterials(p);
-  if(p.materials.crystal < BOSS_CRYSTAL_COST){ showToast(tt(`星軌結晶不足，需要 ${BOSS_CRYSTAL_COST}`, `Not enough Star-Trail Crystal, need ${BOSS_CRYSTAL_COST}`)); return; }
-  let boss = await ensureBossState();
-  if(boss.hp <= 0){ showToast(tt('Boss 正在轉換階段，請稍後再試','The Boss is transitioning stages, try again shortly')); return; }
-  p.materials.crystal -= BOSS_CRYSTAL_COST;
-  const burst = bossBurstDamage(p, useWeapon, accessoryCount);
+  const cost = isMega ? BOSS_MEGA_CRYSTAL_COST : BOSS_CRYSTAL_COST;
+  if(p.materials.crystal < cost){
+    showToast(tt(`星軌結晶不足，需要 ${cost}`, `Not enough Star-Trail Crystal, need ${cost}`));
+    return;
+  }
+  await ensureBossState();
+  p.materials.crystal -= cost;
+  const burst = bossBurstDamage(p, useWeapon, accessoryCount, baseDamage, weaponCost, accessoryMax);
   const contribGain = Math.round(burst.damage * BOSS_CONTRIB_RATE); // 貢獻點依「實際造成的傷害」計算，武器/飾品加成的傷害會同步反映在貢獻點上
   p.materials.contrib += contribGain; // 賽季總貢獻點（可花費，賽季結束才歸零）
   await savePlayer(p);
-  boss.hp = Math.max(0, boss.hp - burst.damage);
-  const newContrib = await addBossContribution(p.nickname, boss.cycle, contribGain);
-  let defeatMsg = '';
-  if(boss.hp <= 0){
-    if(boss.stage < 3){
-      boss.stage += 1;
-      boss.maxHp = bossStageMaxHp(boss.stage, boss.cycle);
-      boss.hp = boss.maxHp;
-      await saveBossState(boss);
-      defeatMsg = tt(`⚔️ 「${BOSS_STAGE_META[boss.stage-2].label}」被擊破！Boss 進入「${BOSS_STAGE_META[boss.stage-1].label}」！`, `⚔️ "${BOSS_STAGE_META[boss.stage-2].labelEn}" defeated! The Boss enters "${BOSS_STAGE_META[boss.stage-1].labelEn}"!`);
-    } else {
-      const contribList = await fetchBossContribList(boss.cycle);
-      const totalContrib = contribList.reduce((a,c)=>a+c.points,0) || 1;
-      await Promise.all(contribList.map(async c=>{
-        const player = await loadPlayer(c.nickname);
-        if(!player) return;
-        ensureMaterials(player);
-        const share = c.points / totalContrib;
-        const bonusCoins = Math.round(BOSS_BONUS_POOL.coins * share);
-        const bonusCrystal = Math.round(BOSS_BONUS_POOL.crystal * share);
-        player.coins = (player.coins||0) + BOSS_BASE_REWARD.coins + bonusCoins;
-        player.materials.crystal += (BOSS_BASE_REWARD.crystal||0) + bonusCrystal;
-        await savePlayer(player);
-        await createNotification(c.nickname, 'system', 'boss_reward', {coins: BOSS_BASE_REWARD.coins + bonusCoins, crystal: (BOSS_BASE_REWARD.crystal||0) + bonusCrystal});
-      }));
-      const nextCycle = boss.cycle + 1;
-      boss = {seasonId: CURRENT_SEASON_ID, cycle: nextCycle, stage:1, hp: bossStageMaxHp(1,nextCycle), maxHp: bossStageMaxHp(1,nextCycle)};
-      await saveBossState(boss);
-      defeatMsg = tt(`🎉 全服擊敗「終焉蛇神」！獎勵已依貢獻發放，Boss 第 ${nextCycle} 輪重新降臨（更難）！`, `🎉 The server has defeated the Doomsday Serpent God! Rewards distributed by contribution - Cycle ${nextCycle} begins (harder)!`);
-      if(state.player.nickname && contribList.find(c=>c.nickname===state.player.nickname)){
-        state.player = await loadPlayer(state.player.nickname);
-      }
-    }
-  } else {
-    await saveBossState(boss);
+
+  let result;
+  try{
+    result = await resolveBossAttack(burst.damage);
+  }catch(e){
+    showToast(tt('Boss 正在轉換階段，請稍後再試','The Boss is transitioning stages, try again shortly'));
+    renderTab();
+    updateHeaderCoins();
+    return;
   }
+  const { prevBoss, newBoss, cycleCompleteFor } = result;
+  // 這次的貢獻點永遠算在「打到的那一輪」（prevBoss.cycle）身上，
+  // 就算這一擊剛好把 cycle 往前推進，貢獻也不會變成孤兒資料
+  const newContrib = await addBossContribution(p.nickname, prevBoss.cycle, contribGain);
+
+  let defeatMsg = '';
+  if(cycleCompleteFor){
+    const contribList = await settleBossReward(cycleCompleteFor);
+    defeatMsg = tt(`🎉 全服擊敗「終焉蛇神」！獎勵已依貢獻發放，Boss 第 ${newBoss.cycle} 輪重新降臨（更難）！`, `🎉 The server has defeated the Doomsday Serpent God! Rewards distributed by contribution - Cycle ${newBoss.cycle} begins (harder)!`);
+    if(state.player.nickname && contribList.find(c=>c.nickname===state.player.nickname)){
+      state.player = await loadPlayer(state.player.nickname);
+    }
+  } else if(newBoss.stage > prevBoss.stage){
+    defeatMsg = tt(`⚔️ 「${BOSS_STAGE_META[newBoss.stage-2].label}」被擊破！Boss 進入「${BOSS_STAGE_META[newBoss.stage-1].label}」！`, `⚔️ "${BOSS_STAGE_META[newBoss.stage-2].labelEn}" defeated! The Boss enters "${BOSS_STAGE_META[newBoss.stage-1].labelEn}"!`);
+  }
+
   state.bossLastAttack = {damage: burst.damage, contrib: newContrib};
   checkAchievementUnlocks(state.player);
   renderTab();
@@ -1934,74 +2016,23 @@ async function doBossBurst(useWeapon, accessoryCount){
     showToast(defeatMsg);
   } else {
     const extras = [];
-    if(burst.usedWeapon) extras.push(tt('⚔️武器','⚔️Weapon'));
+    if(burst.usedWeapon) extras.push(isMega ? tt(`⚔️武器×${burst.weaponUsed}`, `⚔️Weapon×${burst.weaponUsed}`) : tt('⚔️武器','⚔️Weapon'));
     if(burst.accessoryUsed > 0) extras.push(tt(`💍飾品×${burst.accessoryUsed}`, `💍Accessory×${burst.accessoryUsed}`));
     const critTag = burst.isCrit ? tt('　💥暴擊！','　💥Critical!') : '';
     const extraTag = extras.length ? `（${extras.join('、')}）` : '';
-    showToast(tt(`⚔️ 星象爆發造成 ${burst.damage} 傷害！${extraTag}${critTag}　貢獻點 +${contribGain}`, `⚔️ Astral Burst dealt ${burst.damage} damage!${extraTag}${critTag}  Contribution +${contribGain}`));
+    if(isMega){
+      showToast(tt(`✦✦ 星象超爆發造成 ${burst.damage.toLocaleString()} 傷害！${extraTag}${critTag}　貢獻點 +${contribGain}`, `✦✦ Mega Astral Burst dealt ${burst.damage.toLocaleString()} damage!${extraTag}${critTag}  Contribution +${contribGain}`));
+    } else {
+      showToast(tt(`⚔️ 星象爆發造成 ${burst.damage} 傷害！${extraTag}${critTag}　貢獻點 +${contribGain}`, `⚔️ Astral Burst dealt ${burst.damage} damage!${extraTag}${critTag}  Contribution +${contribGain}`));
+    }
   }
 }
+
+async function doBossBurst(useWeapon, accessoryCount){
+  await performBossAttack(useWeapon, accessoryCount, undefined, undefined, undefined, false);
+}
 async function doBossMegaBurst(useWeapon, accessoryCount){
-  const p = state.player;
-  ensureMaterials(p);
-  if(p.materials.crystal < BOSS_MEGA_CRYSTAL_COST){ showToast(tt(`星軌結晶不足，需要 ${BOSS_MEGA_CRYSTAL_COST}`, `Not enough Star-Trail Crystal, need ${BOSS_MEGA_CRYSTAL_COST}`)); return; }
-  let boss = await ensureBossState();
-  if(boss.hp <= 0){ showToast(tt('Boss 正在轉換階段，請稍後再試','The Boss is transitioning stages, try again shortly')); return; }
-  p.materials.crystal -= BOSS_MEGA_CRYSTAL_COST;
-  const burst = bossBurstDamage(p, useWeapon, accessoryCount, BOSS_MEGA_BURST_DAMAGE, BOSS_MEGA_WEAPON_COST, BOSS_MEGA_ACCESSORY_MAX);
-  const contribGain = Math.round(burst.damage * BOSS_CONTRIB_RATE); // 貢獻點依「實際造成的傷害」計算，武器/飾品加成的傷害會同步反映在貢獻點上
-  p.materials.contrib += contribGain; // 賽季總貢獻點（可花費，賽季結束才歸零）
-  await savePlayer(p);
-  boss.hp = Math.max(0, boss.hp - burst.damage);
-  const newContrib = await addBossContribution(p.nickname, boss.cycle, contribGain);
-  let defeatMsg = '';
-  if(boss.hp <= 0){
-    if(boss.stage < 3){
-      boss.stage += 1;
-      boss.maxHp = bossStageMaxHp(boss.stage, boss.cycle);
-      boss.hp = boss.maxHp;
-      await saveBossState(boss);
-      defeatMsg = tt(`⚔️ 「${BOSS_STAGE_META[boss.stage-2].label}」被擊破！Boss 進入「${BOSS_STAGE_META[boss.stage-1].label}」！`, `⚔️ "${BOSS_STAGE_META[boss.stage-2].labelEn}" defeated! The Boss enters "${BOSS_STAGE_META[boss.stage-1].labelEn}"!`);
-    } else {
-      const contribList = await fetchBossContribList(boss.cycle);
-      const totalContrib = contribList.reduce((a,c)=>a+c.points,0) || 1;
-      await Promise.all(contribList.map(async c=>{
-        const player = await loadPlayer(c.nickname);
-        if(!player) return;
-        ensureMaterials(player);
-        const share = c.points / totalContrib;
-        const bonusCoins = Math.round(BOSS_BONUS_POOL.coins * share);
-        const bonusCrystal = Math.round(BOSS_BONUS_POOL.crystal * share);
-        player.coins = (player.coins||0) + BOSS_BASE_REWARD.coins + bonusCoins;
-        player.materials.crystal += (BOSS_BASE_REWARD.crystal||0) + bonusCrystal;
-        await savePlayer(player);
-        await createNotification(c.nickname, 'system', 'boss_reward', {coins: BOSS_BASE_REWARD.coins + bonusCoins, crystal: (BOSS_BASE_REWARD.crystal||0) + bonusCrystal});
-      }));
-      const nextCycle = boss.cycle + 1;
-      boss = {seasonId: CURRENT_SEASON_ID, cycle: nextCycle, stage:1, hp: bossStageMaxHp(1,nextCycle), maxHp: bossStageMaxHp(1,nextCycle)};
-      await saveBossState(boss);
-      defeatMsg = tt(`🎉 全服擊敗「終焉蛇神」！獎勵已依貢獻發放，Boss 第 ${nextCycle} 輪重新降臨（更難）！`, `🎉 The server has defeated the Doomsday Serpent God! Rewards distributed by contribution - Cycle ${nextCycle} begins (harder)!`);
-      if(state.player.nickname && contribList.find(c=>c.nickname===state.player.nickname)){
-        state.player = await loadPlayer(state.player.nickname);
-      }
-    }
-  } else {
-    await saveBossState(boss);
-  }
-  state.bossLastAttack = {damage: burst.damage, contrib: newContrib};
-  checkAchievementUnlocks(state.player);
-  renderTab();
-  updateHeaderCoins();
-  if(defeatMsg){
-    showToast(defeatMsg);
-  } else {
-    const extras = [];
-    if(burst.usedWeapon) extras.push(tt(`⚔️武器×${burst.weaponUsed}`, `⚔️Weapon×${burst.weaponUsed}`));
-    if(burst.accessoryUsed > 0) extras.push(tt(`💍飾品×${burst.accessoryUsed}`, `💍Accessory×${burst.accessoryUsed}`));
-    const critTag = burst.isCrit ? tt('　💥暴擊！','　💥Critical!') : '';
-    const extraTag = extras.length ? `（${extras.join('、')}）` : '';
-    showToast(tt(`✦✦ 星象超爆發造成 ${burst.damage.toLocaleString()} 傷害！${extraTag}${critTag}　貢獻點 +${contribGain}`, `✦✦ Mega Astral Burst dealt ${burst.damage.toLocaleString()} damage!${extraTag}${critTag}  Contribution +${contribGain}`));
-  }
+  await performBossAttack(useWeapon, accessoryCount, BOSS_MEGA_BURST_DAMAGE, BOSS_MEGA_WEAPON_COST, BOSS_MEGA_ACCESSORY_MAX, true);
 }
 function renderBoss(body){
   const p = state.player;
@@ -2341,6 +2372,20 @@ async function saveSlotSettings(newSettings){
 async function saveSlotJackpot(newValue){
   SLOT_JACKPOT = newValue;
   await storage.set('config:slot_jackpot', JSON.stringify(SLOT_JACKPOT));
+}
+// 每次要「讀取」或「疊加」獎池前，先向 storage 重新抓最新值，
+// 避免用分頁自己記憶體裡過期的 SLOT_JACKPOT 去覆蓋別人剛存進去的貢獻
+// （這個 KV storage 是 last-write-wins，沒有原子疊加，所以這裡用「盡量縮短讀寫間隔」
+// 來把競態窗口降到最小；理論上仍有極低機率的同時寫入，但已能修正絕大多數情況）。
+async function syncSlotJackpot(){
+  try{
+    const r = await storage.get('config:slot_jackpot');
+    if(r){
+      const v = parseFloat(r.value);
+      if(!isNaN(v) && v >= 0){ SLOT_JACKPOT = v; return v; }
+    }
+  }catch(e){ /* 抓不到就先沿用目前記憶體裡的值 */ }
+  return SLOT_JACKPOT;
 }
 
 // ---------- 每日任務 ----------
@@ -3136,22 +3181,26 @@ function buildExpeditionDurations(tier){
   return durations;
 }
 const EXPEDITION_TIER_BASE = [
-  {id:1, unlockLevel:0,  commonCount:3, uncommonCount:0, coinPerMinMin:8,  coinPerMinMax:15, expPerMin:2.00, failExpPerMin:0.60, baseSuccessRate:0.95},
-  {id:2, unlockLevel:2,  commonCount:5, uncommonCount:0, coinPerMinMin:11, coinPerMinMax:19, expPerMin:2.60, failExpPerMin:0.78, baseSuccessRate:0.92},
-  {id:3, unlockLevel:4,  commonCount:4, uncommonCount:1, coinPerMinMin:15, coinPerMinMax:25, expPerMin:3.40, failExpPerMin:1.02, baseSuccessRate:0.89},
-  {id:4, unlockLevel:6,  commonCount:0, uncommonCount:3, coinPerMinMin:20, coinPerMinMax:33, expPerMin:4.40, failExpPerMin:1.32, baseSuccessRate:0.85},
-  {id:5, unlockLevel:8,  commonCount:4, uncommonCount:3, coinPerMinMin:27, coinPerMinMax:44, expPerMin:5.70, failExpPerMin:1.71, baseSuccessRate:0.80},
-  {id:6, unlockLevel:10, commonCount:0, uncommonCount:6, coinPerMinMin:36, coinPerMinMax:58, expPerMin:7.40, failExpPerMin:2.22, baseSuccessRate:0.74},
+  {id:1, unlockLevel:0,  commonCount:3, uncommonCount:0, rareCount:1, epicCount:1, coinPerMinMin:8,  coinPerMinMax:15, expPerMin:2.00, failExpPerMin:0.60, baseSuccessRate:0.95},
+  {id:2, unlockLevel:2,  commonCount:5, uncommonCount:0, rareCount:1, epicCount:1, coinPerMinMin:11, coinPerMinMax:19, expPerMin:2.60, failExpPerMin:0.78, baseSuccessRate:0.92},
+  {id:3, unlockLevel:4,  commonCount:4, uncommonCount:1, rareCount:1, epicCount:1, coinPerMinMin:15, coinPerMinMax:25, expPerMin:3.40, failExpPerMin:1.02, baseSuccessRate:0.89},
+  {id:4, unlockLevel:6,  commonCount:0, uncommonCount:3, rareCount:1, epicCount:1, coinPerMinMin:20, coinPerMinMax:33, expPerMin:4.40, failExpPerMin:1.32, baseSuccessRate:0.85},
+  {id:5, unlockLevel:8,  commonCount:4, uncommonCount:3, rareCount:1, epicCount:1, coinPerMinMin:27, coinPerMinMax:44, expPerMin:5.70, failExpPerMin:1.71, baseSuccessRate:0.80},
+  {id:6, unlockLevel:10, commonCount:0, uncommonCount:6, rareCount:1, epicCount:1, coinPerMinMin:36, coinPerMinMax:58, expPerMin:7.40, failExpPerMin:2.22, baseSuccessRate:0.74},
 ];
 const DEFAULT_EXPEDITION_QUESTS = EXPEDITION_TIER_BASE.map(tier=>({
   id: tier.id,
   unlockLevel: tier.unlockLevel,
+  rareCount: tier.rareCount,
+  epicCount: tier.epicCount,
   durations: buildExpeditionDurations(tier),
 }));
 function cloneExpeditionQuests(list){
   return list.map(q=>({
     id: q.id,
     unlockLevel: q.unlockLevel,
+    rareCount: q.rareCount||0,
+    epicCount: q.epicCount||0,
     durations: Object.fromEntries(Object.entries(q.durations).map(([k,v])=>[k,{...v}])),
   }));
 }
@@ -3165,9 +3214,12 @@ async function loadExpeditionConfig(){
       if(Array.isArray(saved)){
         EXPEDITION_QUESTS = DEFAULT_EXPEDITION_QUESTS.map(def=>{
           const s = saved.find(x=>x.id===def.id);
-          if(!s) return {id:def.id, unlockLevel:def.unlockLevel, durations:Object.fromEntries(Object.entries(def.durations).map(([k,v])=>[k,{...v}]))};
+          if(!s) return {id:def.id, unlockLevel:def.unlockLevel, rareCount:def.rareCount, epicCount:def.epicCount, durations:Object.fromEntries(Object.entries(def.durations).map(([k,v])=>[k,{...v}]))};
           const pick = (val, fallback, min)=> (typeof val==='number' && !isNaN(val) && val>=min) ? val : fallback;
           const unlockLevel = pick(s.unlockLevel, def.unlockLevel, 0);
+          // 向下相容：舊存檔（改版前存的）沒有 rareCount/epicCount 欄位，缺省時沿用預設值
+          const rareCount = pick(s.rareCount, def.rareCount, 0);
+          const epicCount = pick(s.epicCount, def.epicCount, 0);
           const durations = {};
           EXPEDITION_DURATION_KEYS.forEach(key=>{
             const defVar = def.durations[key];
@@ -3183,7 +3235,7 @@ async function loadExpeditionConfig(){
               failExp: pick(sVar.failExp, defVar.failExp, 0),
             };
           });
-          return {id:def.id, unlockLevel, durations};
+          return {id:def.id, unlockLevel, rareCount, epicCount, durations};
         });
       }
     }
@@ -3268,17 +3320,18 @@ function expeditionRollKey(tierId, durationKey){ return `${tierId}_${durationKey
 // 每個任務需要 commonCount 張不同的 common 卡 + uncommonCount 張不同的 uncommon 卡，
 // 這些卡牌由系統隨機抽定、每種各需 1 張；玩家若沒有該卡，需要去拍賣行收購。
 // 同一階的四種時長選項共用相同的卡牌需求數量。
-// 3小時遠征額外需要 1 張 rare 卡；8小時遠征額外需要 1 張 epic（頂級稀有度）卡
-function expeditionExtraCardsForDuration(durationKey){
-  if(durationKey === 'd3h') return {rare:1, epic:0};
-  if(durationKey === 'd8h') return {rare:0, epic:1};
+// 3小時遠征額外需要 tier.rareCount 張 rare 卡；8小時遠征額外需要 tier.epicCount 張 epic（頂級稀有度）卡
+// （rareCount / epicCount 由 GM 頁面「遠征玩法設定」調整，每一階分別設定）
+function expeditionExtraCardsForDuration(durationKey, tier){
+  if(durationKey === 'd3h') return {rare:(tier&&tier.rareCount)||0, epic:0};
+  if(durationKey === 'd8h') return {rare:0, epic:(tier&&tier.epicCount)||0};
   return {rare:0, epic:0};
 }
-function expeditionQuestCardCount(variant, durationKey){
-  const extra = expeditionExtraCardsForDuration(durationKey);
+function expeditionQuestCardCount(variant, durationKey, tier){
+  const extra = expeditionExtraCardsForDuration(durationKey, tier);
   return (variant.commonCount||0) + (variant.uncommonCount||0) + extra.rare + extra.epic;
 }
-function rollExpeditionRequiredCards(variant, durationKey){
+function rollExpeditionRequiredCards(variant, durationKey, tier){
   const picks = [];
   const used = new Set();
   function pickFrom(rarity, count){
@@ -3292,7 +3345,7 @@ function rollExpeditionRequiredCards(variant, durationKey){
   }
   if(variant.commonCount > 0) pickFrom('common', variant.commonCount);
   if(variant.uncommonCount > 0) pickFrom('uncommon', variant.uncommonCount);
-  const extra = expeditionExtraCardsForDuration(durationKey);
+  const extra = expeditionExtraCardsForDuration(durationKey, tier);
   if(extra.rare > 0) pickFrom('rare', extra.rare);
   if(extra.epic > 0) pickFrom('epic', extra.epic);
   return picks;
@@ -3303,11 +3356,11 @@ function getExpeditionRequiredCards(p, tier, durationKey){
   ensureExpedition(p);
   const variant = tier.durations[durationKey];
   const key = expeditionRollKey(tier.id, durationKey);
-  const wanted = expeditionQuestCardCount(variant, durationKey);
+  const wanted = expeditionQuestCardCount(variant, durationKey, tier);
   const existing = p.expeditionRolls[key];
   const valid = Array.isArray(existing) && existing.length === wanted && existing.every(id=>DECK_BY_ID[id]);
   if(valid) return {cards: existing, changed:false};
-  const cards = rollExpeditionRequiredCards(variant, durationKey);
+  const cards = rollExpeditionRequiredCards(variant, durationKey, tier);
   p.expeditionRolls[key] = cards;
   return {cards, changed:true};
 }
@@ -3405,7 +3458,7 @@ async function confirmStartExpedition(tierId, durationKey, itemUsage){
     eventSuccessDelta: 0, eventRewardPctDelta: 0, extraBlessings: [], // 階段三：事件節點結算時疊加進來的加成，結算時（階段四）讀取
   };
   // 這批卡牌已經帶出去了，重新替這個任務＋時長隨機指定下一批出征所需卡牌
-  p.expeditionRolls[expeditionRollKey(tier.id, durationKey)] = rollExpeditionRequiredCards(variant, durationKey);
+  p.expeditionRolls[expeditionRollKey(tier.id, durationKey)] = rollExpeditionRequiredCards(variant, durationKey, tier);
   delete expeditionRogueDraft[`${tier.id}-${durationKey}`];
   await savePlayer(p);
   const usedNotes = [];
@@ -4799,6 +4852,7 @@ async function boot(){
   loadExpeditionRoguelikeConfig().catch(()=>{});
   loadProfessionConfig().catch(()=>{});
   initWinBroadcastPoll();
+  initSlotJackpotPoll();
   initNotifPoll();
   initChatPoll();
   initChatUnreadPoll();
@@ -4967,6 +5021,10 @@ async function pullSlot(){
   let winAmount = 0;
   let winTier = null;
 
+  // 結算前重新同步獎池最新值，避免用這個分頁自己過期的快照
+  // 去計算頭獎金額，或用舊數字疊加抽成蓋掉其他玩家剛存進去的貢獻
+  await syncSlotJackpot();
+
   if(allSame && rarities[0] === 'epic'){
     winAmount = SLOT_JACKPOT;
     state.player.coins += winAmount;
@@ -5035,6 +5093,18 @@ function initWinBroadcastPoll(){
       }
     }catch(e){ /* ignore */ }
   }, 15000);
+}
+// 定期把獎池數字跟伺服器同步，這樣即使玩家沒有按下抽卡、只是停留在頁面上，
+// 畫面上顯示的獎池也不會停留在剛打開頁面那一刻的過期快照
+function initSlotJackpotPoll(){
+  setInterval(async ()=>{
+    if(!state.nickname) return;
+    const before = SLOT_JACKPOT;
+    await syncSlotJackpot();
+    if(SLOT_JACKPOT !== before && state.tab === 'resonance'){
+      renderTab();
+    }
+  }, 10000);
 }
 
 // ---------- Friends ----------
@@ -5425,6 +5495,11 @@ function auctionItemMeta(itemType, itemId){
   const c = DECK_BY_ID[itemId];
   return c ? {icon:c.icon||'🎴', label:c.name, rarity:c.rarity} : {icon:'❓', label:itemId};
 }
+// 依卡片稀有度回傳對應的 CSS 顏色變數名稱（與 .rar-xxx 徽章顏色一致）
+function rarityColorVar(rarity){
+  const map = {common:'--common', uncommon:'--uncommon', rare:'--rare', epic:'--legendary-a', legendary:'--legendary-a'};
+  return map[rarity] || null;
+}
 function auctionDisplayInfo(a){
   if(a.itemType === 'material' || a.itemType === 'professionItem'){
     const meta = auctionItemMeta(a.itemType, a.itemId);
@@ -5436,7 +5511,9 @@ function auctionDisplayInfo(a){
   }
   const c = DECK_BY_ID[a.itemId];
   if(!c) return {iconHtml:`<div class="icon-box">❓</div>`, name: tt('未知卡片','Unknown card'), nameOnly: tt('未知卡片','Unknown card')};
-  return {iconHtml: `<div class="icon-box cf-${c.rarity}">${iconBoxInner(c)}</div>`, name: c.name, nameOnly: c.name};
+  const colorVar = rarityColorVar(c.rarity);
+  const styledName = colorVar ? `<span style="color:var(${colorVar});font-weight:600;">${escapeHtml(c.name)}</span>` : escapeHtml(c.name);
+  return {iconHtml: `<div class="icon-box cf-${c.rarity}">${iconBoxInner(c)}</div>`, name: styledName, nameOnly: c.name, rarity: c.rarity};
 }
 function auctionOwnedQty(p, itemType, itemId){
   if(itemType === 'material') return (p.professionMaterials && p.professionMaterials[itemId]) || 0;
@@ -6188,7 +6265,10 @@ function renderResonance(body){
   }
 
   html += `<div class="countdown" style="margin-bottom:10px;">${tt(`目前獎池：<b style="color:var(--gold-bright);">✦ ${SLOT_JACKPOT}</b>`, `Current jackpot: <b style="color:var(--gold-bright);">✦ ${SLOT_JACKPOT}</b>`)}</div>
-    <button class="btn" id="slot-btn" ${p.coins < SLOT_SETTINGS.cost ? 'disabled' : ''}>${tt(`共鳴一次（✦ ${SLOT_SETTINGS.cost}）`, `Resonate once (✦ ${SLOT_SETTINGS.cost})`)}</button>
+    <div style="display:flex;align-items:center;justify-content:center;gap:14px;flex-wrap:wrap;">
+      <button class="btn" id="slot-btn" ${p.coins < SLOT_SETTINGS.cost ? 'disabled' : ''}>${tt(`共鳴一次（✦ ${SLOT_SETTINGS.cost}）`, `Resonate once (✦ ${SLOT_SETTINGS.cost})`)}</button>
+      <span style="font-family:'Space Mono',monospace;font-size:13px;color:var(--gold-bright);">${tt(`目前金幣：✦ ${p.coins}`, `Your coins: ✦ ${p.coins}`)}</span>
+    </div>
   </div>`;
 
   body.innerHTML = html;
@@ -6595,10 +6675,12 @@ async function renderAuction(body){
       else { statusLine = tt(`直接購買價 ✦${a.buyoutPrice}`, `Buy-now price ✦${a.buyoutPrice}`); }
       const bidders = (a.bidHistory||[]).slice().reverse();
       const biddersHtml = bidders.length ? `<details class="bid-history"><summary>${tt(`出價紀錄（${bidders.length}）`, `Bid history (${bidders.length})`)}</summary>${bidders.map(b=>`<div class="bid-row">${escapeHtml(b.bidder)} — ✦${b.amount}</div>`).join('')}</details>` : '';
+      const ownedQty = auctionOwnedQty(state.player, a.itemType, a.itemId);
+      const ownedLine = `<div class="who" style="opacity:0.75;">${tt(`你另外擁有 ${ownedQty} 個`, `You also own: ${ownedQty}`)}</div>`;
       return `<div class="listing">
         <div class="left">
           ${info.iconHtml}
-          <div class="meta"><div>${info.name}</div><div class="who">${statusLine}</div>${biddersHtml}</div>
+          <div class="meta"><div>${info.name}</div><div class="who">${statusLine}</div>${ownedLine}${biddersHtml}</div>
         </div>
         <div class="right">
           <span class="timer">${fmtCountdown(a.endsAt - Date.now())}</span>
@@ -6619,10 +6701,12 @@ async function renderAuction(body){
         : a.startBid ? tt(`起標 ✦${a.startBid}`, `Start ✦${a.startBid}`) : tt(`固定價格上架`, `Fixed price listing`);
       const bidders = (a.bidHistory||[]).slice().reverse();
       const biddersHtml = bidders.length ? `<details class="bid-history"><summary>${tt(`出價紀錄（${bidders.length}）`, `Bid history (${bidders.length})`)}</summary>${bidders.map(b=>`<div class="bid-row">${escapeHtml(b.bidder)} — ✦${b.amount}</div>`).join('')}</details>` : '';
+      const ownedQty = auctionOwnedQty(state.player, a.itemType, a.itemId);
+      const ownedLine = `<div class="who" style="opacity:0.75;">${tt(`你目前擁有 ${ownedQty} 個`, `You currently own: ${ownedQty}`)}</div>`;
       return `<div class="listing">
         <div class="left">
           ${info.iconHtml}
-          <div class="meta"><div>${info.name}</div><div class="who">${sellerLine} · ${priceLine} · <span class="timer">${fmtCountdown(a.endsAt-Date.now())}</span></div>${biddersHtml}</div>
+          <div class="meta"><div>${info.name}</div><div class="who">${sellerLine} · ${priceLine} · <span class="timer">${fmtCountdown(a.endsAt-Date.now())}</span></div>${ownedLine}${biddersHtml}</div>
         </div>
         <div class="right">
           ${a.startBid ? `
@@ -7583,14 +7667,17 @@ async function renderGM(body){
 
   html += `<div class="panel">
     <h2>🧭 ${tt('遠征玩法設定','Expedition Settings')}</h2>
-    <p class="sub">${tt('設定各等級解鎖門檻、所需 Common/Uncommon 卡牌數量；每個等級底下的 10分鐘／1小時／3小時／8小時 四種時長可分別設定成功率與獎勵，即時對所有玩家生效','Configure each tier\'s unlock level and required Common/Uncommon cards; each tier\'s 10min/1h/3h/8h duration options can have their own success rate and rewards - effective immediately for all players')}</p>
-    ${EXPEDITION_QUESTS.map(q=>`
+    <p class="sub">${tt('設定各等級解鎖門檻、所需 Common/Uncommon/Rare/Epic 卡牌數量；每個等級底下的 10分鐘／1小時／3小時／8小時 四種時長可分別設定成功率與獎勵，即時對所有玩家生效','Configure each tier\'s unlock level and required Common/Uncommon/Rare/Epic cards; each tier\'s 10min/1h/3h/8h duration options can have their own success rate and rewards - effective immediately for all players')}</p>
+    ${(()=>{
+      const renderTierBox = q => `
       <div class="farm-upgrade-box" style="margin-bottom:10px;">
         <div class="farm-upgrade-title">${expeditionTierLabel(q)}（ID ${q.id}）</div>
         <div class="form-row">
           <div><label>${tt('解鎖遠征等級','Unlock Lv.')}</label><input type="number" id="gm-exp-q${q.id}-unlock" value="${q.unlockLevel}" min="0" style="width:70px;" /></div>
           <div><label>${tt('需要 Common','Common needed')}</label><input type="number" id="gm-exp-q${q.id}-common" value="${q.durations.d1h.commonCount}" min="0" style="width:70px;" /></div>
           <div><label>${tt('需要 Uncommon','Uncommon needed')}</label><input type="number" id="gm-exp-q${q.id}-uncommon" value="${q.durations.d1h.uncommonCount}" min="0" style="width:70px;" /></div>
+          <div><label>${tt('需要 Rare（3小時）','Rare needed (3h)')}</label><input type="number" id="gm-exp-q${q.id}-rare" value="${q.rareCount||0}" min="0" style="width:70px;" /></div>
+          <div><label>${tt('需要 Epic（8小時）','Epic needed (8h)')}</label><input type="number" id="gm-exp-q${q.id}-epic" value="${q.epicCount||0}" min="0" style="width:70px;" /></div>
         </div>
         ${EXPEDITION_DURATION_KEYS.map(durKey=>{
           const v = q.durations[durKey];
@@ -7606,8 +7693,20 @@ async function renderGM(body){
           <div><label>${tt('失敗安慰經驗','Fail exp')}</label><input type="number" id="gm-exp-q${q.id}-${durKey}-failexp" value="${v.failExp}" min="0" style="width:80px;" /></div>
         </div>`;
         }).join('')}
-      </div>
-    `).join('')}
+      </div>`;
+      // Lv.6 以後的直接展開顯示；Lv.1-5（unlockLevel < 6）收進摺疊區塊，預設收合，避免洗版
+      const lowTier = EXPEDITION_QUESTS.filter(q=>q.unlockLevel < 6);
+      const highTier = EXPEDITION_QUESTS.filter(q=>q.unlockLevel >= 6);
+      let out = '';
+      if(lowTier.length){
+        out += `<details style="margin-bottom:10px;">
+          <summary style="cursor:pointer;color:var(--muted);font-family:'Cinzel',serif;font-size:13px;padding:6px 0;">${tt(`低等級遠征設定（Lv.1-5，共 ${lowTier.length} 階，點擊展開）`, `Low-level expeditions (Lv.1-5, ${lowTier.length} tiers, click to expand)`)}</summary>
+          ${lowTier.map(renderTierBox).join('')}
+        </details>`;
+      }
+      out += highTier.map(renderTierBox).join('');
+      return out;
+    })()}
     <div class="form-row" style="margin-top:6px;">
       <button class="btn small" id="gm-exp-save-btn">${tt('儲存遠征設定','Save Expedition Settings')}</button>
       <button class="btn small secondary" id="gm-exp-reset-btn">${tt('還原預設值','Reset to Default')}</button>
@@ -8170,7 +8269,9 @@ async function renderGM(body){
       const unlockLevel = parseInt(document.getElementById(`gm-exp-q${def.id}-unlock`).value, 10);
       const commonCount = parseInt(document.getElementById(`gm-exp-q${def.id}-common`).value, 10);
       const uncommonCount = parseInt(document.getElementById(`gm-exp-q${def.id}-uncommon`).value, 10);
-      const tierNums = [unlockLevel, commonCount, uncommonCount];
+      const rareCount = parseInt(document.getElementById(`gm-exp-q${def.id}-rare`).value, 10);
+      const epicCount = parseInt(document.getElementById(`gm-exp-q${def.id}-epic`).value, 10);
+      const tierNums = [unlockLevel, commonCount, uncommonCount, rareCount, epicCount];
       if(tierNums.some(v=>isNaN(v) || v<0) || (commonCount===0 && uncommonCount===0)){
         invalid = true;
       }
@@ -8191,7 +8292,7 @@ async function renderGM(body){
           successRate: rate/100, rewardCoinsMin: coinMin, rewardCoinsMax: coinMax, rewardExp, failExp,
         };
       });
-      updated.push({id:def.id, unlockLevel, durations});
+      updated.push({id:def.id, unlockLevel, rareCount, epicCount, durations});
     });
     if(invalid){ showToast(tt('請確認每項數值皆為有效的非負數字，成功率需在0-100之間，獎勵金幣上限不小於下限，且每個等級至少需要一種卡牌','Please check all values are valid non-negative numbers, success rate is 0-100, reward max ≥ min, and each tier requires at least one card type')); return; }
     EXPEDITION_QUESTS = updated;
