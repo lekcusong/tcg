@@ -1166,6 +1166,164 @@ const DEFAULT_ACCESSORY_EXPEDITION_MAX_STACK = 3;
 let ACCESSORY_EXPEDITION_FLOOR_PCT = DEFAULT_ACCESSORY_EXPEDITION_FLOOR_PCT;
 let ACCESSORY_EXPEDITION_MAX_STACK = DEFAULT_ACCESSORY_EXPEDITION_MAX_STACK;
 
+// ---------- 遠征 Roguelike 玩法擴充（階段一：資料骨架，尚未接上派遣/結算邏輯）----------
+// 遠征等級達到此等級才解鎖風險等級／祝福詛咒／事件節點／連勝加成，等級以下維持現有玩法不變
+const DEFAULT_EXPEDITION_ROGUELIKE_UNLOCK_LEVEL = 6;
+let EXPEDITION_ROGUELIKE_UNLOCK_LEVEL = DEFAULT_EXPEDITION_ROGUELIKE_UNLOCK_LEVEL;
+
+// 🎲 風險等級：派遣時可選，影響成功率/獎勵倍率/失敗懲罰，同時左右祝福詛咒的翻牌權重
+const EXPEDITION_RISK_LEVEL_KEYS = ['standard', 'adventurous', 'reckless'];
+const DEFAULT_EXPEDITION_RISK_LEVELS = {
+  standard:    {labelZh:'標準', labelEn:'Standard',    successDelta:0,     rewardMult:1.0, extraCardLossOnFail:0, blessingWeight:0.7},
+  adventurous: {labelZh:'冒險', labelEn:'Adventurous',  successDelta:-0.05, rewardMult:1.3, extraCardLossOnFail:0, blessingWeight:0.5},
+  reckless:    {labelZh:'亡命', labelEn:'Reckless',     successDelta:-0.12, rewardMult:1.7, extraCardLossOnFail:1, blessingWeight:0.3},
+};
+let EXPEDITION_RISK_LEVELS = JSON.parse(JSON.stringify(DEFAULT_EXPEDITION_RISK_LEVELS));
+
+// 🎴 局內祝福/詛咒：派遣時翻 3 張、選 1 張帶著出征。每張卡的祝福/詛咒判定各自依風險等級的 blessingWeight 機率決定
+const DEFAULT_EXPEDITION_BLESSING_CURSE_DRAW_COUNT = 3;
+let EXPEDITION_BLESSING_CURSE_DRAW_COUNT = DEFAULT_EXPEDITION_BLESSING_CURSE_DRAW_COUNT;
+const EXPEDITION_BLESSING_CURSE_POOL = [
+  {id:'lucky_star',   type:'blessing', icon:'🍀', labelZh:'幸運星',   labelEn:'Lucky Star',    descZh:'成功率 +15%', descEn:'Success rate +15%', successDelta:0.15},
+  {id:'greed_heart',  type:'blessing', icon:'💰', labelZh:'貪婪之心', labelEn:'Greedy Heart',  descZh:'獎勵金幣區間 +25%', descEn:'Reward coin range +25%', rewardRangePctDelta:0.25},
+  {id:'haste',        type:'blessing', icon:'⚡', labelZh:'疾行',     labelEn:'Haste',         descZh:'遠征時間 -20%', descEn:'Expedition time -20%', durationPctDelta:-0.20},
+  {id:'guardian',     type:'blessing', icon:'🛡️', labelZh:'守護',     labelEn:'Guardian',      descZh:'失敗時卡牌保留50%不損失', descEn:'On failure, keep 50% of staked cards', failCardKeepPct:0.5},
+  {id:'shadow_curse', type:'curse',    icon:'🌑', labelZh:'暗影詛咒', labelEn:'Shadow Curse',  descZh:'成功率 -10%，但成功獎勵 ×1.5', descEn:'Success -10%, reward ×1.5 on success', successDelta:-0.10, successRewardMult:1.5},
+  {id:'death_pact',   type:'curse',    icon:'💀', labelZh:'死亡契約', labelEn:'Death Pact',    descZh:'失敗額外損失1張隨機庫存卡，成功獎勵 ×2', descEn:'On failure lose 1 extra card, reward ×2 on success', failExtraCardLoss:1, successRewardMult:2.0},
+  {id:'binding',      type:'curse',    icon:'🕸️', labelZh:'束縛',     labelEn:'Binding',       descZh:'遠征時間 +30%，但經驗獎勵 +50%', descEn:'Expedition time +30%, exp reward +50%', durationPctDelta:0.30, expRewardPctDelta:0.50},
+  {id:'seal',         type:'curse',    icon:'🚫', labelZh:'封印',     labelEn:'Seal',          descZh:'這趟不能使用小藥水縮時', descEn:"Can't use Small Potion to shorten this run", blockPotion:true},
+];
+
+// 🗺️ 事件節點：依時長決定觸發次數與進度百分比，觸發時選擇型/戰鬥型各 50% 機率隨機挑一個
+const DEFAULT_EXPEDITION_EVENT_SCHEDULE = {
+  d10m: [0.50],
+  d1h:  [0.40, 0.75],
+  d3h:  [0.40, 0.75],
+  d8h:  [0.30, 0.60, 0.85],
+};
+let EXPEDITION_EVENT_SCHEDULE = JSON.parse(JSON.stringify(DEFAULT_EXPEDITION_EVENT_SCHEDULE));
+const EXPEDITION_CHOICE_EVENT_POOL = [
+  {id:'fork', icon:'🛤️', labelZh:'岔路', labelEn:'Fork in the Road', options:[
+    {id:'safe',      labelZh:'小路',        labelEn:'Safe path',    descZh:'不變', descEn:'No change'},
+    {id:'shortcut',  labelZh:'近路',        labelEn:'Shortcut',     descZh:'成功率-10%，剩餘時間-20%', descEn:'Success -10%, remaining time -20%', successDelta:-0.10, remainingTimePctDelta:-0.20},
+    {id:'furniture', labelZh:'耗1件家具庫存', labelEn:'Spend 1 Furniture', descZh:'成功率+8%（需家具庫存≥1）', descEn:'Success +8% (needs Furniture ≥1)', successDelta:0.08, requiresItem:'furniture_common', itemCost:1},
+  ]},
+  {id:'trap', icon:'🕳️', labelZh:'陷阱', labelEn:'Trap', options:[
+    {id:'avoid',     labelZh:'小心繞開',      labelEn:'Avoid',        descZh:'不變', descEn:'No change'},
+    {id:'push',      labelZh:'闖過去',        labelEn:'Push through', descZh:'50%機率獎勵+30%／50%機率獎勵-30%', descEn:'50% reward +30% / 50% reward -30%', gamble:{successPct:0.5, winRewardPctDelta:0.30, loseRewardPctDelta:-0.30}},
+    {id:'accessory', labelZh:'耗1件飾品庫存', labelEn:'Spend 1 Accessory', descZh:'規避風險，不變（需飾品庫存≥1）', descEn:'Avoid risk, no change (needs Accessory ≥1)', requiresItem:'accessory_common', itemCost:1},
+  ]},
+  {id:'merchant', icon:'🧙', labelZh:'神秘商人', labelEn:'Mysterious Merchant', options:[
+    {id:'ignore',       labelZh:'無視離開',                 labelEn:'Ignore',            descZh:'不變', descEn:'No change'},
+    {id:'buy_blessing', labelZh:'花50金幣多抽1張本輪祝福',  labelEn:'Pay 50 coins for extra blessing draw', descZh:'需50金幣', descEn:'Costs 50 coins', coinsCost:50, extraBlessingDraw:1},
+    {id:'sell_weapon',  labelZh:'花1件武器庫存換金幣',      labelEn:'Trade 1 Weapon for coins', descZh:'獲得小額金幣，不影響結算加成（需武器庫存≥1）', descEn:'Get coins, no effect on settlement (needs Weapon ≥1)', requiresItem:'weapon_common', itemCost:1, instantCoins:30},
+  ]},
+];
+const EXPEDITION_COMBAT_EVENT_POOL = [
+  {id:'beast',      icon:'⚔️', labelZh:'遭遇野獸', labelEn:'Beast Encounter', difficulty:1.0, winRewardPctDelta:0.20, loseRewardPctDelta:-0.15},
+  {id:'beast_pack', icon:'🐺', labelZh:'獸群纏鬥', labelEn:'Pack of Beasts',  difficulty:1.5, winRewardPctDelta:0.35, loseRewardPctDelta:-0.25},
+];
+
+// 🔥 連勝加成：p.expeditionStreak 持續累計連續成功次數，結算時失敗歸零；每連勝1次這趟獎勵金幣+3%，封頂+30%
+const DEFAULT_EXPEDITION_STREAK_BONUS_PER_WIN = 0.03;
+const DEFAULT_EXPEDITION_STREAK_BONUS_CAP = 0.30;
+let EXPEDITION_STREAK_BONUS_PER_WIN = DEFAULT_EXPEDITION_STREAK_BONUS_PER_WIN;
+let EXPEDITION_STREAK_BONUS_CAP = DEFAULT_EXPEDITION_STREAK_BONUS_CAP;
+
+// ---------- 階段二：派遣邏輯（風險等級 + 局內祝福/詛咒翻牌）----------
+// 純前端暫存的「翻牌」草稿狀態，key 是 `${tierId}-${durationKey}`；只影響尚未派遣的選擇畫面，
+// 派遣成功後清掉、重新整理頁面也會重置，不需要存進玩家存檔。
+let expeditionRogueDraft = {};
+function getExpeditionRogueDraft(uid){
+  if(!expeditionRogueDraft[uid]){
+    expeditionRogueDraft[uid] = {riskLevel:'standard', drawnCards:null, selectedIdx:null};
+  }
+  return expeditionRogueDraft[uid];
+}
+// 依風險等級的 blessingWeight 機率翻 EXPEDITION_BLESSING_CURSE_DRAW_COUNT 張祝福/詛咒卡（允許重複）
+function drawExpeditionBlessingCurseCards(riskLevel){
+  const riskData = EXPEDITION_RISK_LEVELS[riskLevel] || EXPEDITION_RISK_LEVELS.standard;
+  const weight = riskData.blessingWeight;
+  const drawn = [];
+  for(let i=0;i<EXPEDITION_BLESSING_CURSE_DRAW_COUNT;i++){
+    const isBlessing = Math.random() < weight;
+    const pool = EXPEDITION_BLESSING_CURSE_POOL.filter(c=>c.type===(isBlessing?'blessing':'curse'));
+    drawn.push(pool[Math.floor(Math.random()*pool.length)]);
+  }
+  return drawn;
+}
+
+// ---------- 階段三：進行中頁面——事件節點觸發與互動 ----------
+// 派遣當下就依這趟的時長，照 EXPEDITION_EVENT_SCHEDULE 的進度百分比排好節點時刻表；
+// 每個節點觸發時是「選擇型」還是「戰鬥型」各 50% 機率隨機決定，內容也隨機從對應池子抽一個。
+function buildExpeditionEventSchedule(durationKey, startAt, durationMs){
+  const points = EXPEDITION_EVENT_SCHEDULE[durationKey] || [];
+  return points.map((pct, idx)=>{
+    const kind = Math.random() < 0.5 ? 'choice' : 'combat';
+    const pool = kind==='choice' ? EXPEDITION_CHOICE_EVENT_POOL : EXPEDITION_COMBAT_EVENT_POOL;
+    const ev = pool[Math.floor(Math.random()*pool.length)];
+    return {idx, progressPct: pct, triggerAt: startAt + Math.round(durationMs*pct), kind, eventId: ev.id, resolved:false, chosenOptionId:null, result:null};
+  });
+}
+// 選擇型節點：玩家點選項後立即結算，效果疊加進 p.expedition.eventSuccessDelta / eventRewardPctDelta（結算時／階段四讀取）。
+// 需要道具或金幣的選項，庫存/金幣不足時回傳 {error}，UI 端要先擋掉不給點。
+function resolveExpeditionEventOption(p, event, optionId){
+  const evDef = EXPEDITION_CHOICE_EVENT_POOL.find(e=>e.id===event.eventId);
+  const opt = evDef && evDef.options.find(o=>o.id===optionId);
+  if(!opt) return {error:'not_found'};
+  if(opt.requiresItem && (p.professionItems[opt.requiresItem]||0) < (opt.itemCost||1)) return {error:'item'};
+  if(opt.coinsCost && (p.coins||0) < opt.coinsCost) return {error:'coins'};
+
+  if(opt.requiresItem) p.professionItems[opt.requiresItem] = (p.professionItems[opt.requiresItem]||0) - (opt.itemCost||1);
+  if(opt.coinsCost) p.coins = (p.coins||0) - opt.coinsCost;
+  if(opt.instantCoins) p.coins = (p.coins||0) + opt.instantCoins;
+
+  let successDelta = opt.successDelta || 0;
+  let rewardPctDelta = 0;
+  let gambleWin = null;
+  if(opt.gamble){
+    gambleWin = Math.random() < opt.gamble.successPct;
+    rewardPctDelta += gambleWin ? opt.gamble.winRewardPctDelta : opt.gamble.loseRewardPctDelta;
+  }
+  if(opt.remainingTimePctDelta){
+    const remaining = Math.max(0, p.expedition.readyAt - Date.now());
+    p.expedition.readyAt = Date.now() + Math.max(0, Math.round(remaining * (1+opt.remainingTimePctDelta)));
+  }
+  const extraBlessingsApplied = [];
+  if(opt.extraBlessingDraw){
+    for(let i=0;i<opt.extraBlessingDraw;i++){
+      const blessingPool = EXPEDITION_BLESSING_CURSE_POOL.filter(c=>c.type==='blessing');
+      const card = JSON.parse(JSON.stringify(blessingPool[Math.floor(Math.random()*blessingPool.length)]));
+      extraBlessingsApplied.push(card);
+      p.expedition.extraBlessings.push(card);
+      if(typeof card.successDelta === 'number') successDelta += card.successDelta;
+      if(typeof card.rewardRangePctDelta === 'number') rewardPctDelta += card.rewardRangePctDelta;
+      if(typeof card.durationPctDelta === 'number'){
+        const remaining2 = Math.max(0, p.expedition.readyAt - Date.now());
+        p.expedition.readyAt = Date.now() + Math.max(0, Math.round(remaining2 * (1+card.durationPctDelta)));
+      }
+    }
+  }
+  p.expedition.eventSuccessDelta = (p.expedition.eventSuccessDelta||0) + successDelta;
+  p.expedition.eventRewardPctDelta = (p.expedition.eventRewardPctDelta||0) + rewardPctDelta;
+  event.resolved = true;
+  event.chosenOptionId = optionId;
+  event.result = {successDelta, rewardPctDelta, gambleWin, extraBlessingIds: extraBlessingsApplied.map(c=>c.id)};
+  return event.result;
+}
+// 戰鬥型節點：不需要玩家操作，偵測到時間到就自動判定（依 difficulty 換算勝率），結果直接疊加進 eventRewardPctDelta。
+function autoResolveExpeditionCombatEvent(p, event){
+  const evDef = EXPEDITION_COMBAT_EVENT_POOL.find(e=>e.id===event.eventId);
+  if(!evDef) return null;
+  const winChance = Math.max(0.15, Math.min(0.9, 1 - evDef.difficulty*0.35));
+  const win = Math.random() < winChance;
+  const rewardPctDelta = win ? evDef.winRewardPctDelta : evDef.loseRewardPctDelta;
+  p.expedition.eventRewardPctDelta = (p.expedition.eventRewardPctDelta||0) + rewardPctDelta;
+  event.resolved = true;
+  event.result = {win, rewardPctDelta, winChance};
+  return event.result;
+}
+
 // 花園收成時，隨機機率掉落職業材料（藥草/礦石/木料其中一種，不分作物種類，寫死不開放 GM 調整）
 const FARM_MATERIAL_DROP_CHANCE = 0.35; // 35% 機率掉落
 const FARM_MATERIAL_DROP_MIN = 1;
@@ -3014,12 +3172,70 @@ async function saveExpeditionConfig(){
   await storage.set('config:expedition_quests', JSON.stringify(EXPEDITION_QUESTS));
 }
 
+async function loadExpeditionRoguelikeConfig(){
+  try{
+    const r = await storage.get('config:expedition_roguelike');
+    if(!r) return;
+    const s = JSON.parse(r.value);
+    if(typeof s.unlockLevel === 'number' && s.unlockLevel >= 0){
+      EXPEDITION_ROGUELIKE_UNLOCK_LEVEL = Math.round(s.unlockLevel);
+    }
+    if(s.riskLevels && typeof s.riskLevels === 'object'){
+      EXPEDITION_RISK_LEVEL_KEYS.forEach(key=>{
+        const def = DEFAULT_EXPEDITION_RISK_LEVELS[key];
+        const sv = s.riskLevels[key] || {};
+        const successDelta = (typeof sv.successDelta === 'number' && sv.successDelta >= -1 && sv.successDelta <= 1) ? sv.successDelta : def.successDelta;
+        const rewardMult = (typeof sv.rewardMult === 'number' && sv.rewardMult >= 0) ? sv.rewardMult : def.rewardMult;
+        const blessingWeight = (typeof sv.blessingWeight === 'number' && sv.blessingWeight >= 0 && sv.blessingWeight <= 1) ? sv.blessingWeight : def.blessingWeight;
+        EXPEDITION_RISK_LEVELS[key] = {...def, successDelta, rewardMult, blessingWeight};
+      });
+    }
+    if(s.eventSchedule && typeof s.eventSchedule === 'object'){
+      EXPEDITION_DURATION_KEYS.forEach(key=>{
+        const sv = s.eventSchedule[key];
+        if(Array.isArray(sv) && sv.every(v=>typeof v==='number' && v>=0 && v<=1)){
+          EXPEDITION_EVENT_SCHEDULE[key] = [...sv];
+        }
+      });
+    }
+    if(typeof s.streakBonusPerWin === 'number' && s.streakBonusPerWin >= 0){
+      EXPEDITION_STREAK_BONUS_PER_WIN = s.streakBonusPerWin;
+    }
+    if(typeof s.streakBonusCap === 'number' && s.streakBonusCap >= 0){
+      EXPEDITION_STREAK_BONUS_CAP = s.streakBonusCap;
+    }
+  }catch(e){ /* keep defaults */ }
+}
+async function saveExpeditionRoguelikeConfig(){
+  const riskLevels = {};
+  EXPEDITION_RISK_LEVEL_KEYS.forEach(key=>{
+    const v = EXPEDITION_RISK_LEVELS[key];
+    riskLevels[key] = {successDelta: v.successDelta, rewardMult: v.rewardMult, blessingWeight: v.blessingWeight};
+  });
+  await storage.set('config:expedition_roguelike', JSON.stringify({
+    unlockLevel: EXPEDITION_ROGUELIKE_UNLOCK_LEVEL,
+    riskLevels,
+    eventSchedule: EXPEDITION_EVENT_SCHEDULE,
+    streakBonusPerWin: EXPEDITION_STREAK_BONUS_PER_WIN,
+    streakBonusCap: EXPEDITION_STREAK_BONUS_CAP,
+  }));
+}
+
 function ensureExpedition(p){
   if(typeof p.expLevel !== 'number' || p.expLevel < 0) p.expLevel = 0;
   if(typeof p.expExp !== 'number' || p.expExp < 0) p.expExp = 0;
   if(p.expedition === undefined) p.expedition = null;
   if(p.expedition && (!p.expedition.tierId || !p.expedition.durationKey || !p.expedition.readyAt)) p.expedition = null;
   if(!p.expeditionRolls || typeof p.expeditionRolls !== 'object') p.expeditionRolls = {};
+  // 🔥 階段四：連勝計數，不隨派遣重置，只在結算（claimExpedition）時更新
+  if(typeof p.expeditionStreak !== 'number' || p.expeditionStreak < 0) p.expeditionStreak = 0;
+  // 階段三：補齊舊存檔（升級前就已經在路上的遠征）缺少的事件節點欄位，維持行為等同「這趟沒有事件節點」
+  if(p.expedition){
+    if(!Array.isArray(p.expedition.events)) p.expedition.events = [];
+    if(typeof p.expedition.eventSuccessDelta !== 'number') p.expedition.eventSuccessDelta = 0;
+    if(typeof p.expedition.eventRewardPctDelta !== 'number') p.expedition.eventRewardPctDelta = 0;
+    if(!Array.isArray(p.expedition.extraBlessings)) p.expedition.extraBlessings = [];
+  }
   return p.expedition;
 }
 function expeditionTierLabel(tier){
@@ -3125,6 +3341,27 @@ async function confirmStartExpedition(tierId, durationKey, itemUsage){
   const accessoryCount = Math.max(0, Math.min(ACCESSORY_EXPEDITION_MAX_STACK, Math.floor(usage.accessoryCount||0), accessoryStock));
   const accessoryFloorPct = Math.min(1, accessoryCount * ACCESSORY_EXPEDITION_FLOOR_PCT);
 
+  // 🎲 階段二：風險等級 + 局內祝福/詛咒 —— 僅 Lv >= EXPEDITION_ROGUELIKE_UNLOCK_LEVEL 生效，未達門檻一律視為「標準／無」
+  const rogueUnlocked = (p.expLevel||0) >= EXPEDITION_ROGUELIKE_UNLOCK_LEVEL;
+  const riskKey = (rogueUnlocked && usage.riskLevel && EXPEDITION_RISK_LEVELS[usage.riskLevel]) ? usage.riskLevel : 'standard';
+  const riskData = EXPEDITION_RISK_LEVELS[riskKey];
+  const risk = {successDelta: riskData.successDelta, rewardMult: riskData.rewardMult, extraCardLossOnFail: riskData.extraCardLossOnFail};
+  let blessingCurse = null;
+  if(rogueUnlocked && usage.blessingCardId){
+    const card = EXPEDITION_BLESSING_CURSE_POOL.find(c=>c.id === usage.blessingCardId);
+    if(card) blessingCurse = JSON.parse(JSON.stringify(card)); // 存快照，之後 GM 調整卡池內容不影響已出征的這趟
+  }
+  // 翻牌選卡是這趟遠征的必要步驟（跟門檻解鎖綁在一起），沒選就不能出征
+  if(rogueUnlocked && !blessingCurse){
+    showToast(tt('請先選好風險等級並翻牌選1張效果卡','Pick a risk level and draw+select a card first'));
+    return;
+  }
+  // 祝福/詛咒的時間類效果（疾行/束縛）在派遣當下就決定這趟的實際時長
+  let effectiveDurationMs = variant.durationMs;
+  if(blessingCurse && typeof blessingCurse.durationPctDelta === 'number'){
+    effectiveDurationMs = Math.max(1000, Math.round(variant.durationMs * (1 + blessingCurse.durationPctDelta)));
+  }
+
   if(furnitureCount > 0) p.professionItems.furniture_common -= furnitureCount;
   if(weaponUsed) p.professionItems.weapon_common -= 1;
   if(accessoryCount > 0) p.professionItems.accessory_common -= accessoryCount;
@@ -3136,22 +3373,50 @@ async function confirmStartExpedition(tierId, durationKey, itemUsage){
   });
   const now = Date.now();
   p.expedition = {
-    tierId: tier.id, durationKey, startAt: now, readyAt: now + variant.durationMs, staked,
+    tierId: tier.id, durationKey, startAt: now, readyAt: now + effectiveDurationMs, staked,
     furnitureBonus, furnitureCount,
     weaponUsed, weaponRewardPct,
     accessoryCount, accessoryFloorPct,
     potionMinutesUsed: 0, // 階段四：進行中頁面使用藥水縮時，會累加這個欄位
+    riskLevel: riskKey, risk, // 階段二：風險等級快照，結算時（階段四）直接讀取
+    blessingCurse, // 階段二：這趟帶著出征的祝福/詛咒卡快照（null 表示未解鎖或無），事件節點/結算時讀取
+    events: rogueUnlocked ? buildExpeditionEventSchedule(durationKey, now, effectiveDurationMs) : [], // 階段三：事件節點時刻表
+    eventSuccessDelta: 0, eventRewardPctDelta: 0, extraBlessings: [], // 階段三：事件節點結算時疊加進來的加成，結算時（階段四）讀取
   };
   // 這批卡牌已經帶出去了，重新替這個任務＋時長隨機指定下一批出征所需卡牌
   p.expeditionRolls[expeditionRollKey(tier.id, durationKey)] = rollExpeditionRequiredCards(variant, durationKey);
+  delete expeditionRogueDraft[`${tier.id}-${durationKey}`];
   await savePlayer(p);
   const usedNotes = [];
   if(furnitureCount > 0) usedNotes.push(tt(`🪑家具×${furnitureCount}（成功率+${Math.round(furnitureBonus*100)}%）`, `🪑Furniture×${furnitureCount} (success +${Math.round(furnitureBonus*100)}%)`));
   if(weaponUsed) usedNotes.push(tt(`⚔️武器（獎勵區間+${Math.round(weaponRewardPct*100)}%）`, `⚔️Weapon (reward range +${Math.round(weaponRewardPct*100)}%)`));
   if(accessoryCount > 0) usedNotes.push(tt(`💍飾品×${accessoryCount}（獎勵下限拉近${Math.round(accessoryFloorPct*100)}%）`, `💍Accessory×${accessoryCount} (reward floor pulled ${Math.round(accessoryFloorPct*100)}% toward max)`));
+  if(rogueUnlocked) usedNotes.push(tt(`🎲${riskData.labelZh}`, `🎲${riskData.labelEn}`));
+  if(blessingCurse) usedNotes.push(`${blessingCurse.icon}${tt(blessingCurse.labelZh, blessingCurse.labelEn)}`);
   const usedSuffix = usedNotes.length ? `（${usedNotes.join('、')}）` : '';
-  showToast(tt(`🧭 已派出「${expeditionTierLabel(tier)}・${expeditionDurationLabel(durationKey)}」${usedSuffix}，${formatDuration(variant.durationMs)} 後回來查看結果`, `🧭 Sent out on "${expeditionTierLabel(tier)} · ${expeditionDurationLabel(durationKey)}"${usedSuffix} - check back in ${formatDuration(variant.durationMs)}`));
+  showToast(tt(`🧭 已派出「${expeditionTierLabel(tier)}・${expeditionDurationLabel(durationKey)}」${usedSuffix}，${formatDuration(effectiveDurationMs)} 後回來查看結果`, `🧭 Sent out on "${expeditionTierLabel(tier)} · ${expeditionDurationLabel(durationKey)}"${usedSuffix} - check back in ${formatDuration(effectiveDurationMs)}`));
   render();
+}
+// 階段四：玩家沒回來點事件節點、遠征就已到期的「逾時安全預設」——
+// 選擇型節點自動套用該節點的第一個選項（岔路/陷阱/商人的池子設計上第一個選項都是「不變」的安全選項，無成本無風險）；
+// 戰鬥型節點正常情況下 renderExpedition 每次渲染就會自動判定掉，這裡是保底（例如結算前沒有先渲染過的呼叫路徑）。
+function autoResolveTimedOutExpeditionEvents(p, exp){
+  if(!exp || !Array.isArray(exp.events)) return;
+  exp.events.forEach(ev=>{
+    if(ev.resolved) return;
+    if(ev.kind === 'combat'){
+      autoResolveExpeditionCombatEvent(p, ev);
+    } else {
+      const evDef = EXPEDITION_CHOICE_EVENT_POOL.find(e=>e.id===ev.eventId);
+      const safeOption = evDef && evDef.options[0];
+      if(safeOption){
+        resolveExpeditionEventOption(p, ev, safeOption.id);
+        ev.autoResolved = true; // 標記為逾時自動選擇，非玩家手動操作，供遭遇紀錄顯示區分
+      } else {
+        ev.resolved = true; // 找不到定義（例如舊存檔/GM改過池子），安全跳過不疊加任何效果
+      }
+    }
+  });
 }
 async function claimExpedition(){
   const p = state.player;
@@ -3162,35 +3427,105 @@ async function claimExpedition(){
   if(Date.now() < exp.readyAt){ showToast(tt('遠征尚未歸來','The expedition hasn\'t returned yet')); return; }
   const tier = EXPEDITION_QUESTS.find(q=>q.id===exp.tierId);
   const variant = tier && tier.durations[exp.durationKey];
-  p.expedition = null;
   if(!tier || !variant){
+    p.expedition = null;
     await savePlayer(p);
     showToast(tt('這個遠征任務已被移除，卡牌無法退還','This expedition no longer exists - cards cannot be refunded'));
     render();
     return;
   }
-  const effectiveRate = Math.min(1, variant.successRate + (exp.furnitureBonus||0));
+  // 玩家沒點到的事件節點（逾時未處理）先用安全預設結算掉，效果會疊進 eventSuccessDelta/eventRewardPctDelta
+  autoResolveTimedOutExpeditionEvents(p, exp);
+
+  const risk = exp.risk || {successDelta:0, rewardMult:1, extraCardLossOnFail:0};
+  const blessingCurse = exp.blessingCurse || null;
+  const eventSuccessDelta = exp.eventSuccessDelta || 0;
+  const eventRewardPctDelta = exp.eventRewardPctDelta || 0;
+  // 🔥 連勝加成用「派遣當下」的連勝數（= 目前這趟結算前 p.expeditionStreak 的值，因為同時只能有一趟遠征在進行，
+  // 這個計數在派遣後、這趟結算前不會被其他遠征變動過）
+  const streakBefore = Math.max(0, p.expeditionStreak||0);
+
+  // 🎲 最終成功率：既有家具加成 + 風險等級 + 局內祝福/詛咒 + 事件節點結果，全部疊加後夾在 0~100%
+  const effectiveRate = Math.min(1, Math.max(0,
+    variant.successRate
+    + (exp.furnitureBonus||0)
+    + (risk.successDelta||0)
+    + (blessingCurse ? (blessingCurse.successDelta||0) : 0)
+    + eventSuccessDelta
+  ));
   const success = Math.random() < effectiveRate;
+  p.expedition = null;
+
   let msg;
+  const bonusNotes = [];
   if(success){
-    // 階段三：⚔️ 武器把獎勵上下限各拉高 weaponRewardPct，💍 飾品再把下限往拉高後的上限方向拉近 accessoryFloorPct
+    // 獎勵區間：⚔️武器/💍飾品(既有) + 🎴祝福獎勵區間 + 🗺️事件節點結果，先疊加成一個百分比套用在上下限，
+    // 再乘上 🎲 風險等級倍率；💍飾品最後把下限往（疊加後的）上限拉近；成功後再套 🎴祝福/詛咒的成功獎勵倍率、🔥連勝加成。
     const weaponPct = exp.weaponRewardPct||0;
     const accessoryPct = exp.accessoryFloorPct||0;
-    const boostedMin = variant.rewardCoinsMin * (1 + weaponPct);
-    const boostedMax = variant.rewardCoinsMax * (1 + weaponPct);
-    const effectiveMin = Math.min(boostedMax, boostedMin + (boostedMax - boostedMin) * accessoryPct);
-    const coins = Math.round(effectiveMin + Math.random()*(boostedMax - effectiveMin));
+    const blessingRangePct = blessingCurse ? (blessingCurse.rewardRangePctDelta||0) : 0;
+    const riskMult = risk.rewardMult || 1;
+    const totalRangePct = Math.max(-0.95, weaponPct + blessingRangePct + eventRewardPctDelta);
+    const boostedMin = variant.rewardCoinsMin * (1 + totalRangePct) * riskMult;
+    const boostedMax = variant.rewardCoinsMax * (1 + totalRangePct) * riskMult;
+    const rangeMin = Math.min(boostedMin, boostedMax);
+    const rangeMax = Math.max(boostedMin, boostedMax);
+    const effectiveMin = Math.min(rangeMax, rangeMin + (rangeMax - rangeMin) * accessoryPct);
+    let coins = effectiveMin + Math.random()*(rangeMax - effectiveMin);
+    const successMult = blessingCurse ? (blessingCurse.successRewardMult||1) : 1;
+    coins *= successMult;
+    const streakBonusPct = Math.min(EXPEDITION_STREAK_BONUS_CAP, streakBefore * EXPEDITION_STREAK_BONUS_PER_WIN);
+    coins *= (1 + streakBonusPct);
+    coins = Math.max(0, Math.round(coins));
     p.coins = (p.coins||0) + coins;
-    const leveled = applyExpeditionExpGain(p, variant.rewardExp);
-    const bonusNotes = [];
+
+    const expPct = blessingCurse ? (blessingCurse.expRewardPctDelta||0) : 0;
+    const rewardExp = Math.max(0, Math.round(variant.rewardExp * (1 + expPct)));
+    const leveled = applyExpeditionExpGain(p, rewardExp);
+    p.expeditionStreak = streakBefore + 1;
+
     if(exp.furnitureBonus) bonusNotes.push(tt('🪑家具加成生效','🪑Furniture bonus applied'));
     if(weaponPct) bonusNotes.push(tt(`⚔️武器獎勵區間+${Math.round(weaponPct*100)}%`, `⚔️Weapon reward range +${Math.round(weaponPct*100)}%`));
     if(accessoryPct) bonusNotes.push(tt(`💍飾品拉近上限${Math.round(accessoryPct*100)}%`, `💍Accessory pulled ${Math.round(accessoryPct*100)}% toward max`));
+    if(exp.riskLevel && exp.riskLevel !== 'standard') bonusNotes.push(tt(`🎲${EXPEDITION_RISK_LEVELS[exp.riskLevel]?.labelZh||exp.riskLevel}（獎勵×${riskMult}）`, `🎲${EXPEDITION_RISK_LEVELS[exp.riskLevel]?.labelEn||exp.riskLevel} (reward ×${riskMult})`));
+    if(blessingCurse) bonusNotes.push(`${blessingCurse.icon}${tt(blessingCurse.labelZh, blessingCurse.labelEn)}`);
+    if(eventRewardPctDelta) bonusNotes.push(tt(`🗺️遭遇加成${eventRewardPctDelta>=0?'+':''}${Math.round(eventRewardPctDelta*100)}%`, `🗺️Encounter bonus ${eventRewardPctDelta>=0?'+':''}${Math.round(eventRewardPctDelta*100)}%`));
+    if(streakBonusPct > 0) bonusNotes.push(tt(`🔥連勝${streakBefore}次（獎勵+${Math.round(streakBonusPct*100)}%）`, `🔥${streakBefore}-win streak (reward +${Math.round(streakBonusPct*100)}%)`));
     const bonusSuffix = bonusNotes.length ? `（${bonusNotes.join('、')}）` : '';
-    msg = tt(`🧭 遠征成功！獲得 ✦${coins} 金幣、經驗 +${variant.rewardExp}${leveled ? `，遠征等級提升到 Lv.${p.expLevel}！` : ''}${bonusSuffix}`, `🧭 Expedition succeeded! +✦${coins} coins, +${variant.rewardExp} exp${leveled ? `, expedition level up to Lv.${p.expLevel}!` : ''}${bonusSuffix}`);
+    msg = tt(`🧭 遠征成功！獲得 ✦${coins} 金幣、經驗 +${rewardExp}${leveled ? `，遠征等級提升到 Lv.${p.expLevel}！` : ''}${bonusSuffix}`, `🧭 Expedition succeeded! +✦${coins} coins, +${rewardExp} exp${leveled ? `, expedition level up to Lv.${p.expLevel}!` : ''}${bonusSuffix}`);
   } else {
-    const leveled = applyExpeditionExpGain(p, variant.failExp);
-    msg = tt(`⚠️ 遠征失敗了，帶出去的卡牌沒能收回，僅獲得經驗 +${variant.failExp}${leveled ? `，遠征等級提升到 Lv.${p.expLevel}！` : ''}`, `⚠️ The expedition failed - the cards you brought were lost, but you gained +${variant.failExp} exp${leveled ? `, expedition level up to Lv.${p.expLevel}!` : ''}`);
+    p.expeditionStreak = 0;
+    // 🛡️守護：帶出去的卡牌按比例退回一部分（原本全損，這裡按 type 各自四捨五入退回）
+    const keepPct = blessingCurse ? (blessingCurse.failCardKeepPct||0) : 0;
+    if(keepPct > 0 && exp.staked){
+      let refundedTotal = 0;
+      Object.keys(exp.staked).forEach(cid=>{
+        const refund = Math.round(exp.staked[cid] * keepPct);
+        if(refund > 0){
+          p.cards[cid] = (p.cards[cid]||0) + refund;
+          refundedTotal += refund;
+        }
+      });
+      if(refundedTotal > 0) bonusNotes.push(tt(`🛡️守護保留${refundedTotal}張卡牌`, `🛡️Guardian kept ${refundedTotal} card(s)`));
+    }
+    // 🎲亡命/💀死亡契約：失敗時從現有庫存額外隨機扣卡（跟帶出去、已經全損的出征卡是分開的）
+    const extraLoss = (risk.extraCardLossOnFail||0) + (blessingCurse ? (blessingCurse.failExtraCardLoss||0) : 0);
+    if(extraLoss > 0){
+      let actuallyLost = 0;
+      for(let i=0;i<extraLoss;i++){
+        const ownedIds = Object.keys(p.cards).filter(cid=>(p.cards[cid]||0) > 0);
+        if(ownedIds.length===0) break;
+        const pickId = ownedIds[Math.floor(Math.random()*ownedIds.length)];
+        p.cards[pickId] -= 1;
+        actuallyLost += 1;
+      }
+      if(actuallyLost > 0) bonusNotes.push(tt(`💀額外損失${actuallyLost}張隨機庫存卡`, `💀Lost ${actuallyLost} extra random card(s)`));
+    }
+    const expPct = blessingCurse ? (blessingCurse.expRewardPctDelta||0) : 0;
+    const failExpVal = Math.max(0, Math.round(variant.failExp * (1 + expPct)));
+    const leveled = applyExpeditionExpGain(p, failExpVal);
+    const bonusSuffix = bonusNotes.length ? `（${bonusNotes.join('、')}）` : '';
+    msg = tt(`⚠️ 遠征失敗了，帶出去的卡牌沒能收回，僅獲得經驗 +${failExpVal}${leveled ? `，遠征等級提升到 Lv.${p.expLevel}！` : ''}${bonusSuffix}`, `⚠️ The expedition failed - the cards you brought were lost, but you gained +${failExpVal} exp${leveled ? `, expedition level up to Lv.${p.expLevel}!` : ''}${bonusSuffix}`);
   }
   await savePlayer(p);
   showToast(msg);
@@ -3204,6 +3539,7 @@ async function usePotionOnExpedition(){
   const exp = p.expedition;
   if(!exp){ showToast(tt('目前沒有進行中的遠征','No expedition in progress')); return; }
   if(Date.now() >= exp.readyAt){ showToast(tt('遠征已經可以領取了','The expedition is already ready to claim')); return; }
+  if(exp.blessingCurse && exp.blessingCurse.blockPotion){ showToast(tt('🚫封印生效中，這趟遠征無法使用小藥水縮時','🚫Sealed - Small Potions can\'t be used to shorten this run')); return; }
   if((p.professionItems.potion_small||0) < 1){ showToast(tt('沒有小藥水','No Small Potions')); return; }
   const reduceMs = POTION_EXPEDITION_MINUTES * 60 * 1000;
   const floorAt = Date.now() + POTION_EXPEDITION_MIN_REMAIN_MINUTES * 60 * 1000;
@@ -3221,12 +3557,100 @@ async function usePotionOnExpedition(){
     : tt(`🧪 已使用小藥水，遠征剩餘時間 -${POTION_EXPEDITION_MINUTES} 分鐘`, `🧪 Used a Small Potion, expedition time -${POTION_EXPEDITION_MINUTES} min`));
   render();
 }
+// 派遣前的「風險等級 + 翻牌選祝福/詛咒」UI，只在 p.expLevel >= EXPEDITION_ROGUELIKE_UNLOCK_LEVEL 時渲染
+function renderExpeditionRogueDraftUI(uid){
+  const draft = getExpeditionRogueDraft(uid);
+  const riskButtons = EXPEDITION_RISK_LEVEL_KEYS.map(key=>{
+    const v = EXPEDITION_RISK_LEVELS[key];
+    const active = draft.riskLevel === key;
+    const successTxt = v.successDelta===0
+      ? tt('成功率不變','Success unchanged')
+      : tt(`成功率${v.successDelta*100>0?'+':''}${Math.round(v.successDelta*100)}%`, `Success ${v.successDelta*100>0?'+':''}${Math.round(v.successDelta*100)}%`);
+    const failTxt = v.extraCardLossOnFail>0 ? tt('・失敗多損1張卡','・+1 card lost on fail') : '';
+    return `<button type="button" class="btn small ${active?'':'secondary'}" data-rogue-risk-uid="${uid}" data-rogue-risk-key="${key}" style="flex:1;min-width:96px;line-height:1.5;">
+      ${tt(v.labelZh, v.labelEn)}<br/><span style="font-size:10px;opacity:0.85;">${successTxt}・獎勵×${v.rewardMult}${failTxt}</span>
+    </button>`;
+  }).join('');
+
+  let cardsHtml = '';
+  if(draft.drawnCards){
+    cardsHtml = `<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;">
+      ${draft.drawnCards.map((c,i)=>{
+        const selected = draft.selectedIdx === i;
+        const isCurse = c.type==='curse';
+        return `<button type="button" class="btn small ${selected?'':'secondary'}" data-rogue-card-uid="${uid}" data-rogue-card-idx="${i}" style="flex:1;min-width:150px;text-align:left;line-height:1.5;${isCurse?'border-color:var(--danger);':''}">
+          <div>${c.icon} ${tt(c.labelZh, c.labelEn)}${isCurse?tt('（詛咒）','(Curse)'):tt('（祝福）','(Blessing)')}</div>
+          <div style="font-size:10px;opacity:0.85;">${tt(c.descZh, c.descEn)}</div>
+        </button>`;
+      }).join('')}
+    </div>`;
+  }
+
+  return `<div style="border:1px dashed var(--line);border-radius:8px;padding:8px;margin-top:8px;">
+    <div class="farm-upgrade-line" style="color:var(--gold-bright);">🎲 ${tt('風險等級','Risk Level')}</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;">${riskButtons}</div>
+    <div style="margin-top:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+      <button type="button" class="btn small secondary" data-rogue-draw-uid="${uid}">🎴 ${tt('翻牌（抽3張，選1張帶著出征）','Draw Cards (draw 3, pick 1 to bring)')}</button>
+      ${(draft.drawnCards && draft.selectedIdx===null) ? `<span style="font-size:11px;color:var(--muted);">${tt('請從下方選 1 張','Pick 1 card below')}</span>` : ''}
+      ${!draft.drawnCards ? `<span style="font-size:11px;color:var(--muted);">${tt('翻牌並選好效果卡後才能出征','Draw and pick a card before you can dispatch')}</span>` : ''}
+    </div>
+    ${cardsHtml}
+  </div>`;
+}
+// 選擇型事件節點的互動面板：列出這個節點的所有選項，庫存/金幣不足的選項會被鎖住不能點
+function renderExpeditionEventChoicePanel(p, event){
+  const def = EXPEDITION_CHOICE_EVENT_POOL.find(e=>e.id===event.eventId);
+  if(!def) return '';
+  const optionsHtml = def.options.map(opt=>{
+    const itemQty = opt.requiresItem ? (p.professionItems[opt.requiresItem]||0) : null;
+    const lackItem = opt.requiresItem && itemQty < (opt.itemCost||1);
+    const lackCoins = opt.coinsCost && (p.coins||0) < opt.coinsCost;
+    const disabled = lackItem || lackCoins;
+    const costNotes = [];
+    if(opt.requiresItem) costNotes.push(tt(`需${opt.itemCost||1}件庫存（現有${itemQty}）`, `Needs ${opt.itemCost||1} in stock (have ${itemQty})`));
+    if(opt.coinsCost) costNotes.push(tt(`需${opt.coinsCost}金幣`, `Needs ${opt.coinsCost} coins`));
+    return `<button type="button" class="btn small secondary" data-rogue-event-idx="${event.idx}" data-rogue-event-option="${opt.id}" ${disabled?'disabled':''} style="flex:1;min-width:150px;text-align:left;line-height:1.5;${disabled?'opacity:0.5;':''}">
+      <div>${tt(opt.labelZh, opt.labelEn)}</div>
+      <div style="font-size:10px;opacity:0.85;">${tt(opt.descZh, opt.descEn)}</div>
+      ${costNotes.length ? `<div style="font-size:10px;color:var(--danger);">${costNotes.join('・')}</div>` : ''}
+    </button>`;
+  }).join('');
+  return `<div class="panel" style="border:1px solid var(--gold-bright);">
+    <h2>${def.icon} ${tt(def.labelZh, def.labelEn)}</h2>
+    <p class="sub">${tt('遠征途中遇到了狀況，選一個應對方式：','Something happened along the way — pick how to respond:')}</p>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;">${optionsHtml}</div>
+  </div>`;
+}
+// 遭遇紀錄裡每個已處理事件的一行摘要
+function expeditionEventLogLine(event){
+  if(event.kind === 'combat'){
+    const def = EXPEDITION_COMBAT_EVENT_POOL.find(e=>e.id===event.eventId);
+    const r = event.result || {};
+    const pctTxt = `${r.rewardPctDelta>0?'+':''}${Math.round((r.rewardPctDelta||0)*100)}%`;
+    return `${def?def.icon:'⚔️'} ${tt(def?def.labelZh:event.eventId, def?def.labelEn:event.eventId)}：${r.win ? tt(`獲勝（獎勵${pctTxt}）`,`Won (reward ${pctTxt})`) : tt(`落敗（獎勵${pctTxt}）`,`Lost (reward ${pctTxt})`)}`;
+  }
+  const def = EXPEDITION_CHOICE_EVENT_POOL.find(e=>e.id===event.eventId);
+  const opt = def && def.options.find(o=>o.id===event.chosenOptionId);
+  const autoTag = event.autoResolved ? tt('（逾時自動）','（timed out）') : '';
+  return `${def?def.icon:'❓'} ${tt(def?def.labelZh:event.eventId, def?def.labelEn:event.eventId)}：${opt ? tt(opt.labelZh, opt.labelEn) : '-'}${autoTag}`;
+}
 async function renderExpedition(body){
   const p = state.player;
   ensureExpedition(p);
   ensureProfession(p);
   const now = Date.now();
   const exp = p.expedition;
+  // 階段三：戰鬥型事件節點不需要玩家操作，時間一到就自動判定，這裡先掃一輪，有變更才存檔
+  if(exp && Array.isArray(exp.events) && exp.events.length){
+    let eventsChanged = false;
+    exp.events.forEach(ev=>{
+      if(!ev.resolved && now >= ev.triggerAt && ev.kind === 'combat'){
+        autoResolveExpeditionCombatEvent(p, ev);
+        eventsChanged = true;
+      }
+    });
+    if(eventsChanged) await savePlayer(p);
+  }
   const nextExp = expeditionNextLevelExp(p.expLevel);
   const curExpBase = EXP_TABLE[p.expLevel] || 0;
   const isMaxExpLevel = p.expLevel >= EXP_MAX_LEVEL;
@@ -3245,6 +3669,7 @@ async function renderExpedition(body){
       </div>
       <div class="countdown" style="font-size:11px;">${tt(`經驗 ${p.expExp} / ${nextExp}`, `Exp ${p.expExp} / ${nextExp}`)}</div>
     `}
+    ${(p.expeditionStreak||0) > 0 ? `<div class="countdown" style="font-size:11px;color:var(--gold-bright);margin-top:2px;">${tt(`🔥連勝 ${p.expeditionStreak} 次（下趟成功時獎勵加成 +${Math.round(Math.min(EXPEDITION_STREAK_BONUS_CAP, p.expeditionStreak*EXPEDITION_STREAK_BONUS_PER_WIN)*100)}%）`, `🔥${p.expeditionStreak}-win streak (next success reward +${Math.round(Math.min(EXPEDITION_STREAK_BONUS_CAP, p.expeditionStreak*EXPEDITION_STREAK_BONUS_PER_WIN)*100)}%)`)}</div>` : ''}
   </div>`;
 
   if(exp){
@@ -3256,16 +3681,32 @@ async function renderExpedition(body){
     }).join('　');
     const inProgressLabel = tier ? `：${expeditionTierLabel(tier)}・${expeditionDurationLabel(exp.durationKey)}` : '';
     const potionQty = p.professionItems.potion_small||0;
+    const rogueLine = (exp.riskLevel && exp.riskLevel !== 'standard') || exp.blessingCurse
+      ? `<p class="sub">${exp.riskLevel && exp.riskLevel!=='standard' ? tt(`🎲 風險：${EXPEDITION_RISK_LEVELS[exp.riskLevel]?.labelZh||exp.riskLevel}　`, `🎲 Risk: ${EXPEDITION_RISK_LEVELS[exp.riskLevel]?.labelEn||exp.riskLevel}　`) : ''}${exp.blessingCurse ? `${exp.blessingCurse.icon} ${tt(exp.blessingCurse.labelZh, exp.blessingCurse.labelEn)}` : ''}</p>`
+      : '';
+    // 階段三：遭遇紀錄（已處理的事件節點）
+    const resolvedEvents = (exp.events||[]).filter(ev=>ev.resolved);
+    const eventLogHtml = resolvedEvents.length
+      ? `<div class="farm-upgrade-line" style="color:var(--muted);margin-top:6px;">${tt('🗺️ 遭遇紀錄','🗺️ Encounter Log')}</div>${resolvedEvents.map(ev=>`<div class="farm-upgrade-line" style="font-size:11px;">${expeditionEventLogLine(ev)}</div>`).join('')}`
+      : '';
     html += `<div class="panel">
       <h2>${tt('進行中的遠征','Expedition In Progress')}${inProgressLabel}</h2>
       <p class="sub">${tt('帶出去的卡牌','Cards brought along')}：${stakedLines}</p>
+      ${rogueLine}
       ${ready
         ? `<div class="countdown" style="color:var(--gold-bright);margin-bottom:10px;">${tt('遠征已歸來！','The expedition has returned!')}</div>
            <button class="btn" id="expedition-claim-btn">${tt('領取遠征成果','Claim Expedition Result')}</button>`
-        : `<div class="countdown" style="margin-bottom:10px;">${tt(`還需 ${formatDuration(exp.readyAt-now)}`, `${formatDuration(exp.readyAt-now)} remaining`)}</div>
-           <button class="btn small secondary" id="expedition-use-potion-btn" ${potionQty>0?'':'disabled'} style="${potionQty>0?'':'opacity:0.5;'}">${tt(`🧪 使用小藥水（-${POTION_EXPEDITION_MINUTES}分鐘，庫存 ${potionQty}）`, `🧪 Use Small Potion (-${POTION_EXPEDITION_MINUTES}min, stock ${potionQty})`)}</button>`
+        : (exp.blessingCurse && exp.blessingCurse.blockPotion)
+          ? `<div class="countdown" style="margin-bottom:10px;">${tt(`還需 ${formatDuration(exp.readyAt-now)}`, `${formatDuration(exp.readyAt-now)} remaining`)}</div>
+             <button class="btn small secondary" disabled style="opacity:0.5;">${tt('🚫 封印生效中，無法使用小藥水','🚫 Sealed - Small Potion unavailable')}</button>`
+          : `<div class="countdown" style="margin-bottom:10px;">${tt(`還需 ${formatDuration(exp.readyAt-now)}`, `${formatDuration(exp.readyAt-now)} remaining`)}</div>
+             <button class="btn small secondary" id="expedition-use-potion-btn" ${potionQty>0?'':'disabled'} style="${potionQty>0?'':'opacity:0.5;'}">${tt(`🧪 使用小藥水（-${POTION_EXPEDITION_MINUTES}分鐘，庫存 ${potionQty}）`, `🧪 Use Small Potion (-${POTION_EXPEDITION_MINUTES}min, stock ${potionQty})`)}</button>`
       }
+      ${eventLogHtml}
     </div>`;
+    // 階段三：尚未處理、時間已到的「選擇型」節點——遠征結束前才會出現，讓玩家點選應對方式
+    const pendingChoiceEvent = !ready ? (exp.events||[]).find(ev=>!ev.resolved && now>=ev.triggerAt && ev.kind==='choice') : null;
+    if(pendingChoiceEvent) html += renderExpeditionEventChoicePanel(p, pendingChoiceEvent);
   } else {
     // 升級後只顯示「當前等級」對應的那個任務（已解鎖任務中，解鎖門檻最高的一個），
     // 較低等級、已經超越的任務不再顯示。
@@ -3344,11 +3785,15 @@ async function renderExpedition(body){
                   <select id="accessory-sel-${uid}" ${accessoryQty>0?'':'disabled'} style="min-width:150px;">${accessoryOptions}</select>
                   <span style="color:var(--muted);font-size:11px;">${tt(`庫存 ${accessoryQty}`, `Stock ${accessoryQty}`)}</span>
                 </label>
-              </div>`;
+              </div>${(p.expLevel||0) >= EXPEDITION_ROGUELIKE_UNLOCK_LEVEL ? renderExpeditionRogueDraftUI(uid) : ''}`;
             })() : ''}
-            ${canAfford
-              ? `<button class="btn small" data-expedition-start-tier="${tier.id}" data-expedition-start-dur="${durKey}" data-expedition-uid="${tier.id}-${durKey}" style="margin-top:8px;">${tt('確認出征','Confirm Expedition')}</button>`
-              : `<button class="btn small secondary" data-expedition-goto-auction="1" style="margin-top:8px;">${tt('卡牌不足，前往拍賣行收購','Not enough cards - go to Auction House')}</button>`
+            ${canAfford ? (()=>{
+              const uid = `${tier.id}-${durKey}`;
+              const rogueUnlocked = (p.expLevel||0) >= EXPEDITION_ROGUELIKE_UNLOCK_LEVEL;
+              const draft = rogueUnlocked ? getExpeditionRogueDraft(uid) : null;
+              const rogueReady = !rogueUnlocked || (draft && draft.drawnCards && draft.selectedIdx !== null);
+              return `<button class="btn small" data-expedition-start-tier="${tier.id}" data-expedition-start-dur="${durKey}" data-expedition-uid="${uid}" ${rogueReady?'':'disabled'} style="margin-top:8px;${rogueReady?'':'opacity:0.5;'}">${tt('確認出征','Confirm Expedition')}</button>`;
+            })() : `<button class="btn small secondary" data-expedition-goto-auction="1" style="margin-top:8px;">${tt('卡牌不足，前往拍賣行收購','Not enough cards - go to Auction House')}</button>`
             }
           </div>`;
         });
@@ -3369,16 +3814,71 @@ async function renderExpedition(body){
   if(claimBtn) claimBtn.onclick = claimExpedition;
   const usePotionBtn = document.getElementById('expedition-use-potion-btn');
   if(usePotionBtn) usePotionBtn.onclick = usePotionOnExpedition;
+  document.querySelectorAll('[data-rogue-event-idx]').forEach(btn=>{
+    btn.onclick = async ()=>{
+      const idx = parseInt(btn.dataset.rogueEventIdx, 10);
+      const curExp = state.player.expedition;
+      const event = curExp && (curExp.events||[]).find(e=>e.idx===idx);
+      if(!event || event.resolved) return;
+      const result = resolveExpeditionEventOption(state.player, event, btn.dataset.rogueEventOption);
+      if(result && result.error){
+        showToast(result.error==='item' ? tt('庫存不足','Not enough stock') : tt('金幣不足','Not enough coins'));
+        return;
+      }
+      await savePlayer(state.player);
+      render();
+    };
+  });
+  document.querySelectorAll('[data-rogue-risk-key]').forEach(btn=>{
+    btn.onclick = ()=>{
+      const uid = btn.dataset.rogueRiskUid;
+      const key = btn.dataset.rogueRiskKey;
+      const draft = getExpeditionRogueDraft(uid);
+      if(draft.riskLevel !== key){
+        draft.riskLevel = key;
+        draft.drawnCards = null; // 風險等級變了，之前翻的牌作廢，需要重新翻
+        draft.selectedIdx = null;
+      }
+      render();
+    };
+  });
+  document.querySelectorAll('[data-rogue-draw-uid]').forEach(btn=>{
+    btn.onclick = ()=>{
+      const uid = btn.dataset.rogueDrawUid;
+      const draft = getExpeditionRogueDraft(uid);
+      draft.drawnCards = drawExpeditionBlessingCurseCards(draft.riskLevel);
+      draft.selectedIdx = null;
+      render();
+    };
+  });
+  document.querySelectorAll('[data-rogue-card-idx]').forEach(btn=>{
+    btn.onclick = ()=>{
+      const uid = btn.dataset.rogueCardUid;
+      const idx = parseInt(btn.dataset.rogueCardIdx, 10);
+      const draft = getExpeditionRogueDraft(uid);
+      draft.selectedIdx = idx;
+      render();
+    };
+  });
   document.querySelectorAll('[data-expedition-start-tier]').forEach(btn=>{
     btn.onclick = ()=>{
       const uid = btn.dataset.expeditionUid;
       const furnitureSel = uid ? document.getElementById(`furniture-sel-${uid}`) : null;
       const weaponCb = uid ? document.getElementById(`weapon-cb-${uid}`) : null;
       const accessorySel = uid ? document.getElementById(`accessory-sel-${uid}`) : null;
+      const rogueUnlocked = (state.player.expLevel||0) >= EXPEDITION_ROGUELIKE_UNLOCK_LEVEL;
+      const draft = rogueUnlocked && uid ? getExpeditionRogueDraft(uid) : null;
+      const hasSelectedCard = !!(draft && draft.drawnCards && draft.selectedIdx !== null);
+      if(rogueUnlocked && !hasSelectedCard){
+        showToast(tt('請先選好風險等級並翻牌選1張效果卡','Pick a risk level and draw+select a card first'));
+        return;
+      }
       const itemUsage = {
         furnitureCount: furnitureSel ? parseInt(furnitureSel.value,10)||0 : 0,
         useWeapon: !!weaponCb?.checked,
         accessoryCount: accessorySel ? parseInt(accessorySel.value,10)||0 : 0,
+        riskLevel: draft ? draft.riskLevel : 'standard',
+        blessingCardId: hasSelectedCard ? draft.drawnCards[draft.selectedIdx].id : null,
       };
       confirmStartExpedition(parseInt(btn.dataset.expeditionStartTier,10), btn.dataset.expeditionStartDur, itemUsage);
     };
@@ -4246,6 +4746,7 @@ async function boot(){
   loadStarChartConfig().catch(()=>{});
   loadBossConfig().catch(()=>{});
   loadExpeditionConfig().catch(()=>{});
+  loadExpeditionRoguelikeConfig().catch(()=>{});
   loadProfessionConfig().catch(()=>{});
   initWinBroadcastPoll();
   initNotifPoll();
@@ -5424,6 +5925,13 @@ async function render(){
   if(state.tab === 'expedition'){
     expeditionTickInterval = setInterval(async ()=>{
       if(state.tab === 'expedition'){
+        // 玩家正在點開家具/飾品下拉選單或武器勾選框時，這個元素會是 document.activeElement；
+        // 這時候如果整段重繪，原生 <select> 的下拉選單會因為底層 DOM 被整個換掉而被強制關閉，
+        // 玩家還沒選完選項視窗就消失了。所以偵測到正在互動時，這一秒先跳過重繪，等選完失焦後再繼續倒數。
+        const active = document.activeElement;
+        const isPickerActive = active && typeof active.id === 'string' &&
+          (active.id.startsWith('furniture-sel-') || active.id.startsWith('accessory-sel-') || active.id.startsWith('weapon-cb-'));
+        if(isPickerActive) return;
         // 遠征頁每秒重繪倒數計時，會連帶重建「使用道具」的選單，重繪後預設值會被重設；
         // 重繪前先記住家具/飾品下拉選單的值、武器勾選框的勾選狀態，重繪後再還原，避免玩家選了下一秒就消失。
         const savedSelects = Array.from(document.querySelectorAll('select[id^="furniture-sel-"], select[id^="accessory-sel-"]')).map(el=>({id: el.id, value: el.value}));
@@ -7056,6 +7564,44 @@ async function renderGM(body){
     </div>
   </div>`;
 
+  html += `<div class="panel">
+    <h2>🎲 ${tt('遠征 Roguelike 玩法設定','Expedition Roguelike Settings')}</h2>
+    <p class="sub">${tt('風險等級／祝福詛咒／事件節點／連勝加成，達到解鎖等級後才對玩家開放。派遣、進行中互動、結算全部已串接完成，這裡的數值調整即時對所有玩家生效。', 'Risk level / blessing-curse / event nodes / win streak, unlocked at the level below. Dispatch, in-progress interaction, and settlement are all fully wired — changes here take effect immediately for all players.')}</p>
+    <div class="form-row">
+      <div><label>${tt('解鎖遠征等級','Unlock Lv.')}</label><input type="number" id="gm-rogue-unlock" value="${EXPEDITION_ROGUELIKE_UNLOCK_LEVEL}" min="0" style="width:80px;" /></div>
+    </div>
+    ${EXPEDITION_RISK_LEVEL_KEYS.map(key=>{
+      const v = EXPEDITION_RISK_LEVELS[key];
+      return `<div class="farm-upgrade-box" style="margin-bottom:10px;">
+        <div class="farm-upgrade-title">${tt(v.labelZh, v.labelEn)}</div>
+        <div class="form-row">
+          <div><label>${tt('成功率調整 %','Success delta %')}</label><input type="number" id="gm-rogue-${key}-success" value="${Math.round(v.successDelta*100)}" min="-100" max="100" style="width:90px;" /></div>
+          <div><label>${tt('獎勵倍率','Reward mult')}</label><input type="number" id="gm-rogue-${key}-mult" value="${v.rewardMult}" min="0" step="0.1" style="width:90px;" /></div>
+          <div><label>${tt('祝福機率 %','Blessing chance %')}</label><input type="number" id="gm-rogue-${key}-blessing" value="${Math.round(v.blessingWeight*100)}" min="0" max="100" style="width:90px;" /></div>
+        </div>
+      </div>`;
+    }).join('')}
+    <div class="farm-upgrade-box" style="margin-bottom:10px;">
+      <div class="farm-upgrade-title">🗺️ ${tt('事件節點觸發進度（逗號分隔，單位%）','Event node trigger progress (comma-separated %)')}</div>
+      ${EXPEDITION_DURATION_KEYS.map(durKey=>`
+        <div class="form-row">
+          <div><label>${expeditionDurationLabel(durKey)}</label><input type="text" id="gm-rogue-schedule-${durKey}" value="${EXPEDITION_EVENT_SCHEDULE[durKey].map(v=>Math.round(v*100)).join(',')}" style="width:140px;" /></div>
+        </div>
+      `).join('')}
+    </div>
+    <div class="farm-upgrade-box" style="margin-bottom:10px;">
+      <div class="farm-upgrade-title">🔥 ${tt('連勝加成','Win Streak Bonus')}</div>
+      <div class="form-row">
+        <div><label>${tt('每連勝1次 %','Per win %')}</label><input type="number" id="gm-rogue-streak-perwin" value="${Math.round(EXPEDITION_STREAK_BONUS_PER_WIN*100)}" min="0" max="100" style="width:90px;" /></div>
+        <div><label>${tt('封頂 %','Cap %')}</label><input type="number" id="gm-rogue-streak-cap" value="${Math.round(EXPEDITION_STREAK_BONUS_CAP*100)}" min="0" max="100" style="width:90px;" /></div>
+      </div>
+    </div>
+    <div class="form-row" style="margin-top:6px;">
+      <button class="btn small" id="gm-rogue-save-btn">${tt('儲存 Roguelike 設定','Save Roguelike Settings')}</button>
+      <button class="btn small secondary" id="gm-rogue-reset-btn">${tt('還原預設值','Reset to Default')}</button>
+    </div>
+  </div>`;
+
   body.innerHTML = html;
 
   wirePager(state.gmPlayersPage, gmPlayersTotalPages, 'gm-players-page', 'gmPlayersPage');
@@ -7608,6 +8154,53 @@ async function renderGM(body){
     EXPEDITION_QUESTS = cloneExpeditionQuests(DEFAULT_EXPEDITION_QUESTS);
     await saveExpeditionConfig();
     showToast(tt('已還原為預設遠征設定','Reverted to default expedition settings'));
+    renderTab();
+  };
+  const rogueSaveBtn = document.getElementById('gm-rogue-save-btn');
+  if(rogueSaveBtn) rogueSaveBtn.onclick = async ()=>{
+    const unlockLevel = parseInt(document.getElementById('gm-rogue-unlock').value, 10);
+    let invalid = isNaN(unlockLevel) || unlockLevel < 0;
+    const riskLevels = {};
+    EXPEDITION_RISK_LEVEL_KEYS.forEach(key=>{
+      const success = parseFloat(document.getElementById(`gm-rogue-${key}-success`).value);
+      const mult = parseFloat(document.getElementById(`gm-rogue-${key}-mult`).value);
+      const blessing = parseFloat(document.getElementById(`gm-rogue-${key}-blessing`).value);
+      if([success, mult, blessing].some(v=>isNaN(v)) || mult < 0 || blessing < 0 || blessing > 100 || success < -100 || success > 100){
+        invalid = true;
+      }
+      riskLevels[key] = {successDelta: success/100, rewardMult: mult, blessingWeight: blessing/100};
+    });
+    const eventSchedule = {};
+    EXPEDITION_DURATION_KEYS.forEach(durKey=>{
+      const raw = document.getElementById(`gm-rogue-schedule-${durKey}`).value;
+      const parts = raw.split(',').map(s=>s.trim()).filter(s=>s.length>0).map(s=>parseFloat(s));
+      if(parts.length===0 || parts.some(v=>isNaN(v) || v<0 || v>100)){ invalid = true; }
+      eventSchedule[durKey] = parts.map(v=>v/100);
+    });
+    const streakPerWin = parseFloat(document.getElementById('gm-rogue-streak-perwin').value);
+    const streakCap = parseFloat(document.getElementById('gm-rogue-streak-cap').value);
+    if([streakPerWin, streakCap].some(v=>isNaN(v) || v<0 || v>100)) invalid = true;
+    if(invalid){ showToast(tt('請輸入有效的數字（詳見各欄位範圍提示）','Please enter valid numbers (see each field\'s range)')); return; }
+    EXPEDITION_ROGUELIKE_UNLOCK_LEVEL = unlockLevel;
+    EXPEDITION_RISK_LEVEL_KEYS.forEach(key=>{
+      EXPEDITION_RISK_LEVELS[key] = {...EXPEDITION_RISK_LEVELS[key], ...riskLevels[key]};
+    });
+    EXPEDITION_EVENT_SCHEDULE = eventSchedule;
+    EXPEDITION_STREAK_BONUS_PER_WIN = streakPerWin/100;
+    EXPEDITION_STREAK_BONUS_CAP = streakCap/100;
+    await saveExpeditionRoguelikeConfig();
+    showToast(tt('遠征 Roguelike 設定已更新，即時對所有玩家生效 ⚡','Expedition roguelike settings updated, effective immediately for all players ⚡'));
+    renderTab();
+  };
+  const rogueResetBtn = document.getElementById('gm-rogue-reset-btn');
+  if(rogueResetBtn) rogueResetBtn.onclick = async ()=>{
+    EXPEDITION_ROGUELIKE_UNLOCK_LEVEL = DEFAULT_EXPEDITION_ROGUELIKE_UNLOCK_LEVEL;
+    EXPEDITION_RISK_LEVELS = JSON.parse(JSON.stringify(DEFAULT_EXPEDITION_RISK_LEVELS));
+    EXPEDITION_EVENT_SCHEDULE = JSON.parse(JSON.stringify(DEFAULT_EXPEDITION_EVENT_SCHEDULE));
+    EXPEDITION_STREAK_BONUS_PER_WIN = DEFAULT_EXPEDITION_STREAK_BONUS_PER_WIN;
+    EXPEDITION_STREAK_BONUS_CAP = DEFAULT_EXPEDITION_STREAK_BONUS_CAP;
+    await saveExpeditionRoguelikeConfig();
+    showToast(tt('已還原為預設 Roguelike 設定','Reverted to default roguelike settings'));
     renderTab();
   };
 }
