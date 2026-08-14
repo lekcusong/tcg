@@ -4362,7 +4362,6 @@ let state = {
   flipped: [false,false,false],
   filter: 'all',
   toastTimer: null,
-  tradingWith: null,
   farmVisiting: null,
   farmUpgradeMode: false,
   farmUpgradeSelections: null,
@@ -4454,7 +4453,7 @@ try{ appLang = localStorage.getItem('app-lang') || 'zh'; }catch(e){}
 // ---------- i18n ----------
 const T = {
   appName: {zh:'秘境集卡', en:'Mystic Tarot Collection'},
-  loginIntro: {zh:'輸入暱稱與密碼，開始每日抽卡、收藏塔羅牌，玩玩三牌共鳴試試手氣，並與好友互相交換或競標稀有卡片。首次輸入的暱稱＋密碼組合會自動建立新帳號。', en:'Enter a nickname and password to start drawing daily tarot cards, building your collection, trying your luck at Three-Card Resonance, and trading or bidding on rare cards with friends. A new account is created automatically the first time you use a nickname + password combo.'},
+  loginIntro: {zh:'輸入暱稱與密碼，開始每日抽卡、收藏塔羅牌，玩玩三牌共鳴試試手氣，並與好友一起競標稀有卡片。首次輸入的暱稱＋密碼組合會自動建立新帳號。', en:'Enter a nickname and password to start drawing daily tarot cards, building your collection, trying your luck at Three-Card Resonance, and bidding on rare cards with friends. A new account is created automatically the first time you use a nickname + password combo.'},
   nickPlaceholder: {zh:'輸入暱稱...', en:'Enter nickname...'},
   pwPlaceholder: {zh:'輸入密碼（至少4個字元）', en:'Enter password (min 4 characters)'},
   loginBtn: {zh:'登入 / 建立帳號', en:'Log In / Create Account'},
@@ -4496,7 +4495,6 @@ const T = {
   sendInviteBtn: {zh:'送出邀請', en:'Send Request'},
   friendRequestsHeader: {zh:'好友邀請', en:'Friend Requests'},
   myFriendsHeader: {zh:'我的好友', en:'My Friends'},
-  friendTradeHeader: {zh:'好友交易邀請', en:'Friend Trade Requests'},
   createAuctionHeader: {zh:'建立拍賣', en:'Create Auction'},
   myAuctionsHeader: {zh:'我的拍賣', en:'My Auctions'},
   publicAuctionsHeader: {zh:'公開拍賣', en:'Public Auctions'},
@@ -5033,6 +5031,7 @@ async function doLogin(nick, password, confirmPassword){
 
     state.nickname = p.nickname;
     state.player = p;
+    await applyPendingRewards(state.player);
     try{ localStorage.setItem('my-nickname', p.nickname); }catch(e){}
     updatePresenceHeartbeat();
     render();
@@ -5072,7 +5071,10 @@ function doLogout(){
 
 async function refreshPlayer(){
   const p = await loadPlayer(state.nickname);
-  if(p) state.player = p;
+  if(p){
+    await applyPendingRewards(p);
+    state.player = p;
+  }
 }
 
 // ---------- Daily draw ----------
@@ -5249,8 +5251,8 @@ function initSlotJackpotPoll(){
 
 // ---------- Friends ----------
 function freqKey(id){ return `freq:${id}`; }
-function ftradeKey(id){ return `ftrade:${id}`; }
 function notifKey(id){ return `notif:${id}`; }
+function pendingRewardKey(id){ return `pendingreward:${id}`; }
 
 // ---------- Notifications (e.g. a friend watered/stole from your plot) ----------
 async function fetchNotifications(){
@@ -5280,6 +5282,55 @@ async function pruneNotifications(){
   if(!list || !list.keys || list.keys.length <= NOTIF_MAX_STORED) return;
   const excessKeys = list.keys.slice(NOTIF_MAX_STORED);
   await Promise.all(excessKeys.map(k=>storage.delete(k).catch(()=>{})));
+}
+// ---------- Pending rewards (GM grants land here first, then get applied to the
+// player's own freshest data next time they refresh/open mailbox — avoids the
+// grant being silently overwritten if the player's client saves stale data
+// in the meantime) ----------
+async function createPendingReward(targetNick, grantKind, payload){
+  const r = {id: uid(), to: targetNick, grantKind, createdAt: Date.now(), ...payload};
+  try{ await storage.set(pendingRewardKey(r.id), JSON.stringify(r)); return true; }
+  catch(e){ return false; }
+}
+async function fetchPendingRewardsFor(nick){
+  try{
+    const list = await storage.list('pendingreward:');
+    if(!list || !list.keys) return [];
+    const items = await Promise.all(list.keys.map(async k=>{
+      try{ const r = await storage.get(k); return r ? {key:k, data: JSON.parse(r.value)} : null; }
+      catch(e){ return null; }
+    }));
+    const myLower = (nick||'').toLowerCase();
+    return items.filter(Boolean).filter(x=>(x.data.to||'').toLowerCase()===myLower);
+  }catch(e){ return []; }
+}
+// Applies any pending rewards for this player directly onto the freshly-loaded
+// player object (mutates in place), deletes the consumed records, and saves.
+// Safe to call every time a player's data is freshly loaded.
+async function applyPendingRewards(player){
+  const pending = await fetchPendingRewardsFor(player.nickname);
+  if(pending.length === 0) return player;
+  let changed = false;
+  for(const {key, data} of pending){
+    if(data.grantKind === 'coins'){
+      player.coins = Math.max(0, (player.coins||0) + (data.amount||0));
+      changed = true;
+    } else if(data.grantKind === 'card'){
+      player.cards[data.cardId] = Math.max(0, (player.cards[data.cardId]||0) + (data.qty||1));
+      changed = true;
+    } else if(data.grantKind === 'material'){
+      ensureProfession(player);
+      player.professionMaterials[data.materialId] = Math.max(0, (player.professionMaterials[data.materialId]||0) + (data.qty||1));
+      changed = true;
+    } else if(data.grantKind === 'item'){
+      ensureProfession(player);
+      player.professionItems[data.itemId] = Math.max(0, (player.professionItems[data.itemId]||0) + (data.qty||1));
+      changed = true;
+    }
+    await storage.delete(key).catch(()=>{});
+  }
+  if(changed) await savePlayer(player);
+  return player;
 }
 async function markNotificationRead(notifId){
   try{
@@ -5545,82 +5596,7 @@ async function cancelFriendRequest(reqId){
 
 async function removeFriend(friendNick){
   await deleteFriendship(state.nickname, friendNick);
-  if(state.tradingWith === friendNick) state.tradingWith = null;
   showToast(tt(`已將 ${friendNick} 從好友移除`, `Removed ${friendNick} from friends`));
-  render();
-}
-
-// ---------- Friend-to-friend direct trading ----------
-async function fetchFriendTrades(){
-  try{
-    const list = await storage.list('ftrade:');
-    if(!list || !list.keys) return [];
-    const items = await Promise.all(list.keys.map(async k=>{
-      try{ const r = await storage.get(k); return r ? JSON.parse(r.value) : null; }
-      catch(e){ return null; }
-    }));
-    return items.filter(Boolean);
-  }catch(e){ return []; }
-}
-
-async function proposeFriendTrade(friendNick, offerCardId, wantCardId){
-  if(!(await isFriendWith(state.nickname, friendNick))){ showToast(tt('對方不是你的好友','That player is not your friend')); return; }
-  const owned = state.player.cards[offerCardId]||0;
-  if(owned < 1){ showToast(tt('你沒有這張卡',"You don't have this card")); return; }
-  if(!wantCardId){ showToast(tt('請選擇想要交換的卡片','Please select a card you want in exchange')); return; }
-  state.player.cards[offerCardId] = owned - 1;
-  await savePlayer(state.player);
-  const ft = {
-    id: uid(), from: state.nickname, to: friendNick,
-    offerCardId, wantCardId, status:'pending', createdAt: Date.now()
-  };
-  await storage.set(ftradeKey(ft.id), JSON.stringify(ft));
-  showToast(tt(`已向 ${friendNick} 提出交易邀請 🤝`, `Trade request sent to ${friendNick} 🤝`));
-  state.tradingWith = null;
-  render();
-}
-
-async function respondFriendTrade(ftId, accept){
-  const r = await storage.get(ftradeKey(ftId));
-  if(!r) return;
-  const ft = JSON.parse(r.value);
-  if(ft.status !== 'pending' || ft.to !== state.nickname) return;
-  if(accept){
-    const myOwned = state.player.cards[ft.wantCardId]||0;
-    if(myOwned < 1){ showToast(tt('你已經沒有對方想要的那張卡了','You no longer have the card they want')); return; }
-    state.player.cards[ft.wantCardId] = myOwned - 1;
-    state.player.cards[ft.offerCardId] = (state.player.cards[ft.offerCardId]||0) + 1;
-    await savePlayer(state.player);
-    const requester = await loadPlayer(ft.from);
-    if(requester){
-      requester.cards[ft.wantCardId] = (requester.cards[ft.wantCardId]||0) + 1;
-      await savePlayer(requester);
-    }
-    ft.status = 'completed';
-    showToast(tt('交易成功！🌟','Trade successful! 🌟'));
-  } else {
-    const requester = await loadPlayer(ft.from);
-    if(requester){
-      requester.cards[ft.offerCardId] = (requester.cards[ft.offerCardId]||0) + 1;
-      await savePlayer(requester);
-    }
-    ft.status = 'declined';
-    showToast(tt('已婉拒交易邀請','Trade request declined'));
-  }
-  await storage.set(ftradeKey(ftId), JSON.stringify(ft));
-  render();
-}
-
-async function cancelFriendTrade(ftId){
-  const r = await storage.get(ftradeKey(ftId));
-  if(!r) return;
-  const ft = JSON.parse(r.value);
-  if(ft.status !== 'pending' || ft.from !== state.nickname) return;
-  state.player.cards[ft.offerCardId] = (state.player.cards[ft.offerCardId]||0) + 1;
-  await savePlayer(state.player);
-  ft.status = 'cancelled';
-  await storage.set(ftradeKey(ft.id), JSON.stringify(ft));
-  showToast(tt('已取消交易邀請並取回卡片','Trade request canceled and card returned'));
   render();
 }
 
@@ -5987,12 +5963,11 @@ async function gmGrantCoins(targetNick, amount){
   if(!amount || isNaN(amount)){ showToast(tt('請輸入有效的金幣數量','Please enter a valid coin amount')); return; }
   const target = await loadPlayer(targetNick);
   if(!target){ showToast(tt('找不到此玩家','Player not found')); return; }
-  target.coins = Math.max(0, (target.coins||0) + parseInt(amount));
-  await savePlayer(target);
+  await createPendingReward(target.nickname, 'coins', {amount: parseInt(amount)});
   await createNotification(target.nickname, GM_NICKNAME, 'gm_grant', {grantKind:'coins', amount: parseInt(amount)});
   showToast(tt(`已發放 ${amount} 枚金幣給 ${target.nickname} ⚡`, `Granted ${amount} coins to ${target.nickname} ⚡`));
   if(target.nickname.toLowerCase() === state.nickname.toLowerCase()){
-    state.player = target;
+    await refreshPlayer();
   }
   render();
 }
@@ -6004,13 +5979,12 @@ async function gmGrantCard(targetNick, cardId, qty){
   qty = parseInt(qty) || 1;
   const target = await loadPlayer(targetNick);
   if(!target){ showToast(tt('找不到此玩家','Player not found')); return; }
-  target.cards[cardId] = Math.max(0, (target.cards[cardId]||0) + qty);
-  await savePlayer(target);
   const c = DECK_BY_ID[cardId];
+  await createPendingReward(target.nickname, 'card', {cardId, qty});
   await createNotification(target.nickname, GM_NICKNAME, 'gm_grant', {grantKind:'card', label:c.name, qty});
   showToast(tt(`已發放 ${c.name} x${qty} 給 ${target.nickname} ⚡`, `Granted ${c.name} x${qty} to ${target.nickname} ⚡`));
   if(target.nickname.toLowerCase() === state.nickname.toLowerCase()){
-    state.player = target;
+    await refreshPlayer();
   }
   render();
 }
@@ -6022,15 +5996,13 @@ async function gmGrantMaterial(targetNick, materialId, qty){
   qty = parseInt(qty) || 1;
   const target = await loadPlayer(targetNick);
   if(!target){ showToast(tt('找不到此玩家','Player not found')); return; }
-  ensureProfession(target);
-  target.professionMaterials[materialId] = Math.max(0, (target.professionMaterials[materialId]||0) + qty);
-  await savePlayer(target);
   const def = PROFESSION_DEFS.find(d=>d.materialId===materialId);
   const label = def ? professionMaterialLabel(def) : materialId;
+  await createPendingReward(target.nickname, 'material', {materialId, qty});
   await createNotification(target.nickname, GM_NICKNAME, 'gm_grant', {grantKind:'material', label, qty});
   showToast(tt(`已發放 ${label} x${qty} 給 ${target.nickname} ⚡`, `Granted ${label} x${qty} to ${target.nickname} ⚡`));
   if(target.nickname.toLowerCase() === state.nickname.toLowerCase()){
-    state.player = target;
+    await refreshPlayer();
   }
   render();
 }
@@ -6042,15 +6014,13 @@ async function gmGrantProfessionItem(targetNick, itemId, qty){
   qty = parseInt(qty) || 1;
   const target = await loadPlayer(targetNick);
   if(!target){ showToast(tt('找不到此玩家','Player not found')); return; }
-  ensureProfession(target);
-  target.professionItems[itemId] = Math.max(0, (target.professionItems[itemId]||0) + qty);
-  await savePlayer(target);
   const meta = professionItemMeta(itemId);
   const label = meta ? professionRecipeLabel(meta) : itemId;
+  await createPendingReward(target.nickname, 'item', {itemId, qty});
   await createNotification(target.nickname, GM_NICKNAME, 'gm_grant', {grantKind:'item', label, qty});
   showToast(tt(`已發放 ${label} x${qty} 給 ${target.nickname} ⚡`, `Granted ${label} x${qty} to ${target.nickname} ⚡`));
   if(target.nickname.toLowerCase() === state.nickname.toLowerCase()){
-    state.player = target;
+    await refreshPlayer();
   }
   render();
 }
@@ -6535,25 +6505,14 @@ function ownedCardOptions(){
 async function renderFriends(body){
   body.innerHTML = `<div class="loading-line">${tt('讀取好友名冊中...','Loading friend roster...')}</div>`;
   await refreshPlayer();
-  const [allReqs, allFTrades, friends] = await Promise.all([fetchFriendRequests(), fetchFriendTrades(), fetchMyFriends(state.nickname)]);
+  const [allReqs, friends] = await Promise.all([fetchFriendRequests(), fetchMyFriends(state.nickname)]);
   const myLower = state.nickname.toLowerCase();
   const incomingReqs = allReqs.filter(r=>r.status==='pending' && (r.to||'').toLowerCase()===myLower);
   const outgoingReqs = allReqs.filter(r=>r.status==='pending' && (r.from||'').toLowerCase()===myLower);
-  const incomingTrades = allFTrades.filter(t=>t.status==='pending' && (t.to||'').toLowerCase()===myLower);
-  const outgoingTrades = allFTrades.filter(t=>t.status==='pending' && (t.from||'').toLowerCase()===myLower);
 
   const friendPlayersList = await Promise.all(friends.map(f=>loadPlayer(f)));
   const friendPlayersByNick = {};
   friends.forEach((f,i)=>{ friendPlayersByNick[f] = friendPlayersList[i]; });
-
-  let tradingFriendCards = null;
-  if(state.tradingWith && friends.includes(state.tradingWith)){
-    const fp = await loadPlayer(state.tradingWith);
-    if(fp){
-      tradingFriendCards = DECK.filter(c=>(fp.cards[c.id]||0) > 0)
-        .map(c=>`<option value="${c.id}">${c.name} (${tt(`對方持有 ${fp.cards[c.id]}`, `they have ${fp.cards[c.id]}`)})</option>`).join('');
-    }
-  }
 
   let html = '';
   html += `<div class="panel">
@@ -6588,62 +6547,18 @@ async function renderFriends(body){
 
   html += `<div class="panel">
     <h2>${t('myFriendsHeader')} (${friends.length})</h2>
-    <p class="sub">${tt('與好友一對一直接交易卡片，不必公開上架','Trade cards directly with a friend, no need to list them publicly')}</p>
     ${friends.length===0 ? `<div class="empty-note">${tt('尚未加入任何好友，先送出邀請吧 ✦','No friends yet - send a request first ✦')}</div>` : friends.map(f=>{
       const fp = friendPlayersByNick[f];
       return `
       <div class="listing">
         <div class="left"><div class="icon-box" data-view-profile="${escapeHtml(f)}">${avatarBoxHtml(fp && fp.avatarId)}</div><div class="meta"><div data-view-profile="${escapeHtml(f)}">${escapeHtml(f)}${fp ? nameWithBadgesHtml(fp, 16) : ''}</div><div class="who">${fp ? presenceHtml(fp) : ''}</div></div></div>
         <div class="right">
-          <button class="btn small" data-trade-with="${escapeHtml(f)}">${state.tradingWith===f ? tt('收合','Collapse') : tt('交易','Trade')}</button>
           <button class="btn small secondary" data-remove-friend="${escapeHtml(f)}">${t('remove')}</button>
         </div>
       </div>
-      ${state.tradingWith === f ? `
-        <div class="listing" style="background:var(--bg-void);flex-direction:column;align-items:stretch;">
-          ${ownedCardOptions() ? (tradingFriendCards ? `
-            <div class="form-row">
-              <div><label>${tt('你要給出的卡','Card you offer')}</label><select id="ftrade-offer-select">${ownedCardOptions()}</select></div>
-              <div><label>${tt('你想要對方的卡','Card you want')}</label><select id="ftrade-want-select">${tradingFriendCards}</select></div>
-              <button class="btn small" id="ftrade-send-btn" data-target="${escapeHtml(f)}">${tt('送出交易邀請','Send trade request')}</button>
-            </div>
-          ` : `<div class="empty-note">${tt(`${escapeHtml(f)} 目前沒有可交易的卡片`, `${escapeHtml(f)} has no tradable cards right now`)}</div>`) : `<div class="empty-note">${tt('你目前沒有可交易的卡片','You have no tradable cards right now')}</div>`}
-        </div>
-      ` : ''}
       `;
     }).join('')}
   </div>`;
-
-  if(incomingTrades.length > 0 || outgoingTrades.length > 0){
-    html += `<div class="panel">
-      <h2>${t('friendTradeHeader')}</h2>
-      ${incomingTrades.length>0 ? `<p class="sub">${tt('收到的交易邀請','Received trade requests')}</p>` + incomingTrades.map(tr=>{
-        const offerC = DECK_BY_ID[tr.offerCardId];
-        const wantC = DECK_BY_ID[tr.wantCardId];
-        return `<div class="listing">
-          <div class="left">
-            <div class="icon-box cf-${offerC.rarity}">${iconBoxInner(offerC)}</div>
-            <div class="meta"><div>${tt(`${escapeHtml(tr.from)} 想用 ${offerC.name}`, `${escapeHtml(tr.from)} offers ${offerC.name}`)}</div><div class="who">${tt(`交換你的 ${wantC.name}`, `for your ${wantC.name}`)}</div></div>
-          </div>
-          <div class="right">
-            <button class="btn small" data-accept-ftrade="${tr.id}">${tt('接受','Accept')}</button>
-            <button class="btn small secondary" data-decline-ftrade="${tr.id}">${tt('婉拒','Decline')}</button>
-          </div>
-        </div>`;
-      }).join('') : ''}
-      ${outgoingTrades.length>0 ? `<p class="sub">${tt('送出的交易邀請','Sent trade requests')}</p>` + outgoingTrades.map(tr=>{
-        const offerC = DECK_BY_ID[tr.offerCardId];
-        const wantC = DECK_BY_ID[tr.wantCardId];
-        return `<div class="listing">
-          <div class="left">
-            <div class="icon-box cf-${offerC.rarity}">${iconBoxInner(offerC)}</div>
-            <div class="meta"><div>${tt(`提議給 ${escapeHtml(tr.to)} ${offerC.name}`, `Offering ${escapeHtml(tr.to)} your ${offerC.name}`)}</div><div class="who">${tt(`交換對方的 ${wantC.name}`, `for their ${wantC.name}`)}</div></div>
-          </div>
-          <div class="right"><button class="btn small secondary" data-cancel-ftrade="${tr.id}">${tt('取消','Cancel')}</button></div>
-        </div>`;
-      }).join('') : ''}
-    </div>`;
-  }
 
   body.innerHTML = html;
 
@@ -6661,29 +6576,8 @@ async function renderFriends(body){
   document.querySelectorAll('[data-cancel-freq]').forEach(b=>{
     b.onclick = ()=>cancelFriendRequest(b.dataset.cancelFreq);
   });
-  document.querySelectorAll('[data-trade-with]').forEach(b=>{
-    b.onclick = ()=>{
-      state.tradingWith = state.tradingWith === b.dataset.tradeWith ? null : b.dataset.tradeWith;
-      renderTab();
-    };
-  });
   document.querySelectorAll('[data-remove-friend]').forEach(b=>{
     b.onclick = ()=>removeFriend(b.dataset.removeFriend);
-  });
-  const ftSendBtn = document.getElementById('ftrade-send-btn');
-  if(ftSendBtn) ftSendBtn.onclick = ()=>{
-    const offerCardId = document.getElementById('ftrade-offer-select').value;
-    const wantCardId = document.getElementById('ftrade-want-select').value;
-    proposeFriendTrade(ftSendBtn.dataset.target, offerCardId, wantCardId);
-  };
-  document.querySelectorAll('[data-accept-ftrade]').forEach(b=>{
-    b.onclick = ()=>respondFriendTrade(b.dataset.acceptFtrade, true);
-  });
-  document.querySelectorAll('[data-decline-ftrade]').forEach(b=>{
-    b.onclick = ()=>respondFriendTrade(b.dataset.declineFtrade, false);
-  });
-  document.querySelectorAll('[data-cancel-ftrade]').forEach(b=>{
-    b.onclick = ()=>cancelFriendTrade(b.dataset.cancelFtrade);
   });
   bindProfileClickTargets(body);
 }
