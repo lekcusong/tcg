@@ -1765,6 +1765,7 @@ const DEFAULT_BOSS_BURST_DAMAGE = 500;
 const DEFAULT_BOSS_CONTRIB_RATE = 0.1; // 貢獻點 = 實際造成傷害 × 此比例（武器/飾品增加的傷害會同步反映在貢獻點上）
 const DEFAULT_BOSS_BASE_REWARD = {coins: 200, crystal: 10};
 const DEFAULT_BOSS_BONUS_POOL = {coins: 5000, crystal: 200};
+const DEFAULT_BOSS_REWARD_MULT = 1.15; // 獎勵倍率：每輪(cycle)疊加一次，可與血量難度倍率設不同數值
 // 職業武器／飾品在星象爆發時的加成（階段四：Boss 頁面武器/飾品使用）
 const DEFAULT_BOSS_WEAPON_DMG_BONUS = 0.10;      // 使用武器：傷害 +10%
 const DEFAULT_BOSS_ACCESSORY_CRIT_PER = 0.05;    // 每消耗 1 個飾品：暴擊率 +5%
@@ -1787,6 +1788,7 @@ let BOSS_BURST_DAMAGE = DEFAULT_BOSS_BURST_DAMAGE;
 let BOSS_CONTRIB_RATE = DEFAULT_BOSS_CONTRIB_RATE;
 let BOSS_BASE_REWARD = {...DEFAULT_BOSS_BASE_REWARD};
 let BOSS_BONUS_POOL = {...DEFAULT_BOSS_BONUS_POOL};
+let BOSS_REWARD_MULT = DEFAULT_BOSS_REWARD_MULT;
 let BOSS_WEAPON_DMG_BONUS = DEFAULT_BOSS_WEAPON_DMG_BONUS;
 let BOSS_ACCESSORY_CRIT_PER = DEFAULT_BOSS_ACCESSORY_CRIT_PER;
 let BOSS_ACCESSORY_CRIT_DMG_BONUS = DEFAULT_BOSS_ACCESSORY_CRIT_DMG_BONUS;
@@ -1808,6 +1810,7 @@ async function loadBossConfig(){
       }
       if(s.baseReward) BOSS_BASE_REWARD = s.baseReward;
       if(s.bonusPool) BOSS_BONUS_POOL = s.bonusPool;
+      if(typeof s.rewardMult === 'number' && s.rewardMult > 0) BOSS_REWARD_MULT = s.rewardMult;
       if(typeof s.weaponDmgBonus === 'number' && s.weaponDmgBonus >= 0) BOSS_WEAPON_DMG_BONUS = s.weaponDmgBonus;
       if(typeof s.accessoryCritPer === 'number' && s.accessoryCritPer >= 0) BOSS_ACCESSORY_CRIT_PER = s.accessoryCritPer;
       if(typeof s.accessoryCritDmgBonus === 'number' && s.accessoryCritDmgBonus >= 0) BOSS_ACCESSORY_CRIT_DMG_BONUS = s.accessoryCritDmgBonus;
@@ -1822,7 +1825,7 @@ async function saveBossConfig(){
   await storage.set(seasonKey('boss_settings'), JSON.stringify({
     stageHp: BOSS_STAGE_HP, difficultyMult: BOSS_DIFFICULTY_MULT, crystalCost: BOSS_CRYSTAL_COST,
     burstDamage: BOSS_BURST_DAMAGE, contribRate: BOSS_CONTRIB_RATE,
-    baseReward: BOSS_BASE_REWARD, bonusPool: BOSS_BONUS_POOL,
+    baseReward: BOSS_BASE_REWARD, bonusPool: BOSS_BONUS_POOL, rewardMult: BOSS_REWARD_MULT,
     weaponDmgBonus: BOSS_WEAPON_DMG_BONUS, accessoryCritPer: BOSS_ACCESSORY_CRIT_PER, accessoryCritDmgBonus: BOSS_ACCESSORY_CRIT_DMG_BONUS,
     megaCrystalCost: BOSS_MEGA_CRYSTAL_COST, megaBurstDamage: BOSS_MEGA_BURST_DAMAGE,
     megaWeaponCost: BOSS_MEGA_WEAPON_COST, megaAccessoryMax: BOSS_MEGA_ACCESSORY_MAX,
@@ -1831,6 +1834,24 @@ async function saveBossConfig(){
 function bossStageMaxHp(stage, cycle){
   const base = BOSS_STAGE_HP[stage-1] || BOSS_STAGE_HP[0];
   return Math.round(base * Math.pow(BOSS_DIFFICULTY_MULT, cycle-1));
+}
+// 獎勵倍率：與血量難度倍率各自獨立，可設不同數字。同樣以「第1輪=基準值」往上疊。
+function bossRewardMult(cycle){
+  return Math.pow(BOSS_REWARD_MULT, cycle-1);
+}
+function bossCurrentBaseReward(cycle){
+  const m = bossRewardMult(cycle);
+  return {
+    coins: Math.round(BOSS_BASE_REWARD.coins * m),
+    crystal: Math.round((BOSS_BASE_REWARD.crystal||0) * m),
+  };
+}
+function bossCurrentBonusPool(cycle){
+  const m = bossRewardMult(cycle);
+  return {
+    coins: Math.round(BOSS_BONUS_POOL.coins * m),
+    crystal: Math.round(BOSS_BONUS_POOL.crystal * m),
+  };
 }
 async function loadBossState(){
   try{
@@ -2031,17 +2052,19 @@ async function resolveBossAttack(damage){
 async function settleBossReward(runId, cycle){
   const contribList = await fetchBossContribList(runId, cycle);
   const totalContrib = contribList.reduce((a,c)=>a+c.points,0) || 1;
+  const baseReward = bossCurrentBaseReward(cycle);
+  const bonusPool = bossCurrentBonusPool(cycle);
   await Promise.all(contribList.map(async c=>{
     const player = await loadPlayer(c.nickname);
     if(!player) return;
     ensureMaterials(player);
     const share = c.points / totalContrib;
-    const bonusCoins = Math.round(BOSS_BONUS_POOL.coins * share);
-    const bonusCrystal = Math.round(BOSS_BONUS_POOL.crystal * share);
-    player.coins = (player.coins||0) + BOSS_BASE_REWARD.coins + bonusCoins;
-    player.materials.crystal += (BOSS_BASE_REWARD.crystal||0) + bonusCrystal;
+    const bonusCoins = Math.round(bonusPool.coins * share);
+    const bonusCrystal = Math.round(bonusPool.crystal * share);
+    player.coins = (player.coins||0) + baseReward.coins + bonusCoins;
+    player.materials.crystal += (baseReward.crystal||0) + bonusCrystal;
     await savePlayer(player);
-    await createNotification(c.nickname, 'system', 'boss_reward', {coins: BOSS_BASE_REWARD.coins + bonusCoins, crystal: (BOSS_BASE_REWARD.crystal||0) + bonusCrystal});
+    await createNotification(c.nickname, 'system', 'boss_reward', {coins: baseReward.coins + bonusCoins, crystal: (baseReward.crystal||0) + bonusCrystal});
   }));
   return contribList;
 }
@@ -2155,8 +2178,8 @@ function renderBoss(body){
       <div class="countdown" style="margin-bottom:10px;">🔮 ${tt('星軌結晶','Star-Trail Crystal')}：<b style="color:var(--gold-bright);">${p.materials.crystal}</b>　|　${tt('本輪貢獻','This cycle')}：<b style="color:var(--gold-bright);">${myContrib?myContrib.points:0}</b></div>
       <div style="border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:10px;display:flex;flex-direction:column;gap:4px;background:rgba(139,107,209,0.06);">
         <div class="countdown">👥 ${tt('目前參與人數','Current Participants')}：<b style="color:var(--gold-bright);">${contribList.length}</b></div>
-        <div class="countdown">🎁 ${tt('擊殺獎勵','Kill Reward')}（${tt('基礎','base')}）：<b style="color:var(--gold-bright);">✦${BOSS_BASE_REWARD.coins} ・ 🔮${BOSS_BASE_REWARD.crystal}</b></div>
-        <div class="countdown">🏆 ${tt('擊殺分潤獎池','Kill Bonus Pool')}（${tt('依貢獻比例分配','shared by contribution')}）：<b style="color:var(--gold-bright);">✦${BOSS_BONUS_POOL.coins.toLocaleString()} ・ 🔮${BOSS_BONUS_POOL.crystal.toLocaleString()}</b></div>
+        <div class="countdown">🎁 ${tt('擊殺獎勵','Kill Reward')}（${tt('基礎','base')}）：<b style="color:var(--gold-bright);">✦${bossCurrentBaseReward(boss.cycle).coins} ・ 🔮${bossCurrentBaseReward(boss.cycle).crystal}</b></div>
+        <div class="countdown">🏆 ${tt('擊殺分潤獎池','Kill Bonus Pool')}（${tt('依貢獻比例分配','shared by contribution')}）：<b style="color:var(--gold-bright);">✦${bossCurrentBonusPool(boss.cycle).coins.toLocaleString()} ・ 🔮${bossCurrentBonusPool(boss.cycle).crystal.toLocaleString()}</b></div>
       </div>
       ${(()=>{
         const weaponQty = p.professionItems.weapon_common||0;
@@ -5759,7 +5782,8 @@ async function placeBid(auctionId, amount){
   if(auction.bidHistory.length > 20) auction.bidHistory = auction.bidHistory.slice(-20);
   await storage.set(`auction:${auctionId}`, JSON.stringify(auction));
   showToast(tt('出價成功！✦','Bid placed! ✦'));
-  render();
+  renderTab();
+  updateHeaderCoins();
 }
 async function buyoutAuction(auctionId){
   const r = await storage.get(`auction:${auctionId}`);
@@ -5798,7 +5822,8 @@ async function buyoutAuction(auctionId){
   await storage.set(`auction:${auctionId}`, JSON.stringify(auction));
   await createNotification(auction.seller, state.nickname, 'auction_sold', {cardName: itemName, price: payout, viaBuyout:true});
   showToast(tt('購買成功！✦','Purchase successful! ✦'));
-  render();
+  renderTab();
+  updateHeaderCoins();
 }
 async function resolveAuction(auction){
   if(auction.status !== 'active' || Date.now() < auction.endsAt) return;
@@ -5834,7 +5859,7 @@ async function cancelAuction(auctionId){
   auction.status = 'cancelled';
   await storage.set(`auction:${auctionId}`, JSON.stringify(auction));
   showToast(tt('已取消拍賣並取回物品','Auction canceled and item returned'));
-  render();
+  renderTab();
 }
 // ---------- Want-to-buy orders (reverse auction: buyer locks coins, sellers fulfill) ----------
 function allCardOptions(){
@@ -7782,15 +7807,18 @@ async function renderGM(body){
       <div><label>💍 ${tt('飾品：每個暴擊率 %','Accessory: crit % each')}</label><input type="number" id="gm-boss-accessory-crit-pct" value="${Math.round(BOSS_ACCESSORY_CRIT_PER*100)}" min="0" style="width:90px;" /></div>
       <div><label>💥 ${tt('暴擊：傷害加成 %','Crit: damage bonus %')}</label><input type="number" id="gm-boss-accessory-critdmg-pct" value="${Math.round(BOSS_ACCESSORY_CRIT_DMG_BONUS*100)}" min="0" style="width:90px;" /></div>
     </div>
-    <div class="farm-upgrade-title" style="margin-top:10px;">${tt('擊敗獎勵：基礎（人人有份，凡有貢獻皆得）','Defeat reward: base (flat, any contributor)')}</div>
+    <div class="farm-upgrade-title" style="margin-top:10px;">${tt('擊敗獎勵：基礎（人人有份，凡有貢獻皆得；第1輪基準值）','Defeat reward: base (flat, any contributor; baseline for cycle 1)')}</div>
     <div class="form-row">
       <div><label>✦ ${tt('金幣','Coins')}</label><input type="number" id="gm-boss-base-coins" value="${BOSS_BASE_REWARD.coins}" min="0" style="width:90px;" /></div>
       <div><label>🔮 ${tt('結晶','Crystal')}</label><input type="number" id="gm-boss-base-crystal" value="${BOSS_BASE_REWARD.crystal}" min="0" style="width:90px;" /></div>
     </div>
-    <div class="farm-upgrade-title" style="margin-top:10px;">${tt('擊敗獎勵：加碼獎池（依貢獻比例分配）','Defeat reward: bonus pool (split by contribution share)')}</div>
+    <div class="farm-upgrade-title" style="margin-top:10px;">${tt('擊敗獎勵：加碼獎池（依貢獻比例分配；第1輪基準值）','Defeat reward: bonus pool (split by contribution share; baseline for cycle 1)')}</div>
     <div class="form-row">
       <div><label>✦ ${tt('金幣總量','Total coins')}</label><input type="number" id="gm-boss-bonus-coins" value="${BOSS_BONUS_POOL.coins}" min="0" style="width:100px;" /></div>
       <div><label>🔮 ${tt('結晶總量','Total crystal')}</label><input type="number" id="gm-boss-bonus-crystal" value="${BOSS_BONUS_POOL.crystal}" min="0" style="width:100px;" /></div>
+    </div>
+    <div class="form-row">
+      <div><label>${tt('每輪獎勵倍率（基礎＋獎池皆套用，可與血量倍率不同）','Reward mult / cycle (applies to base + pool, can differ from HP mult)')}</label><input type="number" id="gm-boss-reward-mult" value="${BOSS_REWARD_MULT}" min="1" step="0.05" style="width:90px;" /></div>
     </div>
     <div class="form-row" style="margin-top:10px;">
       <button class="btn small" id="gm-boss-save-btn">${tt('儲存 Boss 設定','Save Boss Settings')}</button>
@@ -8354,8 +8382,9 @@ async function renderGM(body){
     const weaponPct = parseFloat(document.getElementById('gm-boss-weapon-pct').value);
     const accCritPct = parseFloat(document.getElementById('gm-boss-accessory-crit-pct').value);
     const accCritDmgPct = parseFloat(document.getElementById('gm-boss-accessory-critdmg-pct').value);
-    const nums = [...hp, diff, cost, dmg, contribRatePct, megaCost, megaDmg, megaWeaponCost, megaAccessoryMax, baseCoins, baseCrystal, bonusCoins, bonusCrystal, weaponPct, accCritPct, accCritDmgPct];
-    if(nums.some(v=>isNaN(v)||v<0) || diff <= 0){
+    const rewardMult = parseFloat(document.getElementById('gm-boss-reward-mult').value);
+    const nums = [...hp, diff, cost, dmg, contribRatePct, megaCost, megaDmg, megaWeaponCost, megaAccessoryMax, baseCoins, baseCrystal, bonusCoins, bonusCrystal, weaponPct, accCritPct, accCritDmgPct, rewardMult];
+    if(nums.some(v=>isNaN(v)||v<0) || diff <= 0 || rewardMult <= 0){
       showToast(tt('請輸入有效的非負數字','Please enter a valid non-negative number')); return;
     }
     BOSS_STAGE_HP = hp;
@@ -8369,6 +8398,7 @@ async function renderGM(body){
     BOSS_MEGA_ACCESSORY_MAX = megaAccessoryMax;
     BOSS_BASE_REWARD = {coins: baseCoins, crystal: baseCrystal};
     BOSS_BONUS_POOL = {coins: bonusCoins, crystal: bonusCrystal};
+    BOSS_REWARD_MULT = rewardMult;
     BOSS_WEAPON_DMG_BONUS = weaponPct / 100;
     BOSS_ACCESSORY_CRIT_PER = accCritPct / 100;
     BOSS_ACCESSORY_CRIT_DMG_BONUS = accCritDmgPct / 100;
@@ -8389,6 +8419,7 @@ async function renderGM(body){
     BOSS_MEGA_ACCESSORY_MAX = DEFAULT_BOSS_MEGA_ACCESSORY_MAX;
     BOSS_BASE_REWARD = {...DEFAULT_BOSS_BASE_REWARD};
     BOSS_BONUS_POOL = {...DEFAULT_BOSS_BONUS_POOL};
+    BOSS_REWARD_MULT = DEFAULT_BOSS_REWARD_MULT;
     BOSS_WEAPON_DMG_BONUS = DEFAULT_BOSS_WEAPON_DMG_BONUS;
     BOSS_ACCESSORY_CRIT_PER = DEFAULT_BOSS_ACCESSORY_CRIT_PER;
     BOSS_ACCESSORY_CRIT_DMG_BONUS = DEFAULT_BOSS_ACCESSORY_CRIT_DMG_BONUS;
