@@ -3688,7 +3688,10 @@ async function claimExpedition(){
     const expPct = blessingCurse ? (blessingCurse.expRewardPctDelta||0) : 0;
     const rewardExp = Math.max(0, Math.round(variant.rewardExp * (1 + expPct)));
     const leveled = applyExpeditionExpGain(p, rewardExp);
-    p.expeditionStreak = streakBefore + 1;
+    // 🔥 只有「亡命」風險等級 + 8小時時長的遠征才計入連勝，其餘任務成功不影響連勝數
+    if(exp.riskLevel === 'reckless' && exp.durationKey === 'd8h'){
+      p.expeditionStreak = streakBefore + 1;
+    }
 
     if(exp.furnitureBonus) bonusNotes.push(tt('🪑家具加成生效','🪑Furniture bonus applied'));
     if(weaponPct) bonusNotes.push(tt(`⚔️武器獎勵區間+${Math.round(weaponPct*100)}%`, `⚔️Weapon reward range +${Math.round(weaponPct*100)}%`));
@@ -3700,7 +3703,10 @@ async function claimExpedition(){
     const bonusSuffix = bonusNotes.length ? `（${bonusNotes.join('、')}）` : '';
     msg = tt(`🧭 遠征成功！獲得 ✦${coins} 金幣、經驗 +${rewardExp}${leveled ? `，遠征等級提升到 Lv.${p.expLevel}！` : ''}${bonusSuffix}`, `🧭 Expedition succeeded! +✦${coins} coins, +${rewardExp} exp${leveled ? `, expedition level up to Lv.${p.expLevel}!` : ''}${bonusSuffix}`);
   } else {
-    p.expeditionStreak = 0;
+    // 🔥 同上，只有「亡命」風險等級 + 8小時時長的遠征失敗才會打斷連勝，其餘任務失敗不影響連勝數
+    if(exp.riskLevel === 'reckless' && exp.durationKey === 'd8h'){
+      p.expeditionStreak = 0;
+    }
     // 🛡️守護：帶出去的卡牌按比例退回一部分（原本全損，這裡按 type 各自四捨五入退回）
     const keepPct = blessingCurse ? (blessingCurse.failCardKeepPct||0) : 0;
     if(keepPct > 0 && exp.staked){
@@ -3892,6 +3898,7 @@ async function renderExpedition(body){
       <div class="countdown" style="font-size:11px;">${tt(`經驗 ${p.expExp} / ${nextExp}`, `Exp ${p.expExp} / ${nextExp}`)}</div>
     `}
     ${(p.expeditionStreak||0) > 0 ? `<div class="countdown" style="font-size:11px;color:var(--gold-bright);margin-top:2px;">${tt(`🔥連勝 ${p.expeditionStreak} 次（下趟成功時獎勵加成 +${Math.round(Math.min(EXPEDITION_STREAK_BONUS_CAP, p.expeditionStreak*EXPEDITION_STREAK_BONUS_PER_WIN)*100)}%）`, `🔥${p.expeditionStreak}-win streak (next success reward +${Math.round(Math.min(EXPEDITION_STREAK_BONUS_CAP, p.expeditionStreak*EXPEDITION_STREAK_BONUS_PER_WIN)*100)}%)`)}</div>` : ''}
+    ${(p.expLevel||0) >= EXPEDITION_ROGUELIKE_UNLOCK_LEVEL ? `<div class="countdown" style="font-size:11px;margin-top:2px;">${tt('🔥僅「亡命」風險等級＋8小時遠征才計入連勝次數', '🔥Only Reckless risk + 8-hour expeditions count toward the win streak')}</div>` : ''}
   </div>`;
 
   if(exp){
@@ -5330,24 +5337,21 @@ function initNotifPoll(){
 }
 
 // ---------- Chat channel ----------
-function chatKey(id){ return `chat:${id}`; }
+// 聊天訊息改成單一 key（CHAT_LOG_KEY）存整個陣列，
+// 取代舊版「每則訊息各自存一個 chat:<id> key」的做法：
+// 舊做法每次抓訊息都要 storage.list 再對每個 key 各發一次 storage.get（N+1），
+// 輪詢、送訊息、算未讀都各自重抓一次，訊息一多就非常吃頻寬。
+// 改成單一 key 後，讀/寫都只需要一次網路請求。
+const CHAT_LOG_KEY = 'chat:log';
 const CHAT_MAX_MESSAGES = 200;
 let lastChatFingerprint = null;
 async function fetchChatMessages(){
   try{
-    const list = await storage.list('chat:');
-    if(!list || !list.keys) return [];
-    const items = await Promise.all(list.keys.map(async k=>{
-      try{ const r = await storage.get(k); return r ? JSON.parse(r.value) : null; }
-      catch(e){ return null; }
-    }));
-    return items.filter(Boolean).sort((a,b)=>a.createdAt-b.createdAt);
+    const r = await storage.get(CHAT_LOG_KEY);
+    if(!r) return [];
+    const arr = JSON.parse(r.value);
+    return Array.isArray(arr) ? arr.sort((a,b)=>a.createdAt-b.createdAt) : [];
   }catch(e){ return []; }
-}
-async function pruneChatMessages(all){
-  if(all.length <= CHAT_MAX_MESSAGES) return;
-  const excess = all.slice(0, all.length - CHAT_MAX_MESSAGES);
-  await Promise.all(excess.map(m=>storage.delete(chatKey(m.id)).catch(()=>{})));
 }
 async function sendChatMessage(text){
   text = (text||'').trim();
@@ -5355,14 +5359,20 @@ async function sendChatMessage(text){
   if(text.length > 300){ showToast(tt('訊息請在300字以內','Message must be 300 characters or fewer')); return; }
   const msg = {id: uid(), nickname: state.nickname, text, createdAt: Date.now(), isGM: isGM(), badges: equippedBadgeKeys(state.player), avatarId: state.player && state.player.avatarId};
   try{
-    await storage.set(chatKey(msg.id), JSON.stringify(msg));
+    const all = await fetchChatMessages();
+    all.push(msg);
+    if(all.length > CHAT_MAX_MESSAGES) all.splice(0, all.length - CHAT_MAX_MESSAGES);
+    await storage.set(CHAT_LOG_KEY, JSON.stringify(all));
   }catch(e){ showToast(tt('傳送失敗，請再試一次 ⚠','Failed to send - please try again ⚠')); return; }
   if(state.tab === 'chat') renderTab();
-  fetchChatMessages().then(pruneChatMessages).catch(()=>{});
 }
 async function deleteChatMessage(id){
   if(!isGM()) return;
-  try{ await storage.delete(chatKey(id)); }catch(e){ /* ignore */ }
+  try{
+    const all = await fetchChatMessages();
+    const filtered = all.filter(m=>m.id !== id);
+    await storage.set(CHAT_LOG_KEY, JSON.stringify(filtered));
+  }catch(e){ /* ignore */ }
   if(state.tab === 'chat') renderTab();
 }
 function initChatPoll(){
@@ -7914,6 +7924,7 @@ async function renderGM(body){
     </div>
     <div class="farm-upgrade-box" style="margin-bottom:10px;">
       <div class="farm-upgrade-title">🔥 ${tt('連勝加成','Win Streak Bonus')}</div>
+      <div class="farm-upgrade-line" style="color:var(--muted);margin-bottom:6px;">${tt('僅「亡命」風險等級＋8小時遠征的成功／失敗才會累加／打斷連勝次數，其餘風險等級或時長不影響連勝數（但仍會套用當下的連勝獎勵）。', 'Only Reckless-risk + 8-hour expeditions add to or break the win streak on success/failure; other risk levels or durations don\'t affect the streak count (though the current streak bonus still applies to them).')}</div>
       <div class="form-row">
         <div><label>${tt('每連勝1次 %','Per win %')}</label><input type="number" id="gm-rogue-streak-perwin" value="${Math.round(EXPEDITION_STREAK_BONUS_PER_WIN*100)}" min="0" max="100" style="width:90px;" /></div>
         <div><label>${tt('封頂 %','Cap %')}</label><input type="number" id="gm-rogue-streak-cap" value="${Math.round(EXPEDITION_STREAK_BONUS_CAP*100)}" min="0" max="100" style="width:90px;" /></div>
