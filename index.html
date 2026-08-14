@@ -2719,12 +2719,12 @@ const ACHIEVEMENTS = [
   },
   {
     key: 'expedition_streak5',
-    nameZh: '遠征連勝之魂', nameEn: 'Expedition Winning Streak',
-    descZh: '遠征連續成功 5 次', descEn: 'Succeed 5 expeditions in a row',
+    nameZh: '遠征亡命連續成功 5 次', nameEn: 'Expedition Winning Streak',
+    descZh: '「亡命」風險等級＋8小時遠征連續成功 5 次', descEn: 'Succeed 5 Reckless-risk 8-hour expeditions in a row',
     image: ACHIEVEMENT_IMAGES.expedition_streak5,
     glow: 'green',
-    check(p){ return (p.expeditionStreak||0) >= 5; },
-    progress(p){ return `${Math.min(5, p.expeditionStreak||0)}/5`; },
+    check(p){ return (p.expeditionRecklessStreak||0) >= 5; },
+    progress(p){ return `${Math.min(5, p.expeditionRecklessStreak||0)}/5`; },
   },
   {
     key: 'jackpot_champion',
@@ -3453,6 +3453,9 @@ function ensureExpedition(p){
   if(!p.expeditionRolls || typeof p.expeditionRolls !== 'object') p.expeditionRolls = {};
   // 🔥 階段四：連勝計數，不隨派遣重置，只在結算（claimExpedition）時更新
   if(typeof p.expeditionStreak !== 'number' || p.expeditionStreak < 0) p.expeditionStreak = 0;
+  // 🔥 成就專用：只計「亡命」風險等級＋8小時遠征的連續成功次數，跟上面獎勵加成用的 expeditionStreak 分開算，
+  // 避免舊存檔（例如加上風險等級限制前）已經用一般遠征累積的連勝數，誤觸發這個成就
+  if(typeof p.expeditionRecklessStreak !== 'number' || p.expeditionRecklessStreak < 0) p.expeditionRecklessStreak = 0;
   // 階段三：補齊舊存檔（升級前就已經在路上的遠征）缺少的事件節點欄位，維持行為等同「這趟沒有事件節點」
   if(p.expedition){
     if(!Array.isArray(p.expedition.events)) p.expedition.events = [];
@@ -3710,6 +3713,7 @@ async function claimExpedition(){
     // 🔥 只有「亡命」風險等級 + 8小時時長的遠征才計入連勝，其餘任務成功不影響連勝數
     if(exp.riskLevel === 'reckless' && exp.durationKey === 'd8h'){
       p.expeditionStreak = streakBefore + 1;
+      p.expeditionRecklessStreak = (p.expeditionRecklessStreak||0) + 1;
     }
 
     if(exp.furnitureBonus) bonusNotes.push(tt('🪑家具加成生效','🪑Furniture bonus applied'));
@@ -3724,6 +3728,7 @@ async function claimExpedition(){
   } else {
     // 🔥 連勝只在「亡命」風險等級 + 8小時時長成功時累計，但只要遠征失敗（不論風險等級／時長），連勝一律中斷歸零
     p.expeditionStreak = 0;
+    p.expeditionRecklessStreak = 0;
     // 🛡️守護：帶出去的卡牌按比例退回一部分（原本全損，這裡按 type 各自四捨五入退回）
     const keepPct = blessingCurse ? (blessingCurse.failCardKeepPct||0) : 0;
     if(keepPct > 0 && exp.staked){
@@ -5452,7 +5457,10 @@ function initSlotJackpotPoll(){
 // ---------- Friends ----------
 function freqKey(id){ return `freq:${id}`; }
 function notifKey(id){ return `notif:${id}`; }
-function pendingRewardKey(id){ return `pendingreward:${id}`; }
+// 依玩家分流：key 前綴帶上暱稱，讓 fetchPendingRewardsFor 只需查詢
+// 該玩家自己的資料，不會被全站 pendingreward: 資料量拖累、撞到
+// PostgREST 預設回傳筆數上限而撈不到（曾導致「有通知但收不到卡」）。
+function pendingRewardKey(nick, id){ return `pendingreward:${(nick||'').toLowerCase()}:${id}`; }
 
 // ---------- Notifications (e.g. a friend watered/stole from your plot) ----------
 async function fetchNotifications(){
@@ -5489,19 +5497,22 @@ async function pruneNotifications(){
 // in the meantime) ----------
 async function createPendingReward(targetNick, grantKind, payload){
   const r = {id: uid(), to: targetNick, grantKind, createdAt: Date.now(), ...payload};
-  try{ await storage.set(pendingRewardKey(r.id), JSON.stringify(r)); return true; }
+  try{ await storage.set(pendingRewardKey(targetNick, r.id), JSON.stringify(r)); return true; }
   catch(e){ return false; }
 }
 async function fetchPendingRewardsFor(nick){
   try{
-    const list = await storage.list('pendingreward:');
+    // 只查詢這個玩家自己的前綴（pendingreward:<nick>:），
+    // 不再撈全站 pendingreward: 資料再靠前端過濾，避免被全站資料量
+    // 拖累而撞到 PostgREST 預設回傳筆數上限撈不到自己的獎勵。
+    const myLower = (nick||'').toLowerCase();
+    const list = await storage.list(`pendingreward:${myLower}:`);
     if(!list || !list.keys) return [];
     const items = await Promise.all(list.keys.map(async k=>{
       try{ const r = await storage.get(k); return r ? {key:k, data: JSON.parse(r.value)} : null; }
       catch(e){ return null; }
     }));
-    const myLower = (nick||'').toLowerCase();
-    return items.filter(Boolean).filter(x=>(x.data.to||'').toLowerCase()===myLower);
+    return items.filter(Boolean);
   }catch(e){ return []; }
 }
 // Applies any pending rewards for this player directly onto the freshly-loaded
