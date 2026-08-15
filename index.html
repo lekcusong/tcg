@@ -2751,9 +2751,10 @@ const TITLES = [
   {key:'wealth', nameZh:'全服首富', nameEn:"Realm's Richest", icon:'💰'},
   {key:'collection', nameZh:'藏卡宗師', nameEn:'Collection Master', icon:'🎴'},
   {key:'resonance', nameZh:'命運豪賭者', nameEn:'Fate Gambler', icon:'✨'},
+  {key:'streak', nameZh:'亡命連勝之王', nameEn:'Reckless Streak King', icon:'🔥'},
 ];
 const TITLE_BY_KEY = Object.fromEntries(TITLES.map(t=>[t.key,t]));
-let TITLE_HOLDERS = {wealth:null, collection:null, resonance:null, updatedAt:0};
+let TITLE_HOLDERS = {wealth:null, collection:null, resonance:null, streak:null, updatedAt:0};
 async function loadTitleHolders(){
   try{
     const r = await storage.get('config:title_holders');
@@ -2763,6 +2764,7 @@ async function loadTitleHolders(){
         wealth: s.wealth || null,
         collection: s.collection || null,
         resonance: s.resonance || null,
+        streak: s.streak || null,
         updatedAt: s.updatedAt || 0,
       };
     }
@@ -2772,18 +2774,21 @@ async function saveTitleHolders(){
   TITLE_HOLDERS.updatedAt = Date.now();
   await storage.set('config:title_holders', JSON.stringify(TITLE_HOLDERS));
 }
-// 依排行榜頁面已經算好的三個榜單重新判斷榜首，若有變動才寫回，避免每次開排行榜都打一次寫入
-async function refreshTitleHoldersFromLeaderboards(byCoins, byCards, bySlotSpend){
+// 依排行榜頁面已經算好的榜單重新判斷榜首，若有變動才寫回，避免每次開排行榜都打一次寫入
+async function refreshTitleHoldersFromLeaderboards(byCoins, byCards, bySlotSpend, byStreak){
   const nextWealth = (byCoins[0] && byCoins[0].coins > 0) ? byCoins[0].nickname : null;
   const nextCollection = (byCards[0] && byCards[0].total > 0) ? byCards[0].nickname : null;
   const nextResonance = (bySlotSpend[0] && bySlotSpend[0].spend > 0) ? bySlotSpend[0].nickname : null;
+  const nextStreak = (byStreak && byStreak[0] && byStreak[0].streak > 0) ? byStreak[0].nickname : null;
   const changed = nextWealth !== TITLE_HOLDERS.wealth
     || nextCollection !== TITLE_HOLDERS.collection
-    || nextResonance !== TITLE_HOLDERS.resonance;
+    || nextResonance !== TITLE_HOLDERS.resonance
+    || nextStreak !== TITLE_HOLDERS.streak;
   if(changed){
     TITLE_HOLDERS.wealth = nextWealth;
     TITLE_HOLDERS.collection = nextCollection;
     TITLE_HOLDERS.resonance = nextResonance;
+    TITLE_HOLDERS.streak = nextStreak;
     await saveTitleHolders();
   }
 }
@@ -3004,8 +3009,7 @@ function renderAchievements(body){
 const FARM_MAX_LEVEL = 7;
 const FARM_LEVEL_PLOTS = {0:4, 1:5, 2:6, 3:6, 4:7, 5:8, 6:8, 7:9};
 const MAJOR_SEED_UNLOCK_TOTAL = 30; // 收藏總張數達到此門檻才能種傳說種子
-const MAJOR_SPROUT_UNLOCK_TOTAL = 51; // 需收藏「超過 50」種不同卡牌
-const MAJOR_BLOOM_UNLOCK_TOTAL = 61;  // 需收藏「超過 60」種不同卡牌
+// 秘儀新芽／綻放不再用收藏卡牌數解鎖，改走「花色升級鏈」，見 SUIT_UPGRADE_REQS
 let farmTickInterval = null;
 let expeditionTickInterval = null;
 let professionTickInterval = null;
@@ -3023,81 +3027,94 @@ const SEED_TYPES = {
     key:'wands', nameZh:'火苗種子', nameEn:'Flame Spark Seed', suitLabel:'Wands · 火',icon:'🔥',
     cost:12, growMs: 20*60*1000, tierLevel:0,
     coinMin:16, coinMax:22, wither:false,
+    upgradesTo: 'wands_sprout',
   },
   cups: {
     key:'cups', nameZh:'水波種子', nameEn:'Water Ripple Seed', suitLabel:'Cups · 水', icon:'💧',
     cost:28, growMs: 3*60*60*1000, tierLevel:0,
     coinMin:42, coinMax:58, wither:false,
+    upgradesTo: 'cups_sprout',
   },
   swords: {
     key:'swords', nameZh:'風刃種子', nameEn:'Wind Blade Seed', suitLabel:'Swords · 風', icon:'⚔',
     cost:20, growMs: 60*60*1000, witherMs: 2*60*60*1000, tierLevel:0,
     coinMin:38, coinMax:54, wither:true,
+    upgradesTo: 'swords_sprout',
   },
   pentacles: {
     key:'pentacles', nameZh:'大地種子', nameEn:'Earth Seed', suitLabel:'Pentacles · 土', icon:'✦',
     cost:55, growMs: 8*60*60*1000, tierLevel:0,
     coinMin:88, coinMax:118, wither:false,
+    upgradesTo: 'pentacles_sprout',
   },
   major: {
     key:'major', nameZh:'秘儀種子', nameEn:'Arcana Seed', suitLabel:'Major Arcana', icon:'🌟',
     cost:150, growMs: 24*60*60*1000, tierLevel:0,
     coinMin:150, coinMax:200, wither:false,
     unlockTotal: MAJOR_SEED_UNLOCK_TOTAL,
+    upgradesTo: 'major_sprout',
   },
-  // ---- 發芽層（花園等級 3 解鎖）----
+  // ---- 發芽層（花園等級 3 解鎖升級選項，需在商店花素材把整個花色升級才能取得）----
   wands_sprout: {
     key:'wands_sprout', nameZh:'火苗新芽', nameEn:'Flame Spark Sprout', suitLabel:'Wands · 火', icon:'🔥',
     cost:20, growMs: 20*60*1000, tierLevel:3,
     coinMin:28, coinMax:38, wither:false,
+    upgradesTo: 'wands_bloom',
   },
   cups_sprout: {
     key:'cups_sprout', nameZh:'水波新芽', nameEn:'Water Ripple Sprout', suitLabel:'Cups · 水', icon:'💧',
     cost:46, growMs: 3*60*60*1000, tierLevel:3,
     coinMin:72, coinMax:98, wither:false,
+    upgradesTo: 'cups_bloom',
   },
   swords_sprout: {
     key:'swords_sprout', nameZh:'風刃新芽', nameEn:'Wind Blade Sprout', suitLabel:'Swords · 風', icon:'⚔',
     cost:34, growMs: 60*60*1000, witherMs: 2*60*60*1000, tierLevel:3,
     coinMin:65, coinMax:92, wither:true,
+    upgradesTo: 'swords_bloom',
   },
   pentacles_sprout: {
     key:'pentacles_sprout', nameZh:'大地新芽', nameEn:'Earth Sprout', suitLabel:'Pentacles · 土', icon:'✦',
     cost:92, growMs: 8*60*60*1000, tierLevel:3,
     coinMin:150, coinMax:200, wither:false,
+    upgradesTo: 'pentacles_bloom',
   },
   major_sprout: {
     key:'major_sprout', nameZh:'秘儀新芽', nameEn:'Arcana Sprout', suitLabel:'Major Arcana', icon:'🌟',
     cost:260, growMs: 24*60*60*1000, tierLevel:3,
     coinMin:600, coinMax:800, wither:false,
-    unlockTotal: MAJOR_SPROUT_UNLOCK_TOTAL, uniqueUnlock:true,
+    upgradesTo: 'major_bloom',
   },
-  // ---- 綻放層（花園等級 6 解鎖）----
+  // ---- 綻放層（花園等級 6 解鎖升級選項，需在商店花素材把整個花色升級才能取得）----
   wands_bloom: {
     key:'wands_bloom', nameZh:'火苗綻放', nameEn:'Flame Spark Bloom', suitLabel:'Wands · 火', icon:'🔥',
     cost:34, growMs: 20*60*1000, tierLevel:6,
     coinMin:48, coinMax:64, wither:false,
+    upgradesTo: null,
   },
   cups_bloom: {
     key:'cups_bloom', nameZh:'水波綻放', nameEn:'Water Ripple Bloom', suitLabel:'Cups · 水', icon:'💧',
     cost:80, growMs: 3*60*60*1000, tierLevel:6,
     coinMin:126, coinMax:172, wither:false,
+    upgradesTo: null,
   },
   swords_bloom: {
     key:'swords_bloom', nameZh:'風刃綻放', nameEn:'Wind Blade Bloom', suitLabel:'Swords · 風', icon:'⚔',
     cost:58, growMs: 60*60*1000, witherMs: 2*60*60*1000, tierLevel:6,
     coinMin:112, coinMax:158, wither:true,
+    upgradesTo: null,
   },
   pentacles_bloom: {
     key:'pentacles_bloom', nameZh:'大地綻放', nameEn:'Earth Bloom', suitLabel:'Pentacles · 土', icon:'✦',
     cost:160, growMs: 8*60*60*1000, tierLevel:6,
     coinMin:260, coinMax:350, wither:false,
+    upgradesTo: null,
   },
   major_bloom: {
     key:'major_bloom', nameZh:'秘儀綻放', nameEn:'Arcana Bloom', suitLabel:'Major Arcana', icon:'🌟',
     cost:450, growMs: 24*60*60*1000, tierLevel:6,
     coinMin:1000, coinMax:1200, wither:false,
-    unlockTotal: MAJOR_BLOOM_UNLOCK_TOTAL, uniqueUnlock:true,
+    upgradesTo: null,
   },
   // ---- 賽季限定種子（星象幻境）----
   season_lily: {
@@ -3198,6 +3215,69 @@ function reqLabel(req){
   }
   if(req.type==='arcana') return tt(`大阿爾卡納 ×${req.count}`, `Major Arcana ×${req.count}`);
   return '';
+}
+// ---------- 花色升級鏈（wands → wands_sprout → wands_bloom）----------
+// 在花園商店花費卡牌素材，把整個花色「永久升級」，之後買這個花色的種子都會變成升級後的版本。
+const SUIT_KEYS = ['wands','cups','swords','pentacles','major'];
+const SUIT_UPGRADE_REQS = {
+  wands:     { sprout: {tierLevel:3, cards:[{type:'suit', suits:['wands'], count:8}]},
+               bloom:  {tierLevel:6, cards:[{type:'suit', suits:['wands'], count:14}]} },
+  cups:      { sprout: {tierLevel:3, cards:[{type:'suit', suits:['cups'], count:6}]},
+               bloom:  {tierLevel:6, cards:[{type:'suit', suits:['cups'], count:10}]} },
+  swords:    { sprout: {tierLevel:3, cards:[{type:'suit', suits:['swords'], count:6}]},
+               bloom:  {tierLevel:6, cards:[{type:'suit', suits:['swords'], count:10}]} },
+  pentacles: { sprout: {tierLevel:3, cards:[{type:'suit', suits:['pentacles'], count:5}]},
+               bloom:  {tierLevel:6, cards:[{type:'suit', suits:['pentacles'], count:8}]} },
+  major:     { sprout: {tierLevel:3, cards:[{type:'arcana', count:3}]},
+               bloom:  {tierLevel:6, cards:[{type:'arcana', count:6}]} },
+};
+function ensureSuitUpgrades(p){
+  if(!p.suitUpgrades) p.suitUpgrades = {};
+  SUIT_KEYS.forEach(k=>{ if(typeof p.suitUpgrades[k] !== 'number') p.suitUpgrades[k] = 0; });
+  return p.suitUpgrades;
+}
+// 花色目前的升級階數：0=基礎, 1=新芽, 2=綻放
+function suitUpgradeTier(p, suitKey){
+  return ensureSuitUpgrades(p)[suitKey] || 0;
+}
+// 依花色目前的升級階數，算出玩家買這個花色的種子時，實際會拿到哪個 SEED_TYPES key
+function effectiveSeedKey(p, suitKey){
+  let seed = SEED_TYPES[suitKey];
+  let level = suitUpgradeTier(p, suitKey);
+  while(level > 0 && seed && seed.upgradesTo){
+    seed = SEED_TYPES[seed.upgradesTo];
+    level--;
+  }
+  return seed ? seed.key : suitKey;
+}
+function nextSuitUpgradeTierName(level){
+  return level === 0 ? 'sprout' : (level === 1 ? 'bloom' : null);
+}
+async function confirmSuitUpgrade(suitKey){
+  const p = state.player;
+  if(!p) return;
+  const level = suitUpgradeTier(p, suitKey);
+  const tierName = nextSuitUpgradeTierName(level);
+  if(!tierName){ showToast(tt('此花色已升級到最高階','This suit is already fully upgraded')); return; }
+  const req = SUIT_UPGRADE_REQS[suitKey] && SUIT_UPGRADE_REQS[suitKey][tierName];
+  if(!req) return;
+  if((p.farmLevel||0) < req.tierLevel){
+    showToast(tt(`花園等級需達 Lv.${req.tierLevel} 才能升級此花色`, `Requires garden Lv.${req.tierLevel} to upgrade this suit`));
+    return;
+  }
+  for(const c of req.cards){
+    const have = countCardsForReq(p, c);
+    if(have < c.count){
+      showToast(tt('材料不足，無法升級','Not enough materials to upgrade'));
+      return;
+    }
+  }
+  req.cards.forEach(c=>consumeCardsForReq(p, c));
+  ensureSuitUpgrades(p)[suitKey] = level + 1;
+  await savePlayer(p);
+  const upgradedSeed = SEED_TYPES[effectiveSeedKey(p, suitKey)];
+  showToast(tt(`✨ ${seedName(SEED_TYPES[suitKey])}已升級為${seedName(upgradedSeed)}！`, `✨ ${seedName(SEED_TYPES[suitKey])} upgraded to ${seedName(upgradedSeed)}!`));
+  render();
 }
 function farmPlotCount(p){
   return FARM_LEVEL_PLOTS[p.farmLevel||0] || FARM_LEVEL_PLOTS[0];
@@ -4737,6 +4817,7 @@ const T = {
   leaderCollectionHeader: {zh:'🏆 收藏排行榜', en:'🏆 Collection Leaderboard'},
   leaderWealthHeader: {zh:'💰 財富排行榜', en:'💰 Wealth Leaderboard'},
   leaderSlotHeader: {zh:'✨ 三牌共鳴消費排行榜', en:'✨ Resonance Spending Leaderboard'},
+  leaderStreakHeader: {zh:'🔥 遠征亡命連勝榜', en:'🔥 Expedition Reckless Streak Leaderboard'},
   gmHeader: {zh:'⚡ GM 管理控制台', en:'⚡ GM Console'},
   allPlayersHeader: {zh:'所有玩家', en:'All Players'},
   grantCoinsHeader: {zh:'發放金幣', en:'Grant Coins'},
@@ -5992,10 +6073,10 @@ function ownedProfessionItemAuctionOptions(){
 
 const DURATIONS = [
   {labelZh:'1 小時', labelEn:'1 hour', ms: 3600*1000},
+  {labelZh:'2 小時', labelEn:'2 hours', ms: 2*3600*1000},
   {labelZh:'3 小時', labelEn:'3 hours', ms: 3*3600*1000},
   {labelZh:'6 小時', labelEn:'6 hours', ms: 6*3600*1000},
   {labelZh:'12 小時', labelEn:'12 hours', ms: 12*3600*1000},
-  {labelZh:'24 小時', labelEn:'24 hours', ms: 24*3600*1000},
 ];
 // 拍賣行成交手續費：賣家成交金額會被抽走這個比例（直接從遊戲幣總量中消失，作為金幣回收機制），
 // 避免玩家間買賣完全不影響金幣總量、加速通膨。GM 可在後台調整。
@@ -7240,10 +7321,44 @@ async function renderFarm(body){
     `}
   </div>`;
 
+  // ---------- 花色升級（花商店素材，永久把某花色升級為新芽／綻放）----------
+  ensureSuitUpgrades(p);
+  html += `<div class="panel">
+    <h2>${tt('🌟 花色升級', '🌟 Suit Upgrades')}</h2>
+    <p class="sub">${tt('每個花色都是一條升級鏈：基礎 → 新芽 → 綻放。花費對應花色的卡牌把整個花色永久升級，之後在下方商店買這個花色都會直接拿到升級後的種子。', 'Each suit is an upgrade chain: base → sprout → bloom. Spend matching cards to permanently upgrade a suit — future purchases of that suit will give you the upgraded seed.')}</p>
+    <div class="farm-suit-upgrade-list">
+      ${SUIT_KEYS.map(suitKey=>{
+        const level = suitUpgradeTier(p, suitKey);
+        const curSeed = SEED_TYPES[effectiveSeedKey(p, suitKey)];
+        const tierName = nextSuitUpgradeTierName(level);
+        if(!tierName){
+          return `<div class="farm-upgrade-line" style="color:var(--gold-bright);">${curSeed.icon} ${seedName(SEED_TYPES[suitKey])}：${tt('已達最高階','Max tier')}（${seedName(curSeed)}）</div>`;
+        }
+        const req = SUIT_UPGRADE_REQS[suitKey][tierName];
+        const levelOk = (p.farmLevel||0) >= req.tierLevel;
+        const nextSeed = SEED_TYPES[curSeed.upgradesTo];
+        let line = `<div class="farm-upgrade-box" style="margin-top:8px;">
+          <div class="farm-upgrade-title">${curSeed.icon} ${tt(`${seedName(SEED_TYPES[suitKey])}：目前為「${seedName(curSeed)}」，升級到「${seedName(nextSeed)}」`, `${seedName(SEED_TYPES[suitKey])}: currently "${seedName(curSeed)}" → upgrade to "${seedName(nextSeed)}"`)}</div>
+          ${!levelOk ? `<div class="farm-upgrade-line" style="color:var(--muted);">✗ ${tt(`花園等級需達 Lv.${req.tierLevel}`, `Requires garden Lv.${req.tierLevel}`)}</div>` : ''}
+          ${req.cards.map(c=>{
+            const have = countCardsForReq(p, c);
+            const ok = have >= c.count;
+            return `<div class="farm-upgrade-line" style="color:${ok?'#7ec98f':'var(--muted)'};">${ok?'✓':'✗'} ${reqLabel(c)}（${tt('目前擁有','have')} ${have}）</div>`;
+          }).join('')}
+          <button class="btn small" data-suit-upgrade="${suitKey}" ${levelOk && req.cards.every(c=>countCardsForReq(p,c)>=c.count) ? '' : 'disabled'} style="margin-top:6px;">${tt('升級此花色','Upgrade Suit')}</button>
+        </div>`;
+        return line;
+      }).join('')}
+    </div>
+  </div>`;
+
   // 花園種子分類篩選（共用一份，所有空地都套用同一個篩選結果）
   const anyEmptyPlot = farm.some(pl => plotStatus(pl, now) === 'empty');
   if(anyEmptyPlot){
-    const allSeeds = Object.values(SEED_TYPES).filter(s=>!s.seasonOnly || SEASON_ACTIVE);
+    // 商店只賣基礎花色種子（依目前升級鏈換算成實際會拿到的種子）與賽季限定種子；新芽/綻放不再直接販售
+    const shopBaseSeeds = SUIT_KEYS.map(k=>SEED_TYPES[effectiveSeedKey(p, k)]);
+    const seasonSeeds = Object.values(SEED_TYPES).filter(s=>s.seasonOnly && SEASON_ACTIVE);
+    const allSeeds = [...shopBaseSeeds, ...seasonSeeds];
     const availableGroups = Array.from(new Set(allSeeds.map(seedGroupKey)));
     if(!state.farmSeedGroup || !['all',...availableGroups].includes(state.farmSeedGroup)){
       state.farmSeedGroup = 'all';
@@ -7265,8 +7380,12 @@ async function renderFarm(body){
     if(status === 'empty'){
       const activeGroup = state.farmSeedGroup || 'all';
       const showLocked = !!state.farmShowLocked;
-      const visibleSeeds = Object.values(SEED_TYPES)
-        .filter(s=>!s.seasonOnly || SEASON_ACTIVE)
+      // 商店只賣基礎花色種子（已依花色升級鏈換算成實際版本）與賽季限定種子
+      const shopSeeds = [
+        ...SUIT_KEYS.map(k=>SEED_TYPES[effectiveSeedKey(p, k)]),
+        ...Object.values(SEED_TYPES).filter(s=>s.seasonOnly && SEASON_ACTIVE),
+      ];
+      const visibleSeeds = shopSeeds
         .filter(s=> activeGroup==='all' || seedGroupKey(s)===activeGroup);
       const built = visibleSeeds.map(seed=>{
         const levelLocked = (seed.tierLevel||0) > farmLevel;
@@ -7445,6 +7564,9 @@ async function renderFarm(body){
   document.querySelectorAll('[data-plant]').forEach(btn=>{
     btn.onclick = ()=>plantSeed(parseInt(btn.dataset.plant,10), btn.dataset.seed);
   });
+  document.querySelectorAll('[data-suit-upgrade]').forEach(btn=>{
+    btn.onclick = ()=>confirmSuitUpgrade(btn.dataset.suitUpgrade);
+  });
   document.querySelectorAll('[data-seedtab]').forEach(btn=>{
     btn.onclick = ()=>{
       state.farmSeedGroup = btn.dataset.seedtab;
@@ -7486,8 +7608,10 @@ async function renderLeaderboard(body){
     .sort((a,b)=>b.coins-a.coins).slice(0,10);
   const bySlotSpend = players.map(pl=>({nickname:pl.nickname, spend: pl.slotSpend||0}))
     .sort((a,b)=>b.spend-a.spend).slice(0,10);
+  const byStreak = players.map(pl=>({nickname:pl.nickname, streak: pl.expeditionRecklessStreak||0}))
+    .sort((a,b)=>b.streak-a.streak).slice(0,10);
 
-  refreshTitleHoldersFromLeaderboards(byCoins, byCards, bySlotSpend).catch(()=>{});
+  refreshTitleHoldersFromLeaderboards(byCoins, byCards, bySlotSpend, byStreak).catch(()=>{});
 
   const medal = i => i===0?'🥇':i===1?'🥈':i===2?'🥉':`#${i+1}`;
   const isMe = nick => state.nickname && nick.toLowerCase()===state.nickname.toLowerCase();
@@ -7521,6 +7645,17 @@ async function renderLeaderboard(body){
       <div class="listing">
         <div class="left"><div class="icon-box">${medal(i)}</div><div class="meta"><div data-view-profile="${escapeHtml(pl.nickname)}">${escapeHtml(pl.nickname)}${isMe(pl.nickname)?` <span style="color:var(--gold-bright);">(${tt('你','you')})</span>`:''}${nameWithTitlesHtml(pl.nickname)}</div></div></div>
         <div class="right"><span class="price">✦ ${pl.spend}</span></div>
+      </div>
+    `).join('')}
+  </div>`;
+
+  html += `<div class="panel">
+    <h2>${t('leaderStreakHeader')}</h2>
+    <p class="sub">${tt('依「亡命」風險等級＋8小時遠征目前連續成功次數排名，失敗即歸零', "Ranked by current consecutive successes on Reckless-risk 8-hour expeditions - resets to 0 on any failure")}</p>
+    ${byStreak.length===0 || byStreak[0].streak<=0 ? `<div class="empty-note">${tt('目前尚無玩家達成連勝','No player has a win streak yet')}</div>` : byStreak.filter(pl=>pl.streak>0).map((pl,i)=>`
+      <div class="listing">
+        <div class="left"><div class="icon-box">${medal(i)}</div><div class="meta"><div data-view-profile="${escapeHtml(pl.nickname)}">${escapeHtml(pl.nickname)}${isMe(pl.nickname)?` <span style="color:var(--gold-bright);">(${tt('你','you')})</span>`:''}${nameWithTitlesHtml(pl.nickname)}</div></div></div>
+        <div class="right"><span class="price">🔥 ${tt(`${pl.streak} 連勝`, `${pl.streak} streak`)}</span></div>
       </div>
     `).join('')}
   </div>`;
