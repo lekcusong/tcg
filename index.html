@@ -558,6 +558,12 @@
   .badge-desc{font-size:11px;color:var(--muted);line-height:1.4;min-height:30px;}
   .badge-progress{font-family:'Space Mono',monospace;font-size:11px;color:var(--cream);}
   .badge-locked-label{font-size:11px;color:var(--muted);margin-top:2px;}
+  .title-chip{
+    display:inline-flex;align-items:center;gap:3px;padding:1px 8px;border-radius:999px;
+    font-family:'Cinzel',serif;font-weight:600;color:var(--gold-bright);white-space:nowrap;
+    background:linear-gradient(180deg, rgba(201,162,74,0.22), rgba(201,162,74,0.08));
+    border:1px solid var(--gold);text-shadow:0 0 6px rgba(232,196,104,0.4);
+  }
   .achievement-modal-box{text-align:center;}
   .achievement-modal-eyebrow{
     font-family:'Space Mono',monospace;font-size:11px;letter-spacing:2px;text-transform:uppercase;
@@ -2737,6 +2743,67 @@ const ACHIEVEMENTS = [
   },
 ];
 const ACHIEVEMENT_BY_KEY = Object.fromEntries(ACHIEVEMENTS.map(a=>[a.key,a]));
+
+// ---------- 動態爭奪稱號（封號）----------
+// 與徽章不同：稱號只在「目前」仍是該排行榜 Top 1 時顯示，一旦被超越就會自動收回，
+// 藉此製造持續刷榜的競爭感；徽章則是永久成就。三個稱號互相獨立，玩家可同時持有多個。
+const TITLES = [
+  {key:'wealth', nameZh:'全服首富', nameEn:"Realm's Richest", icon:'💰'},
+  {key:'collection', nameZh:'藏卡宗師', nameEn:'Collection Master', icon:'🎴'},
+  {key:'resonance', nameZh:'命運豪賭者', nameEn:'Fate Gambler', icon:'✨'},
+];
+const TITLE_BY_KEY = Object.fromEntries(TITLES.map(t=>[t.key,t]));
+let TITLE_HOLDERS = {wealth:null, collection:null, resonance:null, updatedAt:0};
+async function loadTitleHolders(){
+  try{
+    const r = await storage.get('config:title_holders');
+    if(r){
+      const s = JSON.parse(r.value);
+      TITLE_HOLDERS = {
+        wealth: s.wealth || null,
+        collection: s.collection || null,
+        resonance: s.resonance || null,
+        updatedAt: s.updatedAt || 0,
+      };
+    }
+  }catch(e){ /* keep defaults */ }
+}
+async function saveTitleHolders(){
+  TITLE_HOLDERS.updatedAt = Date.now();
+  await storage.set('config:title_holders', JSON.stringify(TITLE_HOLDERS));
+}
+// 依排行榜頁面已經算好的三個榜單重新判斷榜首，若有變動才寫回，避免每次開排行榜都打一次寫入
+async function refreshTitleHoldersFromLeaderboards(byCoins, byCards, bySlotSpend){
+  const nextWealth = (byCoins[0] && byCoins[0].coins > 0) ? byCoins[0].nickname : null;
+  const nextCollection = (byCards[0] && byCards[0].total > 0) ? byCards[0].nickname : null;
+  const nextResonance = (bySlotSpend[0] && bySlotSpend[0].spend > 0) ? bySlotSpend[0].nickname : null;
+  const changed = nextWealth !== TITLE_HOLDERS.wealth
+    || nextCollection !== TITLE_HOLDERS.collection
+    || nextResonance !== TITLE_HOLDERS.resonance;
+  if(changed){
+    TITLE_HOLDERS.wealth = nextWealth;
+    TITLE_HOLDERS.collection = nextCollection;
+    TITLE_HOLDERS.resonance = nextResonance;
+    await saveTitleHolders();
+  }
+}
+function titleKeysHeldBy(nickname){
+  if(!nickname) return [];
+  const nl = nickname.toLowerCase();
+  return TITLES.filter(t => TITLE_HOLDERS[t.key] && TITLE_HOLDERS[t.key].toLowerCase()===nl).map(t=>t.key);
+}
+function titleInlineHtml(key, size){
+  const t = TITLE_BY_KEY[key];
+  if(!t) return '';
+  size = size || 12;
+  const label = escapeHtml(tt(t.nameZh, t.nameEn));
+  return `<span class="title-chip" style="font-size:${size}px;">${t.icon} ${label}</span>`;
+}
+function nameWithTitlesHtml(nickname, size){
+  const keys = titleKeysHeldBy(nickname);
+  if(keys.length===0) return '';
+  return `<span class="title-row" style="display:inline-flex;gap:4px;margin-left:6px;vertical-align:middle;">${keys.map(k=>titleInlineHtml(k,size)).join('')}</span>`;
+}
 function badgeGlowClass(a){
   if(a.glow === 'red') return ' badge-glow-red';
   if(a.glow === 'blue') return ' badge-glow-blue';
@@ -2881,6 +2948,7 @@ async function showPlayerProfile(nickname){
     <div class="profile-modal-avatar-wrap">${avatarBoxHtml(p.avatarId)}</div>
     <div class="profile-modal-name">${escapeHtml(p.nickname)}${isSelf ? ` <span style="color:var(--muted);font-size:13px;">(${tt('你','you')})</span>` : ''}</div>
     <div class="profile-modal-presence">${presenceHtml(p)}</div>
+    ${titleKeysHeldBy(p.nickname).length ? `<div class="profile-modal-badges" style="margin-bottom:6px;">${titleKeysHeldBy(p.nickname).map(k=>titleInlineHtml(k,13)).join('')}</div>` : ''}
     <div class="profile-modal-badges">
       ${badgeKeys.length ? badgeKeys.map(k=>badgeInlineHtml(k,30)).join('') : `<span class="badge-empty">${tt('尚未裝備任何徽章','No badges equipped')}</span>`}
     </div>
@@ -5152,8 +5220,10 @@ async function boot(){
   loadExpeditionRoguelikeConfig().catch(()=>{});
   loadProfessionConfig().catch(()=>{});
   loadAuctionConfig().catch(()=>{});
+  loadTitleHolders().catch(()=>{});
   initWinBroadcastPoll();
   initSlotJackpotPoll();
+  initTitleHolderPoll();
   initNotifPoll();
   initChatPoll();
   initChatUnreadPoll();
@@ -5453,6 +5523,18 @@ function initSlotJackpotPoll(){
     }
   }, 10000);
 }
+// 定期輪詢目前的稱號持有者（唯讀），讓所有玩家即使沒有自己打開排行榜，也能看到
+// 別人身上稱號的即時變化（例如聊天室、個人檔案顯示的稱號）
+function initTitleHolderPoll(){
+  setInterval(async ()=>{
+    if(!state.nickname) return;
+    const before = JSON.stringify(TITLE_HOLDERS);
+    await loadTitleHolders();
+    if(JSON.stringify(TITLE_HOLDERS) !== before && (state.tab==='leaderboard' || state.tab==='chat')){
+      renderTab();
+    }
+  }, 20000);
+}
 
 // ---------- Friends ----------
 function freqKey(id){ return `freq:${id}`; }
@@ -5630,7 +5712,7 @@ async function sendChatMessage(text){
   text = (text||'').trim();
   if(!text) return;
   if(text.length > 300){ showToast(tt('訊息請在300字以內','Message must be 300 characters or fewer')); return; }
-  const msg = {id: uid(), nickname: state.nickname, text, createdAt: Date.now(), isGM: isGM(), badges: equippedBadgeKeys(state.player), avatarId: state.player && state.player.avatarId};
+  const msg = {id: uid(), nickname: state.nickname, text, createdAt: Date.now(), isGM: isGM(), badges: equippedBadgeKeys(state.player), titles: titleKeysHeldBy(state.nickname), avatarId: state.player && state.player.avatarId};
   try{
     const all = await fetchChatMessages();
     all.push(msg);
@@ -5910,7 +5992,9 @@ function ownedProfessionItemAuctionOptions(){
 
 const DURATIONS = [
   {labelZh:'1 小時', labelEn:'1 hour', ms: 3600*1000},
+  {labelZh:'3 小時', labelEn:'3 hours', ms: 3*3600*1000},
   {labelZh:'6 小時', labelEn:'6 hours', ms: 6*3600*1000},
+  {labelZh:'12 小時', labelEn:'12 hours', ms: 12*3600*1000},
   {labelZh:'24 小時', labelEn:'24 hours', ms: 24*3600*1000},
 ];
 // 拍賣行成交手續費：賣家成交金額會被抽走這個比例（直接從遊戲幣總量中消失，作為金幣回收機制），
@@ -7403,6 +7487,8 @@ async function renderLeaderboard(body){
   const bySlotSpend = players.map(pl=>({nickname:pl.nickname, spend: pl.slotSpend||0}))
     .sort((a,b)=>b.spend-a.spend).slice(0,10);
 
+  refreshTitleHoldersFromLeaderboards(byCoins, byCards, bySlotSpend).catch(()=>{});
+
   const medal = i => i===0?'🥇':i===1?'🥈':i===2?'🥉':`#${i+1}`;
   const isMe = nick => state.nickname && nick.toLowerCase()===state.nickname.toLowerCase();
 
@@ -7411,7 +7497,7 @@ async function renderLeaderboard(body){
     <p class="sub">${tt('依收藏卡牌總張數排名','Ranked by total cards collected')}</p>
     ${byCards.length===0 ? `<div class="empty-note">${tt('目前尚無玩家資料','No player data yet')}</div>` : byCards.map((pl,i)=>`
       <div class="listing">
-        <div class="left"><div class="icon-box">${medal(i)}</div><div class="meta"><div data-view-profile="${escapeHtml(pl.nickname)}">${escapeHtml(pl.nickname)}${isMe(pl.nickname)?` <span style="color:var(--gold-bright);">(${tt('你','you')})</span>`:''}</div></div></div>
+        <div class="left"><div class="icon-box">${medal(i)}</div><div class="meta"><div data-view-profile="${escapeHtml(pl.nickname)}">${escapeHtml(pl.nickname)}${isMe(pl.nickname)?` <span style="color:var(--gold-bright);">(${tt('你','you')})</span>`:''}${nameWithTitlesHtml(pl.nickname)}</div></div></div>
         <div class="right"><span class="price">${tt(`${pl.total} 張`, `${pl.total} cards`)}</span></div>
       </div>
     `).join('')}
@@ -7422,7 +7508,7 @@ async function renderLeaderboard(body){
     <p class="sub">${tt('依持有金幣排名','Ranked by coins held')}</p>
     ${byCoins.length===0 ? `<div class="empty-note">${tt('目前尚無玩家資料','No player data yet')}</div>` : byCoins.map((pl,i)=>`
       <div class="listing">
-        <div class="left"><div class="icon-box">${medal(i)}</div><div class="meta"><div data-view-profile="${escapeHtml(pl.nickname)}">${escapeHtml(pl.nickname)}${isMe(pl.nickname)?` <span style="color:var(--gold-bright);">(${tt('你','you')})</span>`:''}</div></div></div>
+        <div class="left"><div class="icon-box">${medal(i)}</div><div class="meta"><div data-view-profile="${escapeHtml(pl.nickname)}">${escapeHtml(pl.nickname)}${isMe(pl.nickname)?` <span style="color:var(--gold-bright);">(${tt('你','you')})</span>`:''}${nameWithTitlesHtml(pl.nickname)}</div></div></div>
         <div class="right"><span class="price">✦ ${pl.coins}</span></div>
       </div>
     `).join('')}
@@ -7433,7 +7519,7 @@ async function renderLeaderboard(body){
     <p class="sub">${tt('依三牌共鳴累計花費金幣排名','Ranked by total coins spent on Resonance')}</p>
     ${bySlotSpend.length===0 ? `<div class="empty-note">${tt('目前尚無玩家資料','No player data yet')}</div>` : bySlotSpend.map((pl,i)=>`
       <div class="listing">
-        <div class="left"><div class="icon-box">${medal(i)}</div><div class="meta"><div data-view-profile="${escapeHtml(pl.nickname)}">${escapeHtml(pl.nickname)}${isMe(pl.nickname)?` <span style="color:var(--gold-bright);">(${tt('你','you')})</span>`:''}</div></div></div>
+        <div class="left"><div class="icon-box">${medal(i)}</div><div class="meta"><div data-view-profile="${escapeHtml(pl.nickname)}">${escapeHtml(pl.nickname)}${isMe(pl.nickname)?` <span style="color:var(--gold-bright);">(${tt('你','you')})</span>`:''}${nameWithTitlesHtml(pl.nickname)}</div></div></div>
         <div class="right"><span class="price">✦ ${pl.spend}</span></div>
       </div>
     `).join('')}
@@ -7458,6 +7544,7 @@ async function renderChat(body){
           <div class="chat-msg-head">
             <div class="chat-avatar" data-view-profile="${escapeHtml(m.nickname)}">${avatarBoxHtml(m.avatarId)}</div>
             <span class="chat-msg-name" data-view-profile="${escapeHtml(m.nickname)}" style="${m.isGM?'color:var(--gold);':''}">${escapeHtml(m.nickname)}${m.isGM?' ⚡':''}</span>
+            ${(m.titles||[]).length ? `<span class="title-row" style="display:inline-flex;gap:3px;">${(m.titles||[]).map(k=>titleInlineHtml(k,11)).join('')}</span>` : ''}
             ${(m.badges||[]).length ? `<span class="badge-row" style="display:inline-flex;gap:2px;">${(m.badges||[]).map(k=>badgeInlineHtml(k,15)).join('')}</span>` : ''}
             <span class="chat-msg-time">${timeAgo(m.createdAt)}</span>
             ${isGM() ? `<button class="chat-msg-del" data-chat-del="${m.id}" title="${tt('刪除訊息','Delete message')}">✕</button>` : ''}
