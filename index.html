@@ -7230,6 +7230,14 @@ async function listAuction(itemType, itemId, qty, startBid, buyoutPrice, durMs){
   qty = (itemType === 'card' || itemType === 'dice') ? 1 : Math.max(1, Math.floor(qty||1));
   const owned = auctionOwnedQty(state.player, itemType, itemId);
   if(owned < qty){ showToast(tt('數量不足，無法上架','Not enough quantity to list')); return; }
+  if(!isGM()){
+    const existingAuctions = await fetchAuctions();
+    const activeCount = existingAuctions.filter(a=>a.status==='active' && a.seller===state.nickname).length;
+    if(activeCount >= 5){
+      showToast(tt('最多同時上架 5 個拍賣','You can only have 5 active auctions at a time'));
+      return;
+    }
+  }
   let diceSnapshot = null;
   if(itemType === 'dice'){
     ensureDiceInventory(state.player);
