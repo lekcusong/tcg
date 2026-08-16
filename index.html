@@ -1821,11 +1821,13 @@ const DEFAULT_BOSS_MEGA_COIN_COST = 50;          // 星象超爆發：消耗金�
 const DEFAULT_BOSS_MEGA_BURST_DAMAGE = 6000;     // 星象超爆發：固定傷害
 const DEFAULT_BOSS_MEGA_WEAPON_COST = 10;        // 星象超爆發：使用武器需消耗的武器數量
 const DEFAULT_BOSS_MEGA_ACCESSORY_MAX = 10;      // 星象超爆發：飾品最多可疊用數量
+const DEFAULT_BOSS_DAILY_ATTACK_LIMIT = 0;       // 每位玩家每日可攻擊 Boss 的次數上限，0 = 不限制
 
 let BOSS_MEGA_COIN_COST = DEFAULT_BOSS_MEGA_COIN_COST;
 let BOSS_MEGA_BURST_DAMAGE = DEFAULT_BOSS_MEGA_BURST_DAMAGE;
 let BOSS_MEGA_WEAPON_COST = DEFAULT_BOSS_MEGA_WEAPON_COST;
 let BOSS_MEGA_ACCESSORY_MAX = DEFAULT_BOSS_MEGA_ACCESSORY_MAX;
+let BOSS_DAILY_ATTACK_LIMIT = DEFAULT_BOSS_DAILY_ATTACK_LIMIT;
 
 let BOSS_STAGE_HP = [...DEFAULT_BOSS_STAGE_HP];
 let BOSS_DIFFICULTY_MULT = DEFAULT_BOSS_DIFFICULTY_MULT;
@@ -1864,6 +1866,7 @@ async function loadBossConfig(){
       if(typeof s.megaBurstDamage === 'number' && s.megaBurstDamage >= 0) BOSS_MEGA_BURST_DAMAGE = s.megaBurstDamage;
       if(typeof s.megaWeaponCost === 'number' && s.megaWeaponCost >= 0) BOSS_MEGA_WEAPON_COST = s.megaWeaponCost;
       if(typeof s.megaAccessoryMax === 'number' && s.megaAccessoryMax >= 0) BOSS_MEGA_ACCESSORY_MAX = s.megaAccessoryMax;
+      if(typeof s.dailyAttackLimit === 'number' && s.dailyAttackLimit >= 0) BOSS_DAILY_ATTACK_LIMIT = s.dailyAttackLimit;
     }
   }catch(e){ /* keep defaults */ }
 }
@@ -1875,6 +1878,7 @@ async function saveBossConfig(){
     weaponDmgBonus: BOSS_WEAPON_DMG_BONUS, accessoryCritPer: BOSS_ACCESSORY_CRIT_PER, accessoryCritDmgBonus: BOSS_ACCESSORY_CRIT_DMG_BONUS,
     megaCoinCost: BOSS_MEGA_COIN_COST, megaBurstDamage: BOSS_MEGA_BURST_DAMAGE,
     megaWeaponCost: BOSS_MEGA_WEAPON_COST, megaAccessoryMax: BOSS_MEGA_ACCESSORY_MAX,
+    dailyAttackLimit: BOSS_DAILY_ATTACK_LIMIT,
   }));
 }
 // ---------- Boss 戰 Roguelike 玩法擴充 ----------
@@ -2405,6 +2409,10 @@ async function performBossAttack(){
     showToast(tt('請先到「骰子」分頁裝備至少 1 顆骰子', 'Equip at least 1 die in the Dice tab first'));
     return;
   }
+  if(BOSS_DAILY_ATTACK_LIMIT > 0 && ensureBossAttackCount(p) >= BOSS_DAILY_ATTACK_LIMIT){
+    showToast(tt(`今日攻擊次數已用完（${BOSS_DAILY_ATTACK_LIMIT} 次），請明天再來`, `You've used all your attacks today (${BOSS_DAILY_ATTACK_LIMIT}) - come back tomorrow`));
+    return;
+  }
   const cost = BOSS_COIN_COST;
   if(p.coins < cost){
     showToast(tt(`金幣不足，需要 ${cost}`, `Not enough coins, need ${cost}`));
@@ -2422,6 +2430,9 @@ async function performBossAttack(){
   }
   const contribGain = Math.round(burst.damage * BOSS_CONTRIB_RATE * (1 + (burst.contribBonusPct||0)) * starChartContribMultiplier(p)); // 貢獻點依「實際造成的傷害」計算，骰子加成的傷害、貢獻點加成面效果與星盤風象加成都會反映在這裡
   p.materials.contrib += contribGain; // 賽季總貢獻點（可花費，賽季結束才歸零）
+  ensureStats(p).totalBossDamage += burst.damage; // 累計對 Boss 造成的總傷害（永久累計，用於排行榜／稱號，不隨賽季重置）
+  ensureBossAttackCount(p);
+  p.bossAttackCount += 1; // 今日已攻擊次數（依 BOSS_DAILY_ATTACK_LIMIT 換日歸零）
   await savePlayer(p);
 
   let result;
@@ -3089,7 +3100,8 @@ function renderBoss(body){
         </div>`;
       })()}
       <div id="dice-roll-anim" class="dice-roll-anim" style="display:none;"></div>
-      <button class="btn" id="boss-burst-btn" ${p.coins < BOSS_COIN_COST ? 'disabled' : ''}>${tt(`🎲 擲骰攻擊（消耗✦${BOSS_COIN_COST}）`, `🎲 Dice Attack (✦${BOSS_COIN_COST})`)}</button>
+      ${BOSS_DAILY_ATTACK_LIMIT > 0 ? `<div class="countdown" style="text-align:center;margin-bottom:8px;">${tt('今日剩餘攻擊次數','Attacks left today')}：<b style="color:${bossAttacksRemaining(p)>0?'var(--gold-bright)':'var(--danger)'};">${bossAttacksRemaining(p)}</b> / ${BOSS_DAILY_ATTACK_LIMIT}</div>` : ''}
+      <button class="btn" id="boss-burst-btn" ${(p.coins < BOSS_COIN_COST || bossAttacksRemaining(p) <= 0) ? 'disabled' : ''}>${bossAttacksRemaining(p) <= 0 ? tt('今日攻擊次數已用完','No attacks left today') : tt(`🎲 擲骰攻擊（消耗✦${BOSS_COIN_COST}）`, `🎲 Dice Attack (✦${BOSS_COIN_COST})`)}</button>
     </div>`;
     if(myGen !== bossRenderGen) return; // 已經有更新的一次 renderBoss 呼叫了，這份是過期結果，丟棄不寫 DOM
     const bossScrollY = window.scrollY;
@@ -3565,9 +3577,10 @@ const TITLES = [
   {key:'collection', nameZh:'藏卡宗師', nameEn:'Collection Master', icon:'🎴'},
   {key:'resonance', nameZh:'命運豪賭者', nameEn:'Fate Gambler', icon:'✨'},
   {key:'streak', nameZh:'亡命連勝之王', nameEn:'Reckless Streak King', icon:'🔥'},
+  {key:'boss', nameZh:'屠神使者', nameEn:'Godslayer', icon:'👹'},
 ];
 const TITLE_BY_KEY = Object.fromEntries(TITLES.map(t=>[t.key,t]));
-let TITLE_HOLDERS = {wealth:null, collection:null, resonance:null, streak:null, updatedAt:0};
+let TITLE_HOLDERS = {wealth:null, collection:null, resonance:null, streak:null, boss:null, updatedAt:0};
 async function loadTitleHolders(){
   try{
     const r = await storage.get('config:title_holders');
@@ -3578,6 +3591,7 @@ async function loadTitleHolders(){
         collection: s.collection || null,
         resonance: s.resonance || null,
         streak: s.streak || null,
+        boss: s.boss || null,
         updatedAt: s.updatedAt || 0,
       };
     }
@@ -3588,20 +3602,23 @@ async function saveTitleHolders(){
   await storage.set('config:title_holders', JSON.stringify(TITLE_HOLDERS));
 }
 // 依排行榜頁面已經算好的榜單重新判斷榜首，若有變動才寫回，避免每次開排行榜都打一次寫入
-async function refreshTitleHoldersFromLeaderboards(byCoins, byCards, bySlotSpend, byStreak){
+async function refreshTitleHoldersFromLeaderboards(byCoins, byCards, bySlotSpend, byStreak, byBossDamage){
   const nextWealth = (byCoins[0] && byCoins[0].coins > 0) ? byCoins[0].nickname : null;
   const nextCollection = (byCards[0] && byCards[0].total > 0) ? byCards[0].nickname : null;
   const nextResonance = (bySlotSpend[0] && bySlotSpend[0].spend > 0) ? bySlotSpend[0].nickname : null;
   const nextStreak = (byStreak && byStreak[0] && byStreak[0].streak > 0) ? byStreak[0].nickname : null;
+  const nextBoss = (byBossDamage && byBossDamage[0] && byBossDamage[0].damage > 0) ? byBossDamage[0].nickname : null;
   const changed = nextWealth !== TITLE_HOLDERS.wealth
     || nextCollection !== TITLE_HOLDERS.collection
     || nextResonance !== TITLE_HOLDERS.resonance
-    || nextStreak !== TITLE_HOLDERS.streak;
+    || nextStreak !== TITLE_HOLDERS.streak
+    || nextBoss !== TITLE_HOLDERS.boss;
   if(changed){
     TITLE_HOLDERS.wealth = nextWealth;
     TITLE_HOLDERS.collection = nextCollection;
     TITLE_HOLDERS.resonance = nextResonance;
     TITLE_HOLDERS.streak = nextStreak;
+    TITLE_HOLDERS.boss = nextBoss;
     await saveTitleHolders();
   }
 }
@@ -5631,10 +5648,22 @@ function newPlayer(nick, passwordHash){
     stamina:PROFESSION_STAMINA_MAX, staminaMax:PROFESSION_STAMINA_MAX, lastStaminaRegenAt:Date.now()};
 }
 function ensureStats(p){
-  if(!p.stats) p.stats = {totalHarvests:0, totalAuctionTrades:0};
+  if(!p.stats) p.stats = {totalHarvests:0, totalAuctionTrades:0, totalBossDamage:0};
   if(typeof p.stats.totalHarvests !== 'number') p.stats.totalHarvests = 0;
   if(typeof p.stats.totalAuctionTrades !== 'number') p.stats.totalAuctionTrades = 0;
+  if(typeof p.stats.totalBossDamage !== 'number') p.stats.totalBossDamage = 0;
   return p.stats;
+}
+// 每日打 Boss 次數：依 todayStr() 換日自動歸零，跟每日簽到（lastClaim）同一套判斷方式。
+function ensureBossAttackCount(p){
+  const today = todayStr();
+  if(p.bossAttackDate !== today){ p.bossAttackDate = today; p.bossAttackCount = 0; }
+  if(typeof p.bossAttackCount !== 'number') p.bossAttackCount = 0;
+  return p.bossAttackCount;
+}
+function bossAttacksRemaining(p){
+  if(!BOSS_DAILY_ATTACK_LIMIT || BOSS_DAILY_ATTACK_LIMIT <= 0) return Infinity;
+  return Math.max(0, BOSS_DAILY_ATTACK_LIMIT - ensureBossAttackCount(p));
 }
 
 async function hashPassword(pw){
@@ -5745,6 +5774,7 @@ const T = {
   leaderWealthHeader: {zh:'💰 財富排行榜', en:'💰 Wealth Leaderboard'},
   leaderSlotHeader: {zh:'✨ 三牌共鳴消費排行榜', en:'✨ Resonance Spending Leaderboard'},
   leaderStreakHeader: {zh:'🔥 遠征亡命連勝榜', en:'🔥 Expedition Reckless Streak Leaderboard'},
+  leaderBossHeader: {zh:'👹 Boss 累計傷害榜', en:'👹 Boss Cumulative Damage Leaderboard'},
   gmHeader: {zh:'⚡ GM 管理控制台', en:'⚡ GM Console'},
   allPlayersHeader: {zh:'所有玩家', en:'All Players'},
   grantCoinsHeader: {zh:'發放金幣', en:'Grant Coins'},
@@ -6629,6 +6659,12 @@ async function applyPendingRewards(player){
       ensureProfession(player);
       player.professionItems[data.itemId] = Math.max(0, (player.professionItems[data.itemId]||0) + (data.qty||1));
       changed = true;
+    } else if(data.grantKind === 'dice'){
+      ensureDiceInventory(player);
+      if(data.diceData && data.diceData.id){
+        player.dice[data.diceData.id] = {...data.diceData};
+        changed = true;
+      }
     } else if(data.grantKind === 'auction_sale'){
       // 拍賣賣家收款：金額 + 成交次數一起套用，避免分兩筆寫入時中間被覆蓋
       player.coins = Math.max(0, (player.coins||0) + (data.amount||0));
@@ -6965,6 +7001,18 @@ function rarityColorVar(rarity){
   return map[rarity] || null;
 }
 function auctionDisplayInfo(a){
+  if(a.itemType === 'dice'){
+    const d = a.diceData;
+    if(!d) return {iconHtml:`<div class="icon-box">🎲</div>`, name: tt('未知骰子','Unknown die'), nameOnly: tt('未知骰子','Unknown die')};
+    const meta = DICE_QUALITY_META[d.quality] || DICE_QUALITY_META.common;
+    const effectFaceCount = (d.faces||[]).filter(f=>f.effect).length;
+    const label = tt(`${meta.label} 骰子 Lv.${d.level||1}（基礎 ${d.baseAttack}）`, `${meta.labelEn} Die Lv.${d.level||1} (Base ${d.baseAttack})`);
+    return {
+      iconHtml: `<div class="icon-box" style="display:flex;align-items:center;justify-content:center;font-size:24px;border-color:${meta.color};">🎲</div>`,
+      name: `<span style="color:${meta.color};font-weight:600;">${escapeHtml(label)}</span>`,
+      nameOnly: label,
+    };
+  }
   if(a.itemType === 'material' || a.itemType === 'professionItem'){
     const meta = auctionItemMeta(a.itemType, a.itemId);
     return {
@@ -6980,11 +7028,24 @@ function auctionDisplayInfo(a){
   return {iconHtml: `<div class="icon-box cf-${c.rarity}">${iconBoxInner(c)}</div>`, name: styledName, nameOnly: c.name, rarity: c.rarity};
 }
 function auctionOwnedQty(p, itemType, itemId){
+  if(itemType === 'dice') return (p.dice && p.dice[itemId]) ? 1 : 0;
   if(itemType === 'material') return (p.professionMaterials && p.professionMaterials[itemId]) || 0;
   if(itemType === 'professionItem') return (p.professionItems && p.professionItems[itemId]) || 0;
   return (p.cards && p.cards[itemId]) || 0;
 }
-function auctionAdjustInventory(p, itemType, itemId, delta){
+function auctionAdjustInventory(p, itemType, itemId, delta, diceData){
+  if(itemType === 'dice'){
+    ensureDiceInventory(p);
+    if(delta < 0){
+      // 上架時移除：若正裝備中先卸下，再從庫存刪除
+      p.diceSlots = p.diceSlots.map(id => id === itemId ? null : id);
+      delete p.dice[itemId];
+    } else if(delta > 0 && diceData){
+      // 得標／流標退回：用拍賣建立時存下的骰子快照還原完整物件（品質/等級/面效果都要一致）
+      p.dice[itemId] = {...diceData};
+    }
+    return;
+  }
   if(itemType === 'material'){
     ensureProfession(p);
     p.professionMaterials[itemId] = (p.professionMaterials[itemId]||0) + delta;
@@ -6999,7 +7060,8 @@ function auctionAdjustInventory(p, itemType, itemId, delta){
 // 不直接 loadPlayer+mutate+savePlayer —— 因為拍賣結算可能由任何正在瀏覽
 // 拍賣頁的玩家觸發，得標者當下若在自己畫面做其他操作並存檔，會用他手上
 // 舊的資料整包覆寫掉這裡剛加上去的卡，導致「收購成功卻沒收到卡」。
-async function grantAuctionItem(nick, itemType, itemId, qty){
+async function grantAuctionItem(nick, itemType, itemId, qty, diceData){
+  if(itemType === 'dice') return createPendingReward(nick, 'dice', {diceData});
   if(itemType === 'material') return createPendingReward(nick, 'material', {materialId:itemId, qty});
   if(itemType === 'professionItem') return createPendingReward(nick, 'item', {itemId, qty});
   return createPendingReward(nick, 'card', {cardId:itemId, qty});
@@ -7028,6 +7090,16 @@ function ownedProfessionItemAuctionOptions(){
     const label = meta ? professionRecipeLabel(meta) : id;
     const qty = p.professionItems[id]||0;
     return `<option value="${id}">${label} (${tt(`持有 ${qty}`, `x${qty} owned`)})</option>`;
+  }).join('');
+}
+// 只列出「未裝備」的骰子可供上架（裝備中的骰子需先卸下），避免上架後戰鬥欄位突然缺一顆
+function ownedDiceAuctionOptions(){
+  const p = state.player;
+  ensureDiceInventory(p);
+  return Object.values(p.dice).filter(d=>!p.diceSlots.includes(d.id)).sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||'')).map(d=>{
+    const meta = DICE_QUALITY_META[d.quality] || DICE_QUALITY_META.common;
+    const label = tt(`${meta.label} 骰子 Lv.${d.level||1}（基礎 ${d.baseAttack}）`, `${meta.labelEn} Die Lv.${d.level||1} (Base ${d.baseAttack})`);
+    return `<option value="${d.id}">${label}</option>`;
   }).join('');
 }
 
@@ -7059,10 +7131,19 @@ function auctionFeeAmount(price){
 }
 async function listAuction(itemType, itemId, qty, startBid, buyoutPrice, durMs){
   if(!itemId){ showToast(tt('請選擇物品','Please choose an item')); return; }
-  if(itemType !== 'material' && itemType !== 'professionItem') itemType = 'card';
-  qty = itemType === 'card' ? 1 : Math.max(1, Math.floor(qty||1));
+  if(itemType !== 'material' && itemType !== 'professionItem' && itemType !== 'dice') itemType = 'card';
+  qty = (itemType === 'card' || itemType === 'dice') ? 1 : Math.max(1, Math.floor(qty||1));
   const owned = auctionOwnedQty(state.player, itemType, itemId);
   if(owned < qty){ showToast(tt('數量不足，無法上架','Not enough quantity to list')); return; }
+  let diceSnapshot = null;
+  if(itemType === 'dice'){
+    ensureDiceInventory(state.player);
+    if(state.player.diceSlots.includes(itemId)){
+      showToast(tt('請先到「骰子」分頁卸下裝備中的骰子，再上架拍賣','Unequip this die in the Dice tab before listing it for auction'));
+      return;
+    }
+    diceSnapshot = {...state.player.dice[itemId]};
+  }
   const hasStart = startBid && startBid >= 1;
   const hasBuyout = buyoutPrice && buyoutPrice >= 1;
   if(!hasStart && !hasBuyout){ showToast(tt('起標價與一口價至少要填一個','Please fill in either a starting bid or a buyout price')); return; }
@@ -7072,6 +7153,7 @@ async function listAuction(itemType, itemId, qty, startBid, buyoutPrice, durMs){
   await savePlayer(state.player);
   const auction = {
     id: uid(), seller: state.nickname, itemType, itemId, qty,
+    diceData: diceSnapshot,
     startBid: hasStart ? startBid : null,
     buyoutPrice: hasBuyout ? buyoutPrice : null,
     currentBid: 0, currentBidder: null, createdAt: Date.now(),
@@ -7147,7 +7229,7 @@ async function buyoutAuction(auctionId){
   }
   if(price > state.player.coins){ showToast(tt('遊戲幣不足','Not enough coins')); return; }
   state.player.coins -= price;
-  auctionAdjustInventory(state.player, auction.itemType, auction.itemId, auction.qty);
+  auctionAdjustInventory(state.player, auction.itemType, auction.itemId, auction.qty, auction.diceData);
   bumpQuest(state.player, 'auction', 1);
   ensureStats(state.player).totalAuctionTrades += 1;
   await savePlayer(state.player);
@@ -7170,7 +7252,7 @@ async function resolveAuction(auction){
   if(auction.status !== 'active' || Date.now() < auction.endsAt) return;
   const itemName = auctionDisplayInfo(auction).nameOnly;
   if(auction.currentBidder){
-    await grantAuctionItem(auction.currentBidder, auction.itemType, auction.itemId, auction.qty);
+    await grantAuctionItem(auction.currentBidder, auction.itemType, auction.itemId, auction.qty, auction.diceData);
     await createPendingReward(auction.currentBidder, 'auction_trade_stat', {});
     const fee = auctionFeeAmount(auction.currentBid);
     const payout = auction.currentBid - fee;
@@ -7178,7 +7260,7 @@ async function resolveAuction(auction){
     await createNotification(auction.seller, auction.currentBidder, 'auction_sold', {cardName: itemName, price: payout});
     await createNotification(auction.currentBidder, auction.seller, 'auction_won', {cardName: itemName, price: auction.currentBid});
   } else {
-    await grantAuctionItem(auction.seller, auction.itemType, auction.itemId, auction.qty);
+    await grantAuctionItem(auction.seller, auction.itemType, auction.itemId, auction.qty, auction.diceData);
     await createNotification(auction.seller, 'system', 'auction_unsold', {cardName: itemName});
   }
   auction.status = 'completed';
@@ -7189,7 +7271,7 @@ async function cancelAuction(auctionId){
   if(!r) return;
   const auction = normalizeAuction(JSON.parse(r.value));
   if(auction.status !== 'active' || auction.seller !== state.nickname || auction.currentBidder) return;
-  auctionAdjustInventory(state.player, auction.itemType, auction.itemId, auction.qty);
+  auctionAdjustInventory(state.player, auction.itemType, auction.itemId, auction.qty, auction.diceData);
   await savePlayer(state.player);
   auction.status = 'cancelled';
   await storage.set(`auction:${auctionId}`, JSON.stringify(auction));
@@ -7489,7 +7571,7 @@ async function render(){
       <div class="tab ${state.tab==='resonance'?'active':''}" data-tab="resonance">${t('tabResonance')}</div>
       ${SEASON_ACTIVE ? `<div class="tab ${state.tab==='season'?'active':''}" data-tab="season">✦ ${tt(SEASON_LABEL_ZH, SEASON_LABEL_EN)}</div>` : ''}
       ${SEASON_ACTIVE ? `<div class="tab ${state.tab==='starchart'?'active':''}" data-tab="starchart">🌌 ${tt('星盤','Star Chart')}</div>` : ''}
-      ${SEASON_ACTIVE ? `<div class="tab ${state.tab==='boss'?'active':''}" data-tab="boss">⚔️ Boss</div>` : ''}
+      ${SEASON_ACTIVE ? `<div class="tab ${state.tab==='boss'?'active':''}" data-tab="boss">⚔️ ${tt('Boss 和骰子','Boss & Dice')}</div>` : ''}
       <div class="tab ${state.tab==='collection'?'active':''}" data-tab="collection">${t('tabCollection')}</div>
       <div class="tab ${state.tab==='friends'?'active':''}" data-tab="friends">${t('tabFriends')}</div>
       <div class="tab ${state.tab==='auction'?'active':''}" data-tab="auction">${t('tabAuction')}</div>
@@ -8030,7 +8112,7 @@ async function renderAuction(body){
   </div>
   <div class="panel">
     <h2>${t('createAuctionHeader')}</h2>
-    <p class="sub">${tt('設定起標價、一口價（至少填一個），讓其他占卜師競標或直接購買你的卡片、材料或職業成品','Set a starting bid and/or a buyout price (at least one), so other diviners can bid on or directly buy your cards, materials, or profession items')}</p>
+    <p class="sub">${tt('設定起標價、一口價（至少填一個），讓其他占卜師競標或直接購買你的卡片、材料、職業成品或骰子','Set a starting bid and/or a buyout price (at least one), so other diviners can bid on or directly buy your cards, materials, profession items, or dice')}</p>
     <p class="sub" style="color:var(--muted);">${tt(`💰 成交後將收取 ${Math.round(AUCTION_FEE_PCT*100)}% 手續費，實際到手金額會略低於成交價`, `💰 A ${Math.round(AUCTION_FEE_PCT*100)}% fee is charged on sale — you'll receive slightly less than the final price`)}</p>
     <div class="form-row" style="margin-bottom:2px;">
       <div><label>${tt('物品類型','Item type')}</label>
@@ -8038,10 +8120,21 @@ async function renderAuction(body){
           <option value="card" ${state.auctionListType==='card'?'selected':''}>${tt('卡片','Card')}</option>
           <option value="material" ${state.auctionListType==='material'?'selected':''}>${tt('材料','Material')}</option>
           <option value="professionItem" ${state.auctionListType==='professionItem'?'selected':''}>${tt('職業成品','Profession Item')}</option>
+          <option value="dice" ${state.auctionListType==='dice'?'selected':''}>${tt('🎲 骰子','🎲 Die')}</option>
         </select>
       </div>
     </div>
     ${(()=>{
+      if(state.auctionListType === 'dice'){
+        const opts = ownedDiceAuctionOptions();
+        return opts ? `<div class="form-row">
+          <div><label>${tt('選擇骰子','Choose die')}</label><select id="auc-item-select">${opts}</select></div>
+          <div><label>${tt('起標價（選填）','Starting bid (optional)')}</label><input type="number" id="auc-start-input" min="1" placeholder="${tt('不填=不開放競標','blank = no bidding')}" style="width:130px;" /></div>
+          <div><label>${tt('一口價（選填）','Buyout price (optional)')}</label><input type="number" id="auc-buyout-input" min="1" placeholder="${tt('不填=無法直接購買','blank = no direct buy')}" style="width:130px;" /></div>
+          <div><label>${tt('拍賣時長','Duration')}</label><select id="auc-dur-select">${DURATIONS.map((d,i)=>`<option value="${i}">${tt(d.labelZh, d.labelEn)}</option>`).join('')}</select></div>
+          <button class="btn" id="auc-list-btn">${tt('開始拍賣','Start Auction')}</button>
+        </div>` : `<div class="empty-note">${tt('你目前沒有可拍賣的骰子（裝備中的骰子需先卸下）','You have no dice available to auction (unequip a die first)')}</div>`;
+      }
       if(state.auctionListType === 'material'){
         const opts = ownedMaterialAuctionOptions();
         return opts ? `<div class="form-row">
@@ -8574,8 +8667,10 @@ async function renderLeaderboard(body){
     .sort((a,b)=>b.spend-a.spend).slice(0,10);
   const byStreak = players.map(pl=>({nickname:pl.nickname, streak: pl.expeditionRecklessStreak||0}))
     .sort((a,b)=>b.streak-a.streak).slice(0,10);
+  const byBossDamage = players.map(pl=>({nickname:pl.nickname, damage: (pl.stats && pl.stats.totalBossDamage) || 0}))
+    .sort((a,b)=>b.damage-a.damage).slice(0,10);
 
-  refreshTitleHoldersFromLeaderboards(byCoins, byCards, bySlotSpend, byStreak).catch(()=>{});
+  refreshTitleHoldersFromLeaderboards(byCoins, byCards, bySlotSpend, byStreak, byBossDamage).catch(()=>{});
 
   const medal = i => i===0?'🥇':i===1?'🥈':i===2?'🥉':`#${i+1}`;
   const isMe = nick => state.nickname && nick.toLowerCase()===state.nickname.toLowerCase();
@@ -8620,6 +8715,17 @@ async function renderLeaderboard(body){
       <div class="listing">
         <div class="left"><div class="icon-box">${medal(i)}</div><div class="meta"><div data-view-profile="${escapeHtml(pl.nickname)}">${escapeHtml(pl.nickname)}${isMe(pl.nickname)?` <span style="color:var(--gold-bright);">(${tt('你','you')})</span>`:''}${nameWithTitlesHtml(pl.nickname)}</div></div></div>
         <div class="right"><span class="price">🔥 ${tt(`${pl.streak} 連勝`, `${pl.streak} streak`)}</span></div>
+      </div>
+    `).join('')}
+  </div>`;
+
+  html += `<div class="panel">
+    <h2>${t('leaderBossHeader')}</h2>
+    <p class="sub">${tt('依對世界 Boss 累計造成的總傷害排名（永久累計，不隨賽季重置）','Ranked by total lifetime damage dealt to the World Boss (never resets between seasons)')}</p>
+    ${byBossDamage.length===0 || byBossDamage[0].damage<=0 ? `<div class="empty-note">${tt('目前尚無玩家對 Boss 造成傷害','No player has damaged the Boss yet')}</div>` : byBossDamage.filter(pl=>pl.damage>0).map((pl,i)=>`
+      <div class="listing">
+        <div class="left"><div class="icon-box">${medal(i)}</div><div class="meta"><div data-view-profile="${escapeHtml(pl.nickname)}">${escapeHtml(pl.nickname)}${isMe(pl.nickname)?` <span style="color:var(--gold-bright);">(${tt('你','you')})</span>`:''}${nameWithTitlesHtml(pl.nickname)}</div></div></div>
+        <div class="right"><span class="price">⚔️ ${pl.damage.toLocaleString()}</span></div>
       </div>
     `).join('')}
   </div>`;
@@ -9099,6 +9205,7 @@ async function renderGM(body){
     </div>
     <div class="form-row">
       <div><label>${tt('每輪難度倍率','Difficulty mult / cycle')}</label><input type="number" id="gm-boss-diff" value="${BOSS_DIFFICULTY_MULT}" min="1" step="0.05" style="width:90px;" /></div>
+      <div><label>${tt('每日攻擊次數上限（0=不限制）','Daily attack limit (0 = unlimited)')}</label><input type="number" id="gm-boss-daily-limit" value="${BOSS_DAILY_ATTACK_LIMIT}" min="0" style="width:100px;" /></div>
     </div>
     <div class="farm-upgrade-title" style="margin-top:10px;">${tt('星象爆發設定','Astral Burst Settings')}</div>
     <div class="form-row">
@@ -9686,7 +9793,8 @@ async function renderGM(body){
     const accCritPct = parseFloat(document.getElementById('gm-boss-accessory-crit-pct').value);
     const accCritDmgPct = parseFloat(document.getElementById('gm-boss-accessory-critdmg-pct').value);
     const rewardMult = parseFloat(document.getElementById('gm-boss-reward-mult').value);
-    const nums = [...hp, diff, cost, dmg, contribRatePct, megaCost, megaDmg, megaWeaponCost, megaAccessoryMax, baseCoins, bonusCoins, weaponPct, accCritPct, accCritDmgPct, rewardMult];
+    const dailyLimit = parseFloat(document.getElementById('gm-boss-daily-limit').value);
+    const nums = [...hp, diff, cost, dmg, contribRatePct, megaCost, megaDmg, megaWeaponCost, megaAccessoryMax, baseCoins, bonusCoins, weaponPct, accCritPct, accCritDmgPct, rewardMult, dailyLimit];
     if(nums.some(v=>isNaN(v)||v<0) || diff <= 0 || rewardMult <= 0){
       showToast(tt('請輸入有效的非負數字','Please enter a valid non-negative number')); return;
     }
@@ -9705,6 +9813,7 @@ async function renderGM(body){
     BOSS_WEAPON_DMG_BONUS = weaponPct / 100;
     BOSS_ACCESSORY_CRIT_PER = accCritPct / 100;
     BOSS_ACCESSORY_CRIT_DMG_BONUS = accCritDmgPct / 100;
+    BOSS_DAILY_ATTACK_LIMIT = Math.floor(dailyLimit);
     await saveBossConfig();
     showToast(tt('Boss 設定已更新','Boss settings updated'));
     renderTab();
@@ -9726,6 +9835,7 @@ async function renderGM(body){
     BOSS_WEAPON_DMG_BONUS = DEFAULT_BOSS_WEAPON_DMG_BONUS;
     BOSS_ACCESSORY_CRIT_PER = DEFAULT_BOSS_ACCESSORY_CRIT_PER;
     BOSS_ACCESSORY_CRIT_DMG_BONUS = DEFAULT_BOSS_ACCESSORY_CRIT_DMG_BONUS;
+    BOSS_DAILY_ATTACK_LIMIT = DEFAULT_BOSS_DAILY_ATTACK_LIMIT;
     await saveBossConfig();
     showToast(tt('已還原為預設 Boss 設定','Reverted to default boss settings'));
     renderTab();
