@@ -1821,13 +1821,11 @@ const DEFAULT_BOSS_MEGA_COIN_COST = 50;          // 星象超爆發：消耗金�
 const DEFAULT_BOSS_MEGA_BURST_DAMAGE = 6000;     // 星象超爆發：固定傷害
 const DEFAULT_BOSS_MEGA_WEAPON_COST = 10;        // 星象超爆發：使用武器需消耗的武器數量
 const DEFAULT_BOSS_MEGA_ACCESSORY_MAX = 10;      // 星象超爆發：飾品最多可疊用數量
-const DEFAULT_BOSS_DAILY_ATTACK_LIMIT = 0;       // 每位玩家每日可攻擊 Boss 的次數上限，0 = 不限制
 
 let BOSS_MEGA_COIN_COST = DEFAULT_BOSS_MEGA_COIN_COST;
 let BOSS_MEGA_BURST_DAMAGE = DEFAULT_BOSS_MEGA_BURST_DAMAGE;
 let BOSS_MEGA_WEAPON_COST = DEFAULT_BOSS_MEGA_WEAPON_COST;
 let BOSS_MEGA_ACCESSORY_MAX = DEFAULT_BOSS_MEGA_ACCESSORY_MAX;
-let BOSS_DAILY_ATTACK_LIMIT = DEFAULT_BOSS_DAILY_ATTACK_LIMIT;
 
 let BOSS_STAGE_HP = [...DEFAULT_BOSS_STAGE_HP];
 let BOSS_DIFFICULTY_MULT = DEFAULT_BOSS_DIFFICULTY_MULT;
@@ -1866,7 +1864,6 @@ async function loadBossConfig(){
       if(typeof s.megaBurstDamage === 'number' && s.megaBurstDamage >= 0) BOSS_MEGA_BURST_DAMAGE = s.megaBurstDamage;
       if(typeof s.megaWeaponCost === 'number' && s.megaWeaponCost >= 0) BOSS_MEGA_WEAPON_COST = s.megaWeaponCost;
       if(typeof s.megaAccessoryMax === 'number' && s.megaAccessoryMax >= 0) BOSS_MEGA_ACCESSORY_MAX = s.megaAccessoryMax;
-      if(typeof s.dailyAttackLimit === 'number' && s.dailyAttackLimit >= 0) BOSS_DAILY_ATTACK_LIMIT = s.dailyAttackLimit;
     }
   }catch(e){ /* keep defaults */ }
 }
@@ -1878,7 +1875,6 @@ async function saveBossConfig(){
     weaponDmgBonus: BOSS_WEAPON_DMG_BONUS, accessoryCritPer: BOSS_ACCESSORY_CRIT_PER, accessoryCritDmgBonus: BOSS_ACCESSORY_CRIT_DMG_BONUS,
     megaCoinCost: BOSS_MEGA_COIN_COST, megaBurstDamage: BOSS_MEGA_BURST_DAMAGE,
     megaWeaponCost: BOSS_MEGA_WEAPON_COST, megaAccessoryMax: BOSS_MEGA_ACCESSORY_MAX,
-    dailyAttackLimit: BOSS_DAILY_ATTACK_LIMIT,
   }));
 }
 // ---------- Boss 戰 Roguelike 玩法擴充 ----------
@@ -2268,13 +2264,8 @@ async function resolveBossAttack(nickname, damage){
         eventTriggered = maybeTriggerBossEvent(newBoss); // 詛咒會就地調整剛設好的 maxHp/hp
       } else {
         cycleCompleteFor = newBoss.cycle;
-        const nextCycle = newBoss.cycle + 1;
-        newBoss.cycle = nextCycle;
-        newBoss.stage = 1;
-        newBoss.maxHp = bossStageMaxHp(1, nextCycle);
-        newBoss.hp = newBoss.maxHp;
-        newBoss.cycleDamage = 0; // 進入下一輪，本輪傷害歸零重算
-        eventTriggered = maybeTriggerBossEvent(newBoss);
+        newBoss.hp = 0;
+        newBoss.clearedToday = true; // 今日已擊敗 Boss（三階段全破），鎖定攻擊直到隔日重置（見 ensureBossState 的 resetDate 判斷）
       }
     }
     const applied = await savePlayerBossStateCAS(nickname, updatedAt, newBoss);
@@ -2409,10 +2400,6 @@ async function performBossAttack(){
     showToast(tt('請先到「骰子」分頁裝備至少 1 顆骰子', 'Equip at least 1 die in the Dice tab first'));
     return;
   }
-  if(BOSS_DAILY_ATTACK_LIMIT > 0 && ensureBossAttackCount(p) >= BOSS_DAILY_ATTACK_LIMIT){
-    showToast(tt(`今日攻擊次數已用完（${BOSS_DAILY_ATTACK_LIMIT} 次），請明天再來`, `You've used all your attacks today (${BOSS_DAILY_ATTACK_LIMIT}) - come back tomorrow`));
-    return;
-  }
   const cost = BOSS_COIN_COST;
   if(p.coins < cost){
     showToast(tt(`金幣不足，需要 ${cost}`, `Not enough coins, need ${cost}`));
@@ -2422,6 +2409,10 @@ async function performBossAttack(){
   // 要套用到這次攻擊上；接著才算出這次攻擊的真實結果（純運算，無副作用），
   // 動畫只負責把它「揭曉」出來。
   const currentBoss = await ensureBossState(p.nickname);
+  if(currentBoss.clearedToday){
+    showToast(tt('今日已擊敗 Boss，請明天再來挑戰新一輪！', "You've already defeated today's Boss - come back tomorrow for a new cycle!"));
+    return;
+  }
   const burst = rollDiceAttack(p, currentBoss.activeEvent);
   await playDiceRollAnimation(equippedIds.map(id => p.dice[id]), burst);
 
@@ -2430,9 +2421,8 @@ async function performBossAttack(){
   }
   const contribGain = Math.round(burst.damage * BOSS_CONTRIB_RATE * (1 + (burst.contribBonusPct||0)) * starChartContribMultiplier(p)); // 貢獻點依「實際造成的傷害」計算，骰子加成的傷害、貢獻點加成面效果與星盤風象加成都會反映在這裡
   p.materials.contrib += contribGain; // 賽季總貢獻點（可花費，賽季結束才歸零）
-  ensureStats(p).totalBossDamage += burst.damage; // 累計對 Boss 造成的總傷害（永久累計，用於排行榜／稱號，不隨賽季重置）
-  ensureBossAttackCount(p);
-  p.bossAttackCount += 1; // 今日已攻擊次數（依 BOSS_DAILY_ATTACK_LIMIT 換日歸零）
+  const bossStats = ensureStats(p);
+  bossStats.maxBossHitDamage = Math.max(bossStats.maxBossHitDamage||0, burst.damage); // 單擊最高傷害（永久紀錄最高值，用於排行榜／稱號，不隨賽季重置）
   await savePlayer(p);
 
   let result;
@@ -2465,7 +2455,7 @@ async function performBossAttack(){
   let defeatMsg = '';
   if(cycleCompleteFor){
     const reward = await settleBossReward(p.nickname, cycleCompleteFor);
-    defeatMsg = tt(`🎉 你擊敗了「終焉蛇神」！獲得 ✦${reward?reward.coins:0} 金幣，Boss 第 ${newBoss.cycle} 輪重新降臨（更難）！`, `🎉 You defeated the Doomsday Serpent God! Gained ✦${reward?reward.coins:0} coins - Cycle ${newBoss.cycle} begins (harder)!`);
+    defeatMsg = tt(`🎉 你擊敗了「終焉蛇神」！獲得 ✦${reward?reward.coins:0} 金幣，Boss 已被擊退，明天再來挑戰新一輪（更難）！`, `🎉 You defeated the Doomsday Serpent God! Gained ✦${reward?reward.coins:0} coins - come back tomorrow for a new (harder) cycle!`);
     state.player = await loadPlayer(p.nickname);
   } else if(newBoss.stage > prevBoss.stage){
     defeatMsg = tt(`⚔️ 「${BOSS_STAGE_META[newBoss.stage-2].label}」被擊破！Boss 進入「${BOSS_STAGE_META[newBoss.stage-1].label}」！`, `⚔️ "${BOSS_STAGE_META[newBoss.stage-2].labelEn}" defeated! The Boss enters "${BOSS_STAGE_META[newBoss.stage-1].labelEn}"!`);
@@ -2650,6 +2640,7 @@ function ensureDiceInventory(p){
   if(!p.dice || typeof p.dice !== 'object') p.dice = {};
   Object.values(p.dice).forEach(d=>{
     if(typeof d.level !== 'number' || d.level < 1) d.level = 1; // 舊資料補上等級欄位
+    if(typeof d.favorite !== 'boolean') d.favorite = false; // 舊資料補上最愛欄位，預設不是最愛
     if(Array.isArray(d.faces)) d.faces.forEach(f=>{ f.effect = resolveDiceFaceEffect(f.effect); });
   });
   if(!Array.isArray(p.diceSlots) || p.diceSlots.length !== DICE_EQUIP_SLOTS) p.diceSlots = [null, null, null];
@@ -2774,6 +2765,17 @@ async function doUnequipDice(slotIndex){
   await savePlayer(p);
   renderTab();
 }
+// 切換骰子「最愛」標記：純粹是一個保護開關，避免一鍵拆解/單顆拆解時不小心
+// 拆掉還想留著的骰子；不影響戰鬥數值。
+async function doToggleDiceFavorite(diceId){
+  const p = state.player;
+  ensureDiceInventory(p);
+  const dice = p.dice[diceId];
+  if(!dice) return;
+  dice.favorite = !dice.favorite;
+  await savePlayer(p);
+  renderTab();
+}
 
 // 強化骰子：花「骰子精華」提升基礎攻擊力，每滿 DICE_ENHANCE_EFFECT_FACE_INTERVAL 級
 // 額外嘗試把一面「空白面」轉成「效果面」。用 CAS 保護讀-改-寫，避免連點兩次強化
@@ -2849,6 +2851,10 @@ async function doDismantleDice(diceId){
       showToast(tt('請先卸下裝備中的骰子再拆解','Unequip this die before dismantling it'));
       return;
     }
+    if(dice.favorite){
+      showToast(tt('這顆骰子已標記為最愛，請先取消最愛才能拆解','This die is marked as favorite — unmark it before dismantling'));
+      return;
+    }
     const meta = DICE_QUALITY_META[dice.quality] || DICE_QUALITY_META.common; // fallback：避免舊資料 quality 缺值時直接炸掉
     const previewRefund = diceDismantleRefund(dice);
     if(!confirm(tt(`確定要拆解這顆${meta.label}骰子嗎？將獲得 ${previewRefund} 骰子精華，此動作無法復原。`, `Dismantle this ${meta.labelEn} die? You'll receive ${previewRefund} Dice Essence. This cannot be undone.`))) return;
@@ -2877,6 +2883,57 @@ async function doDismantleDice(diceId){
     updateHeaderCoins();
   }catch(e){
     console.error('[doDismantleDice] unexpected error', e);
+    showToast(tt('拆解發生未預期的錯誤，請打開瀏覽器 Console 查看詳細訊息','Unexpected error while dismantling — check the browser console for details'));
+  }
+}
+
+// 一鍵拆解所有骰子：只拆「未裝備、未標記最愛」的骰子，裝備中與最愛的一律跳過，
+// 避免誤拆正在使用或想留著的骰子。跟單顆拆解一樣先用目前畫面上的資料算出預覽數字
+// 給玩家看，實際扣款/發放精華則在 CAS callback 內重新讀最新資料計算一次，避免預覽
+// 與實際不一致（例如拆解按下去前，骰子已經被其他分頁強化過）。
+async function doDismantleAllDice(){
+  try{
+    const p = state.player;
+    ensureDiceInventory(p);
+    const targets = Object.values(p.dice).filter(d => !p.diceSlots.includes(d.id) && !d.favorite);
+    if(targets.length === 0){
+      showToast(tt('沒有可拆解的骰子（裝備中與最愛的骰子不會被拆解）','No dice available to dismantle (equipped and favorited dice are skipped)'));
+      return;
+    }
+    const previewRefund = targets.reduce((sum,d)=> sum + diceDismantleRefund(d), 0);
+    if(!confirm(tt(`確定要拆解 ${targets.length} 顆骰子嗎？將獲得約 ${previewRefund} 骰子精華，裝備中與最愛的骰子不會被拆解，此動作無法復原。`, `Dismantle ${targets.length} dice? You'll receive about ${previewRefund} Dice Essence. Equipped and favorited dice are skipped. This cannot be undone.`))) return;
+    let refund = 0;
+    let count = 0;
+    let applied;
+    try{
+      applied = await updatePlayerCAS(p.nickname, (player)=>{
+        ensureMaterials(player);
+        ensureDiceInventory(player);
+        const ids = Object.values(player.dice).filter(d => !player.diceSlots.includes(d.id) && !d.favorite).map(d=>d.id);
+        refund = 0;
+        count = 0;
+        ids.forEach(id=>{
+          const d = player.dice[id];
+          if(!d) return;
+          refund += diceDismantleRefund(d);
+          count += 1;
+          delete player.dice[id];
+        });
+        player.materials.diceEssence += refund;
+        player.diceSlots = player.diceSlots.map(id => (id && player.dice[id]) ? id : null);
+      });
+    }catch(e){
+      console.error('[doDismantleAllDice] updatePlayerCAS failed', e);
+      showToast(tt('拆解失敗，請重新整理後再試','Dismantle failed, refresh and try again'));
+      return;
+    }
+    if(!applied) return;
+    state.player = await loadPlayer(p.nickname);
+    showToast(tt(`♻️ 一鍵拆解完成，共拆解 ${count} 顆骰子，獲得 ${refund} 骰子精華`, `♻️ Dismantled ${count} dice — gained ${refund} Dice Essence`));
+    renderTab();
+    updateHeaderCoins();
+  }catch(e){
+    console.error('[doDismantleAllDice] unexpected error', e);
     showToast(tt('拆解發生未預期的錯誤，請打開瀏覽器 Console 查看詳細訊息','Unexpected error while dismantling — check the browser console for details'));
   }
 }
@@ -2910,7 +2967,12 @@ function renderDiceShop(body){
   ensureDiceInventory(p);
   const cardCounts = DICE_GACHA_CARD_IDS.map(id=>({id, name: DECK_BY_ID[id] ? DECK_BY_ID[id].name : id, owned: p.cards[id]||0}));
   const canDraw = cardCounts.every(c=>c.owned >= DICE_GACHA_COST_QTY);
-  const diceList = Object.values(p.dice).sort((a,b)=> (b.createdAt||'').localeCompare(a.createdAt||''));
+  const diceList = Object.values(p.dice).sort((a,b)=>{
+    const aEquipped = p.diceSlots.includes(a.id);
+    const bEquipped = p.diceSlots.includes(b.id);
+    if(aEquipped !== bEquipped) return aEquipped ? 1 : -1; // 已裝備的排到最下面
+    return (b.createdAt||'').localeCompare(a.createdAt||'');
+  });
 
   let html = `<div class="panel">
     <h2>🎲 ${tt('骰子商店','Dice Shop')}</h2>
@@ -2945,6 +3007,7 @@ function renderDiceShop(body){
   <div class="panel">
     <h2>${tt('骰子庫存','Dice Inventory')}（${diceList.length}）</h2>
     <p class="sub">💠 ${tt('骰子精華','Dice Essence')}：<b style="color:var(--gold-bright);">${p.materials.diceEssence}</b>　${tt('（拆解用不到的骰子可以取得，用於強化骰子）','(Gained by dismantling unwanted dice; spend it to enhance dice)')}</p>
+    ${diceList.length > 0 ? `<button class="btn small secondary" id="dice-dismantle-all-btn" style="margin-bottom:12px;">${tt('♻️ 一鍵拆解所有骰子','♻️ Dismantle All Dice')}</button><p class="sub" style="margin-top:-8px;margin-bottom:12px;">${tt('裝備中與已標記最愛的骰子不會被拆解','Equipped and favorited dice are skipped')}</p>` : ''}
     ${diceList.length === 0 ? `<p class="sub">${tt('還沒有任何骰子，先去商店抽一顆吧。','No dice yet — draw one from the shop above.')}</p>` : diceList.map(dice=>{
       const equippedSlot = p.diceSlots.indexOf(dice.id);
       const equipActionHtml = equippedSlot >= 0
@@ -2954,10 +3017,11 @@ function renderDiceShop(body){
       const enhanceBtnHtml = enhCost === null
         ? `<button class="btn small secondary" disabled>${tt('已達強化上限','Max level')}</button>`
         : `<button class="btn small" data-enhance-dice="${dice.id}" ${p.materials.diceEssence < enhCost ? 'disabled' : ''}>${tt(`強化（💠${enhCost}）`, `Enhance (💠${enhCost})`)}</button>`;
-      const dismantleBtnHtml = equippedSlot >= 0
-        ? '' // 裝備中的骰子不給拆解按鈕，避免誤觸；要拆解需先卸下
+      const favoriteBtnHtml = `<button class="btn small ${dice.favorite ? '' : 'secondary'}" data-toggle-favorite-dice="${dice.id}" style="${dice.favorite ? `border-color:var(--gold);color:var(--gold-bright);` : ''}">${dice.favorite ? tt('💛 已標記最愛','💛 Favorited') : tt('🤍 標記最愛','🤍 Favorite')}</button>`;
+      const dismantleBtnHtml = (equippedSlot >= 0 || dice.favorite)
+        ? '' // 裝備中或已標記最愛的骰子不給拆解按鈕，避免誤觸；要拆解需先卸下裝備／取消最愛
         : `<button class="btn small secondary" data-dismantle-dice="${dice.id}">${tt('拆解','Dismantle')}</button>`;
-      const actionHtml = `${equipActionHtml}<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;">${enhanceBtnHtml}${dismantleBtnHtml}</div>`;
+      const actionHtml = `${equipActionHtml}<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;">${favoriteBtnHtml}${enhanceBtnHtml}${dismantleBtnHtml}</div>`;
       return renderDiceCard(dice, {actionHtml});
     }).join('')}
   </div>`;
@@ -2974,6 +3038,20 @@ function renderDiceShop(body){
   body.querySelectorAll('[data-unequip-slot]').forEach(btn=>{
     btn.onclick = ()=> doUnequipDice(parseInt(btn.dataset.unequipSlot, 10));
   });
+  body.querySelectorAll('[data-toggle-favorite-dice]').forEach(btn=>{
+    btn.onclick = async ()=>{
+      btn.disabled = true;
+      try{ await doToggleDiceFavorite(btn.dataset.toggleFavoriteDice); }
+      finally { renderTab(); }
+    };
+  });
+  const dismantleAllBtn = document.getElementById('dice-dismantle-all-btn');
+  if(dismantleAllBtn) dismantleAllBtn.onclick = async ()=>{
+    dismantleAllBtn.disabled = true;
+    try{ await doDismantleAllDice(); }
+    catch(e){ console.error('[dismantle-all-dice btn] unexpected error', e); }
+    finally { renderTab(); }
+  };
   body.querySelectorAll('[data-enhance-dice]').forEach(btn=>{
     btn.onclick = async ()=>{
       btn.disabled = true;
@@ -3032,6 +3110,24 @@ function renderBoss(body){
   }
   (async ()=>{
     const boss = await ensureBossState(p.nickname);
+    if(boss.clearedToday){
+      const clearedMeta = BOSS_STAGE_META[2];
+      const html = `<div class="panel">
+        <h2>⚔️ ${tt(SEASON_LABEL_ZH, SEASON_LABEL_EN)} · ${tt('Boss 戰','Boss Battle')}</h2>
+        <p class="sub">${tt(`第 ${boss.cycle} 輪　·　今日已擊敗`, `Cycle ${boss.cycle} · Defeated for today`)}</p>
+        <div style="text-align:center;">
+          <img src="${clearedMeta.img}" style="width:100%;max-width:340px;border-radius:14px;border:1px solid var(--gold);box-shadow:0 0 22px rgba(139,107,209,0.4);margin-bottom:10px;filter:grayscale(0.6) brightness(0.7);" alt="${clearedMeta.label}" />
+          <div style="font-family:'Cinzel Decorative',serif;color:var(--gold-bright);font-size:16px;">🎉 ${tt('已擊敗！','Defeated!')}</div>
+          <p class="sub" style="margin-top:8px;">${tt('你今天已經擊敗了 Boss，明天再來挑戰新一輪（更難）吧！','You have already defeated the Boss today - come back tomorrow for a new, harder cycle!')}</p>
+        </div>
+      </div>`;
+      if(myGen !== bossRenderGen) return;
+      const bossScrollY2 = window.scrollY;
+      body.innerHTML = bossNavHtml + html;
+      bindBossNav();
+      if(bossAlreadyRendered) window.scrollTo(0, bossScrollY2);
+      return;
+    }
     const meta = BOSS_STAGE_META[boss.stage-1];
     const pct = Math.max(0, Math.min(100, (boss.hp/boss.maxHp)*100));
     let html = `<div class="panel">
@@ -3100,8 +3196,7 @@ function renderBoss(body){
         </div>`;
       })()}
       <div id="dice-roll-anim" class="dice-roll-anim" style="display:none;"></div>
-      ${BOSS_DAILY_ATTACK_LIMIT > 0 ? `<div class="countdown" style="text-align:center;margin-bottom:8px;">${tt('今日剩餘攻擊次數','Attacks left today')}：<b style="color:${bossAttacksRemaining(p)>0?'var(--gold-bright)':'var(--danger)'};">${bossAttacksRemaining(p)}</b> / ${BOSS_DAILY_ATTACK_LIMIT}</div>` : ''}
-      <button class="btn" id="boss-burst-btn" ${(p.coins < BOSS_COIN_COST || bossAttacksRemaining(p) <= 0) ? 'disabled' : ''}>${bossAttacksRemaining(p) <= 0 ? tt('今日攻擊次數已用完','No attacks left today') : tt(`🎲 擲骰攻擊（消耗✦${BOSS_COIN_COST}）`, `🎲 Dice Attack (✦${BOSS_COIN_COST})`)}</button>
+      <button class="btn" id="boss-burst-btn" ${(p.coins < BOSS_COIN_COST) ? 'disabled' : ''}>${tt(`🎲 擲骰攻擊（消耗✦${BOSS_COIN_COST}）`, `🎲 Dice Attack (✦${BOSS_COIN_COST})`)}</button>
     </div>`;
     if(myGen !== bossRenderGen) return; // 已經有更新的一次 renderBoss 呼叫了，這份是過期結果，丟棄不寫 DOM
     const bossScrollY = window.scrollY;
@@ -5648,22 +5743,11 @@ function newPlayer(nick, passwordHash){
     stamina:PROFESSION_STAMINA_MAX, staminaMax:PROFESSION_STAMINA_MAX, lastStaminaRegenAt:Date.now()};
 }
 function ensureStats(p){
-  if(!p.stats) p.stats = {totalHarvests:0, totalAuctionTrades:0, totalBossDamage:0};
+  if(!p.stats) p.stats = {totalHarvests:0, totalAuctionTrades:0, maxBossHitDamage:0};
   if(typeof p.stats.totalHarvests !== 'number') p.stats.totalHarvests = 0;
   if(typeof p.stats.totalAuctionTrades !== 'number') p.stats.totalAuctionTrades = 0;
-  if(typeof p.stats.totalBossDamage !== 'number') p.stats.totalBossDamage = 0;
+  if(typeof p.stats.maxBossHitDamage !== 'number') p.stats.maxBossHitDamage = 0;
   return p.stats;
-}
-// 每日打 Boss 次數：依 todayStr() 換日自動歸零，跟每日簽到（lastClaim）同一套判斷方式。
-function ensureBossAttackCount(p){
-  const today = todayStr();
-  if(p.bossAttackDate !== today){ p.bossAttackDate = today; p.bossAttackCount = 0; }
-  if(typeof p.bossAttackCount !== 'number') p.bossAttackCount = 0;
-  return p.bossAttackCount;
-}
-function bossAttacksRemaining(p){
-  if(!BOSS_DAILY_ATTACK_LIMIT || BOSS_DAILY_ATTACK_LIMIT <= 0) return Infinity;
-  return Math.max(0, BOSS_DAILY_ATTACK_LIMIT - ensureBossAttackCount(p));
 }
 
 async function hashPassword(pw){
@@ -5774,7 +5858,7 @@ const T = {
   leaderWealthHeader: {zh:'💰 財富排行榜', en:'💰 Wealth Leaderboard'},
   leaderSlotHeader: {zh:'✨ 三牌共鳴消費排行榜', en:'✨ Resonance Spending Leaderboard'},
   leaderStreakHeader: {zh:'🔥 遠征亡命連勝榜', en:'🔥 Expedition Reckless Streak Leaderboard'},
-  leaderBossHeader: {zh:'👹 Boss 累計傷害榜', en:'👹 Boss Cumulative Damage Leaderboard'},
+  leaderBossHeader: {zh:'👹 Boss 單擊最高傷害榜', en:'👹 Boss Highest Single Hit Leaderboard'},
   gmHeader: {zh:'⚡ GM 管理控制台', en:'⚡ GM Console'},
   allPlayersHeader: {zh:'所有玩家', en:'All Players'},
   grantCoinsHeader: {zh:'發放金幣', en:'Grant Coins'},
@@ -7013,12 +7097,15 @@ function auctionDisplayInfo(a){
     const d = a.diceData;
     if(!d) return {iconHtml:`<div class="icon-box">🎲</div>`, name: tt('未知骰子','Unknown die'), nameOnly: tt('未知骰子','Unknown die')};
     const meta = DICE_QUALITY_META[d.quality] || DICE_QUALITY_META.common;
-    const effectFaceCount = (d.faces||[]).filter(f=>f.effect).length;
     const label = tt(`${meta.label} 骰子 Lv.${d.level||1}（基礎 ${d.baseAttack}）`, `${meta.labelEn} Die Lv.${d.level||1} (Base ${d.baseAttack})`);
+    // 拍賣快照存的 face.effect 可能是完整物件（近期資料）或純 id（極舊資料），統一透過
+    // resolveDiceFaceEffect 換回標準物件，才能餵給 renderDiceCard 顯示完整面效果說明。
+    const normalizedDice = {...d, faces: Array.isArray(d.faces) ? d.faces.map(f=>({...f, effect: resolveDiceFaceEffect(f.effect)})) : d.faces};
     return {
       iconHtml: `<div class="icon-box" style="display:flex;align-items:center;justify-content:center;font-size:24px;border-color:${meta.color};">🎲</div>`,
       name: `<span style="color:${meta.color};font-weight:600;">${escapeHtml(label)}</span>`,
       nameOnly: label,
+      detailsHtml: renderDiceCard(normalizedDice, {}),
     };
   }
   if(a.itemType === 'material' || a.itemType === 'professionItem'){
@@ -8188,10 +8275,11 @@ async function renderAuction(body){
       const biddersHtml = bidders.length ? `<details class="bid-history"><summary>${tt(`出價紀錄（${bidders.length}）`, `Bid history (${bidders.length})`)}</summary>${bidders.map(b=>`<div class="bid-row">${escapeHtml(b.bidder)} — ✦${b.amount}</div>`).join('')}</details>` : '';
       const ownedQty = auctionOwnedQty(state.player, a.itemType, a.itemId);
       const ownedLine = `<div class="who" style="opacity:0.75;">${tt(`你另外擁有 ${ownedQty} 個`, `You also own: ${ownedQty}`)}</div>`;
+      const detailsBlockHtml = info.detailsHtml ? `<details class="bid-history" open><summary>${tt('詳細屬性','Details')}</summary>${info.detailsHtml}</details>` : '';
       return `<div class="listing">
         <div class="left">
           ${info.iconHtml}
-          <div class="meta"><div>${info.name}</div><div class="who">${statusLine}</div>${ownedLine}${biddersHtml}</div>
+          <div class="meta"><div>${info.name}</div><div class="who">${statusLine}</div>${ownedLine}${biddersHtml}${detailsBlockHtml}</div>
         </div>
         <div class="right">
           <span class="timer">${fmtCountdown(a.endsAt - Date.now())}</span>
@@ -8214,10 +8302,11 @@ async function renderAuction(body){
       const biddersHtml = bidders.length ? `<details class="bid-history"><summary>${tt(`出價紀錄（${bidders.length}）`, `Bid history (${bidders.length})`)}</summary>${bidders.map(b=>`<div class="bid-row">${escapeHtml(b.bidder)} — ✦${b.amount}</div>`).join('')}</details>` : '';
       const ownedQty = auctionOwnedQty(state.player, a.itemType, a.itemId);
       const ownedLine = `<div class="who" style="opacity:0.75;">${tt(`你目前擁有 ${ownedQty} 個`, `You currently own: ${ownedQty}`)}</div>`;
+      const detailsBlockHtml = info.detailsHtml ? `<details class="bid-history" open><summary>${tt('詳細屬性','Details')}</summary>${info.detailsHtml}</details>` : '';
       return `<div class="listing">
         <div class="left">
           ${info.iconHtml}
-          <div class="meta"><div>${info.name}</div><div class="who">${sellerLine} · ${priceLine} · <span class="timer">${fmtCountdown(a.endsAt-Date.now())}</span></div>${ownedLine}${biddersHtml}</div>
+          <div class="meta"><div>${info.name}</div><div class="who">${sellerLine} · ${priceLine} · <span class="timer">${fmtCountdown(a.endsAt-Date.now())}</span></div>${ownedLine}${biddersHtml}${detailsBlockHtml}</div>
         </div>
         <div class="right">
           ${a.startBid ? `
@@ -8679,7 +8768,7 @@ async function computeLeaderboards(){
     .sort((a,b)=>b.spend-a.spend).slice(0,10);
   const byStreak = players.map(pl=>({nickname:pl.nickname, streak: pl.expeditionRecklessStreak||0}))
     .sort((a,b)=>b.streak-a.streak).slice(0,10);
-  const byBossDamage = players.map(pl=>({nickname:pl.nickname, damage: (pl.stats && pl.stats.totalBossDamage) || 0}))
+  const byBossDamage = players.map(pl=>({nickname:pl.nickname, damage: (pl.stats && pl.stats.maxBossHitDamage) || 0}))
     .sort((a,b)=>b.damage-a.damage).slice(0,10);
   return {byCards, byCoins, bySlotSpend, byStreak, byBossDamage, updatedAt: Date.now()};
 }
@@ -8750,7 +8839,7 @@ async function renderLeaderboard(body){
 
   html += `<div class="panel">
     <h2>${t('leaderBossHeader')}</h2>
-    <p class="sub">${tt('依對世界 Boss 累計造成的總傷害排名（永久累計，不隨賽季重置）','Ranked by total lifetime damage dealt to the World Boss (never resets between seasons)')}</p>
+    <p class="sub">${tt('依對世界 Boss 單次攻擊的最高傷害排名（永久紀錄最高值，不隨賽季重置）','Ranked by the highest single-hit damage ever dealt to the World Boss (never resets between seasons)')}</p>
     ${byBossDamage.length===0 || byBossDamage[0].damage<=0 ? `<div class="empty-note">${tt('目前尚無玩家對 Boss 造成傷害','No player has damaged the Boss yet')}</div>` : byBossDamage.filter(pl=>pl.damage>0).map((pl,i)=>`
       <div class="listing">
         <div class="left"><div class="icon-box">${medal(i)}</div><div class="meta"><div data-view-profile="${escapeHtml(pl.nickname)}">${escapeHtml(pl.nickname)}${isMe(pl.nickname)?` <span style="color:var(--gold-bright);">(${tt('你','you')})</span>`:''}${nameWithTitlesHtml(pl.nickname)}</div></div></div>
@@ -9234,7 +9323,6 @@ async function renderGM(body){
     </div>
     <div class="form-row">
       <div><label>${tt('每輪難度倍率','Difficulty mult / cycle')}</label><input type="number" id="gm-boss-diff" value="${BOSS_DIFFICULTY_MULT}" min="1" step="0.05" style="width:90px;" /></div>
-      <div><label>${tt('每日攻擊次數上限（0=不限制）','Daily attack limit (0 = unlimited)')}</label><input type="number" id="gm-boss-daily-limit" value="${BOSS_DAILY_ATTACK_LIMIT}" min="0" style="width:100px;" /></div>
     </div>
     <div class="farm-upgrade-title" style="margin-top:10px;">${tt('星象爆發設定','Astral Burst Settings')}</div>
     <div class="form-row">
@@ -9822,8 +9910,7 @@ async function renderGM(body){
     const accCritPct = parseFloat(document.getElementById('gm-boss-accessory-crit-pct').value);
     const accCritDmgPct = parseFloat(document.getElementById('gm-boss-accessory-critdmg-pct').value);
     const rewardMult = parseFloat(document.getElementById('gm-boss-reward-mult').value);
-    const dailyLimit = parseFloat(document.getElementById('gm-boss-daily-limit').value);
-    const nums = [...hp, diff, cost, dmg, contribRatePct, megaCost, megaDmg, megaWeaponCost, megaAccessoryMax, baseCoins, bonusCoins, weaponPct, accCritPct, accCritDmgPct, rewardMult, dailyLimit];
+    const nums = [...hp, diff, cost, dmg, contribRatePct, megaCost, megaDmg, megaWeaponCost, megaAccessoryMax, baseCoins, bonusCoins, weaponPct, accCritPct, accCritDmgPct, rewardMult];
     if(nums.some(v=>isNaN(v)||v<0) || diff <= 0 || rewardMult <= 0){
       showToast(tt('請輸入有效的非負數字','Please enter a valid non-negative number')); return;
     }
@@ -9842,7 +9929,6 @@ async function renderGM(body){
     BOSS_WEAPON_DMG_BONUS = weaponPct / 100;
     BOSS_ACCESSORY_CRIT_PER = accCritPct / 100;
     BOSS_ACCESSORY_CRIT_DMG_BONUS = accCritDmgPct / 100;
-    BOSS_DAILY_ATTACK_LIMIT = Math.floor(dailyLimit);
     await saveBossConfig();
     showToast(tt('Boss 設定已更新','Boss settings updated'));
     renderTab();
@@ -9864,7 +9950,6 @@ async function renderGM(body){
     BOSS_WEAPON_DMG_BONUS = DEFAULT_BOSS_WEAPON_DMG_BONUS;
     BOSS_ACCESSORY_CRIT_PER = DEFAULT_BOSS_ACCESSORY_CRIT_PER;
     BOSS_ACCESSORY_CRIT_DMG_BONUS = DEFAULT_BOSS_ACCESSORY_CRIT_DMG_BONUS;
-    BOSS_DAILY_ATTACK_LIMIT = DEFAULT_BOSS_DAILY_ATTACK_LIMIT;
     await saveBossConfig();
     showToast(tt('已還原為預設 Boss 設定','Reverted to default boss settings'));
     renderTab();
