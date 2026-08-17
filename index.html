@@ -553,6 +553,11 @@
     0%,100%{ box-shadow:0 0 6px 2px rgba(79,178,134,0.55), 0 2px 10px rgba(0,0,0,0.45); }
     50%{ box-shadow:0 0 20px 8px rgba(79,178,134,0.95), 0 2px 10px rgba(0,0,0,0.45); }
   }
+  .badge-glow-purple{border-color:#a05bf0 !important;animation: badge-purple-glow 1.8s ease-in-out infinite;}
+  @keyframes badge-purple-glow{
+    0%,100%{ box-shadow:0 0 6px 2px rgba(160,91,240,0.55), 0 2px 10px rgba(0,0,0,0.45); }
+    50%{ box-shadow:0 0 20px 8px rgba(160,91,240,0.95), 0 2px 10px rgba(0,0,0,0.45); }
+  }
   .badge-glow-rainbow{animation: badge-rainbow-glow 2.4s linear infinite;}
   @keyframes badge-rainbow-glow{
     0%{ border-color:#ff5b5b; box-shadow:0 0 8px 3px rgba(255,91,91,0.75), 0 2px 10px rgba(0,0,0,0.45); }
@@ -1885,20 +1890,6 @@ const DEFAULT_BOSS_CONTRIB_RATE = 0.1; // 貢獻點 = 實際造成傷害 × 此�
 const DEFAULT_BOSS_BASE_REWARD = {coins: 200};
 const DEFAULT_BOSS_BONUS_POOL = {coins: 5000};
 const DEFAULT_BOSS_REWARD_MULT = 1.15; // 獎勵倍率：每輪(cycle)疊加一次，可與血量難度倍率設不同數值
-// 職業武器／飾品在星象爆發時的加成（階段四：Boss 頁面武器/飾品使用）
-const DEFAULT_BOSS_WEAPON_DMG_BONUS = 0.10;      // 使用武器：傷害 +10%
-const DEFAULT_BOSS_ACCESSORY_CRIT_PER = 0.05;    // 每消耗 1 個飾品：暴擊率 +5%
-const DEFAULT_BOSS_ACCESSORY_CRIT_DMG_BONUS = 0.20; // 觸發暴擊：傷害 +20%（不隨飾品數疊加倍率）
-const BOSS_ACCESSORY_MAX = 2;                    // 飾品最多可疊用 2 個（一般星象爆發）
-const DEFAULT_BOSS_MEGA_COIN_COST = 50;          // 星象超爆發：消耗金幣數（此玩法尚未接上任何按鈕，屬保留設定）
-const DEFAULT_BOSS_MEGA_BURST_DAMAGE = 6000;     // 星象超爆發：固定傷害
-const DEFAULT_BOSS_MEGA_WEAPON_COST = 10;        // 星象超爆發：使用武器需消耗的武器數量
-const DEFAULT_BOSS_MEGA_ACCESSORY_MAX = 10;      // 星象超爆發：飾品最多可疊用數量
-
-let BOSS_MEGA_COIN_COST = DEFAULT_BOSS_MEGA_COIN_COST;
-let BOSS_MEGA_BURST_DAMAGE = DEFAULT_BOSS_MEGA_BURST_DAMAGE;
-let BOSS_MEGA_WEAPON_COST = DEFAULT_BOSS_MEGA_WEAPON_COST;
-let BOSS_MEGA_ACCESSORY_MAX = DEFAULT_BOSS_MEGA_ACCESSORY_MAX;
 
 let BOSS_STAGE_HP = [...DEFAULT_BOSS_STAGE_HP];
 let BOSS_DIFFICULTY_MULT = DEFAULT_BOSS_DIFFICULTY_MULT;
@@ -1908,9 +1899,6 @@ let BOSS_CONTRIB_RATE = DEFAULT_BOSS_CONTRIB_RATE;
 let BOSS_BASE_REWARD = {...DEFAULT_BOSS_BASE_REWARD};
 let BOSS_BONUS_POOL = {...DEFAULT_BOSS_BONUS_POOL};
 let BOSS_REWARD_MULT = DEFAULT_BOSS_REWARD_MULT;
-let BOSS_WEAPON_DMG_BONUS = DEFAULT_BOSS_WEAPON_DMG_BONUS;
-let BOSS_ACCESSORY_CRIT_PER = DEFAULT_BOSS_ACCESSORY_CRIT_PER;
-let BOSS_ACCESSORY_CRIT_DMG_BONUS = DEFAULT_BOSS_ACCESSORY_CRIT_DMG_BONUS;
 
 async function loadBossConfig(){
   try{
@@ -1930,13 +1918,6 @@ async function loadBossConfig(){
       if(s.baseReward) BOSS_BASE_REWARD = s.baseReward;
       if(s.bonusPool) BOSS_BONUS_POOL = s.bonusPool;
       if(typeof s.rewardMult === 'number' && s.rewardMult > 0) BOSS_REWARD_MULT = s.rewardMult;
-      if(typeof s.weaponDmgBonus === 'number' && s.weaponDmgBonus >= 0) BOSS_WEAPON_DMG_BONUS = s.weaponDmgBonus;
-      if(typeof s.accessoryCritPer === 'number' && s.accessoryCritPer >= 0) BOSS_ACCESSORY_CRIT_PER = s.accessoryCritPer;
-      if(typeof s.accessoryCritDmgBonus === 'number' && s.accessoryCritDmgBonus >= 0) BOSS_ACCESSORY_CRIT_DMG_BONUS = s.accessoryCritDmgBonus;
-      if(typeof s.megaCoinCost === 'number' && s.megaCoinCost >= 0) BOSS_MEGA_COIN_COST = s.megaCoinCost;
-      if(typeof s.megaBurstDamage === 'number' && s.megaBurstDamage >= 0) BOSS_MEGA_BURST_DAMAGE = s.megaBurstDamage;
-      if(typeof s.megaWeaponCost === 'number' && s.megaWeaponCost >= 0) BOSS_MEGA_WEAPON_COST = s.megaWeaponCost;
-      if(typeof s.megaAccessoryMax === 'number' && s.megaAccessoryMax >= 0) BOSS_MEGA_ACCESSORY_MAX = s.megaAccessoryMax;
     }
   }catch(e){ /* keep defaults */ }
 }
@@ -1945,20 +1926,17 @@ async function saveBossConfig(){
     stageHp: BOSS_STAGE_HP, difficultyMult: BOSS_DIFFICULTY_MULT, coinCost: BOSS_COIN_COST,
     burstDamage: BOSS_BURST_DAMAGE, contribRate: BOSS_CONTRIB_RATE,
     baseReward: BOSS_BASE_REWARD, bonusPool: BOSS_BONUS_POOL, rewardMult: BOSS_REWARD_MULT,
-    weaponDmgBonus: BOSS_WEAPON_DMG_BONUS, accessoryCritPer: BOSS_ACCESSORY_CRIT_PER, accessoryCritDmgBonus: BOSS_ACCESSORY_CRIT_DMG_BONUS,
-    megaCoinCost: BOSS_MEGA_COIN_COST, megaBurstDamage: BOSS_MEGA_BURST_DAMAGE,
-    megaWeaponCost: BOSS_MEGA_WEAPON_COST, megaAccessoryMax: BOSS_MEGA_ACCESSORY_MAX,
   }));
 }
 // ---------- Boss 戰 Roguelike 玩法擴充 ----------
-// 連擊加成的資料骨架已備妥（BOSS_COMBO_STREAK_*、p.boss.comboStreak），但尚未接上
-// 攻擊流程，之後階段再串。小怪已經接上實際攻擊流程，見 resolveBossAttack /
-// performBossAttack：攻擊時若當前有存活小怪，傷害優先打在小怪身上，打不死則
-// 溢出傷害才繼續打 Boss；沒有小怪時每次攻擊有機率刷出新的一隻。
+// 連擊加成、小怪都已接上實際攻擊流程，見 resolveBossAttack / performBossAttack：
+// 攻擊時若當前有存活小怪，傷害優先打在小怪身上，打不死則溢出傷害才繼續打
+// Boss；沒有小怪時每次攻擊有機率刷出新的一隻。連擊加成見下方說明。
 
 // 🔥 連擊加成：骰子攻擊連續開出對子/豹子（comboTier 非 null）即可累積連擊數，
 // 一旦某次攻擊沒有觸發組合（comboTier===null）就整個歸零重來；連擊數每級提供
-// 額外傷害倍率加成，封頂於 BOSS_COMBO_STREAK_CAP，避免無限疊加失控。
+// 額外傷害倍率加成，封頂於 BOSS_COMBO_STREAK_CAP，避免無限疊加失控。傷害套用在
+// rollDiceAttack（用攻擊前的 streak 值），累加/歸零在 resolveBossAttack。
 const DEFAULT_BOSS_COMBO_STREAK_BONUS_PER_HIT = 0.05; // 每次連擊（連續組合命中）+5% 傷害
 const DEFAULT_BOSS_COMBO_STREAK_CAP = 0.50;            // 連擊加成封頂 +50%
 let BOSS_COMBO_STREAK_BONUS_PER_HIT = DEFAULT_BOSS_COMBO_STREAK_BONUS_PER_HIT;
@@ -1969,15 +1947,21 @@ let BOSS_COMBO_STREAK_CAP = DEFAULT_BOSS_COMBO_STREAK_CAP;
 // 後立刻發放金幣獎勵，沒有小怪存活時每次攻擊才有機會刷出新的一隻。
 // 💠 essenceChance/essenceMin/essenceMax：擊殺時額外掉落骰子精華的機率與數量區間（獨立於金幣，可能同時掉）
 const BOSS_MINION_TYPES = [
-  {id:'imp',   icon:'👹', labelZh:'骰靈小惡魔', labelEn:'Dice Imp',        hp:150, rewardCoinsMin:10, rewardCoinsMax:25, weight:5, essenceChance:0.6, essenceMin:1, essenceMax:3},
-  {id:'wisp',  icon:'👻', labelZh:'星軌幽光',   labelEn:'Star-Trail Wisp', hp:80,  rewardCoinsMin:5,  rewardCoinsMax:15, weight:4, essenceChance:0.4, essenceMin:1, essenceMax:2},
-  {id:'golem', icon:'🗿', labelZh:'碎石護衛',   labelEn:'Stone Guardian',  hp:400, rewardCoinsMin:30, rewardCoinsMax:60, weight:1, essenceChance:0.9, essenceMin:5, essenceMax:10},
+  {id:'imp',   icon:'👹', labelZh:'骰靈小惡魔', labelEn:'Dice Imp',        img:'assets/boss_minion_imp.png',   hp:800,  rewardCoinsMin:10, rewardCoinsMax:25, weight:5, essenceChance:0.6, essenceMin:1, essenceMax:3},
+  {id:'wisp',  icon:'👻', labelZh:'星軌幽光',   labelEn:'Star-Trail Wisp', img:'assets/boss_minion_wisp.png',  hp:600,  rewardCoinsMin:5,  rewardCoinsMax:15, weight:4, essenceChance:0.4, essenceMin:1, essenceMax:2},
+  {id:'golem', icon:'🗿', labelZh:'碎石護衛',   labelEn:'Stone Guardian',  img:'assets/boss_minion_golem.png', hp:1500, rewardCoinsMin:30, rewardCoinsMax:60, weight:1, essenceChance:0.9, essenceMin:5, essenceMax:10},
 ];
 const DEFAULT_BOSS_MINION_SPAWN_CHANCE = 0.15; // 每次攻擊、且目前沒有存活小怪時，有此機率額外刷出一隻
 let BOSS_MINION_SPAWN_CHANCE = DEFAULT_BOSS_MINION_SPAWN_CHANCE;
+// 🩸 小怪血量隨輪數(cycle)溫和成長：指數沿用 BOSS_DIFFICULTY_MULT，但只吃
+// BOSS_MINION_HP_SCALE_RATE 倍的輪數差距，預設 0.5＝成長速度只有 Boss 血量的一半，
+// 避免後期小怪變成打不死的肉盾，同時讓它不再是後期「一擊必殺」的存在感真空。
+const DEFAULT_BOSS_MINION_HP_SCALE_RATE = 0.5;
+let BOSS_MINION_HP_SCALE_RATE = DEFAULT_BOSS_MINION_HP_SCALE_RATE;
 
-// 依 BOSS_MINION_TYPES 的 weight 權重抽一種小怪類型，回傳存進 boss 存檔用的小怪物件。
-function spawnBossMinion(){
+// 依 BOSS_MINION_TYPES 的 weight 權重抽一種小怪類型，血量依目前輪數(cycle)套用
+// 成長曲線後回傳，存進 boss 存檔用的小怪物件。
+function spawnBossMinion(cycle){
   const totalWeight = BOSS_MINION_TYPES.reduce((sum, m) => sum + m.weight, 0);
   let roll = Math.random() * totalWeight;
   let picked = BOSS_MINION_TYPES[BOSS_MINION_TYPES.length - 1];
@@ -1985,7 +1969,9 @@ function spawnBossMinion(){
     if(roll < m.weight){ picked = m; break; }
     roll -= m.weight;
   }
-  return {typeId: picked.id, hp: picked.hp, maxHp: picked.hp};
+  const cycleGap = Math.max(0, (cycle||1) - 1);
+  const scaledHp = Math.round(picked.hp * Math.pow(BOSS_DIFFICULTY_MULT, cycleGap * BOSS_MINION_HP_SCALE_RATE));
+  return {typeId: picked.id, hp: scaledHp, maxHp: scaledHp};
 }
 
 // ✨ 隨機事件：每次 Boss 進入新的一階（stage）或新一輪（cycle）時，有機率觸發
@@ -1998,22 +1984,34 @@ function spawnBossMinion(){
 const BOSS_EVENT_TYPES = [
   {id:'blessing', icon:'🙏', labelZh:'星辰祝福', labelEn:'Starlight Blessing',
     descZh:'下一次攻擊必定暴擊，且傷害額外 +30%！', descEn:'Your next attack is a guaranteed critical hit with +30% bonus damage!',
-    kind:'buff', weight:3, hits:1, value:0.30},
+    kind:'buff', weight:3, hits:1, value:0.30, curveDir:1},
   {id:'storm', icon:'🌩️', labelZh:'星軌風暴', labelEn:'Star-Trail Storm',
     descZh:'接下來 3 次攻擊傷害 +25%！', descEn:'Your next 3 attacks deal +25% bonus damage!',
-    kind:'buff', weight:2, hits:3, value:0.25},
+    kind:'buff', weight:2, hits:3, value:0.25, curveDir:1},
   {id:'treasure', icon:'🎁', labelZh:'星軌寶箱', labelEn:'Star-Trail Chest',
     descZh:'當場獲得額外金幣！', descEn:'Instantly gain bonus coins!',
     kind:'instant', weight:3},
   {id:'curse', icon:'☠️', labelZh:'蛇神詛咒', labelEn:"Serpent's Curse",
     descZh:'此階段血量 +20%，換取立即的金幣補償。', descEn:'This stage gains +20% HP, in exchange for an instant coin compensation.',
-    kind:'instant', weight:2, value:0.20},
+    kind:'instant', weight:2, value:0.20, curveDir:-1},
   {id:'fog', icon:'🌫️', labelZh:'迷霧繚繞', labelEn:'Veiling Fog',
     descZh:'下一次攻擊傷害 -30%……小心！', descEn:'Your next attack deals -30% damage... watch out!',
-    kind:'debuff', weight:1, hits:1, value:0.30},
+    kind:'debuff', weight:1, hits:1, value:0.30, curveDir:-1},
 ];
 const DEFAULT_BOSS_EVENT_TRIGGER_CHANCE = 0.35; // 每次換階/換輪時，觸發「祝福/風暴/詛咒/迷霧」事件卡的機率（不含寶箱，寶箱獨立判定見下）
 let BOSS_EVENT_TRIGGER_CHANCE = DEFAULT_BOSS_EVENT_TRIGGER_CHANCE;
+// 📈 事件卡難度曲線：Boss 血量每輪(cycle)複利成長（BOSS_DIFFICULTY_MULT），但玩家
+// 傷害輸出沒有對應的複利成長，導致固定百分比的 debuff（迷霧 -30%、詛咒 +20%血量）
+// 换算成「因此多打的絕對次數」在後期輪次會越滾越痛。這裡讓 buff（祝福/風暴）權重
+// 隨輪數遞增、debuff/詛咒（curveDir:-1）權重隨輪數遞減，兩邊都夾在
+// [BOSS_EVENT_CURVE_MIN_MULT, BOSS_EVENT_CURVE_MAX_MULT] 之間，不會完全歸零（維持風險）
+// 也不會無限膨脹（維持刺激感），實際套用見 pickBossEvent。
+const DEFAULT_BOSS_EVENT_CURVE_RATE = 0.15;     // 每輪偏移權重的比例
+const DEFAULT_BOSS_EVENT_CURVE_MIN_MULT = 0.3;  // 權重偏移下限
+const DEFAULT_BOSS_EVENT_CURVE_MAX_MULT = 2.0;  // 權重偏移上限
+let BOSS_EVENT_CURVE_RATE = DEFAULT_BOSS_EVENT_CURVE_RATE;
+let BOSS_EVENT_CURVE_MIN_MULT = DEFAULT_BOSS_EVENT_CURVE_MIN_MULT;
+let BOSS_EVENT_CURVE_MAX_MULT = DEFAULT_BOSS_EVENT_CURVE_MAX_MULT;
 const DEFAULT_BOSS_TREASURE_COINS = {min:50, max:120};
 let BOSS_TREASURE_COINS = {...DEFAULT_BOSS_TREASURE_COINS};
 // 💠 骰子精華獎勵（階段A）：每破一階固定發放，全破三階再加一筆通關加碼，兩者都乘上
@@ -2035,16 +2033,22 @@ let BOSS_CHEST_MATERIAL_QTY = {...DEFAULT_BOSS_CHEST_MATERIAL_QTY};
 const DEFAULT_BOSS_CHEST_TRIGGER_CHANCE = 0.30;
 let BOSS_CHEST_TRIGGER_CHANCE = DEFAULT_BOSS_CHEST_TRIGGER_CHANCE;
 
-// 依 BOSS_EVENT_TYPES 的 weight 權重抽一張事件卡（寶箱已獨立判定，這裡排除在外，
-// 只在祝福/風暴/詛咒/迷霧之間抽）。
-function pickBossEvent(){
+// 依 BOSS_EVENT_TYPES 的 weight 權重（套用難度曲線後）抽一張事件卡（寶箱已獨立
+// 判定，這裡排除在外，只在祝福/風暴/詛咒/迷霧之間抽）。
+function pickBossEvent(cycle){
   const pool = BOSS_EVENT_TYPES.filter(e => e.id !== 'treasure');
-  const totalWeight = pool.reduce((sum, e) => sum + e.weight, 0);
+  const cycleGap = Math.max(0, (cycle||1) - 1);
+  const weighted = pool.map(e => {
+    const dir = e.curveDir || 0;
+    const curveMult = Math.max(BOSS_EVENT_CURVE_MIN_MULT, Math.min(BOSS_EVENT_CURVE_MAX_MULT, 1 + dir * BOSS_EVENT_CURVE_RATE * cycleGap));
+    return {event: e, adjustedWeight: e.weight * curveMult};
+  });
+  const totalWeight = weighted.reduce((sum, w) => sum + w.adjustedWeight, 0);
   let roll = Math.random() * totalWeight;
-  let picked = pool[pool.length - 1];
-  for(const e of pool){
-    if(roll < e.weight){ picked = e; break; }
-    roll -= e.weight;
+  let picked = weighted[weighted.length - 1].event;
+  for(const w of weighted){
+    if(roll < w.adjustedWeight){ picked = w.event; break; }
+    roll -= w.adjustedWeight;
   }
   return picked;
 }
@@ -2063,7 +2067,7 @@ function maybeTriggerBossEvent(newBoss){
     return {id: 'treasure', kind: treasureMeta ? treasureMeta.kind : 'instant'};
   }
   if(Math.random() >= BOSS_EVENT_TRIGGER_CHANCE) return null;
-  const ev = pickBossEvent();
+  const ev = pickBossEvent(newBoss.cycle);
   if(ev.kind === 'buff' || ev.kind === 'debuff'){
     newBoss.activeEvent = {id: ev.id, hitsLeft: ev.hits, value: ev.value || 0};
     return {id: ev.id, kind: ev.kind};
@@ -2086,7 +2090,11 @@ async function loadBossRoguelikeConfig(){
       if(typeof s.comboStreakBonusPerHit === 'number' && s.comboStreakBonusPerHit >= 0) BOSS_COMBO_STREAK_BONUS_PER_HIT = s.comboStreakBonusPerHit;
       if(typeof s.comboStreakCap === 'number' && s.comboStreakCap >= 0) BOSS_COMBO_STREAK_CAP = s.comboStreakCap;
       if(typeof s.minionSpawnChance === 'number' && s.minionSpawnChance >= 0 && s.minionSpawnChance <= 1) BOSS_MINION_SPAWN_CHANCE = s.minionSpawnChance;
+      if(typeof s.minionHpScaleRate === 'number' && s.minionHpScaleRate >= 0) BOSS_MINION_HP_SCALE_RATE = s.minionHpScaleRate;
       if(typeof s.eventTriggerChance === 'number' && s.eventTriggerChance >= 0 && s.eventTriggerChance <= 1) BOSS_EVENT_TRIGGER_CHANCE = s.eventTriggerChance;
+      if(typeof s.eventCurveRate === 'number' && s.eventCurveRate >= 0) BOSS_EVENT_CURVE_RATE = s.eventCurveRate;
+      if(typeof s.eventCurveMinMult === 'number' && s.eventCurveMinMult >= 0) BOSS_EVENT_CURVE_MIN_MULT = s.eventCurveMinMult;
+      if(typeof s.eventCurveMaxMult === 'number' && s.eventCurveMaxMult >= 0) BOSS_EVENT_CURVE_MAX_MULT = s.eventCurveMaxMult;
       if(s.treasureCoins) BOSS_TREASURE_COINS = s.treasureCoins;
       if(typeof s.stageEssence === 'number' && s.stageEssence >= 0) BOSS_STAGE_ESSENCE = s.stageEssence;
       if(typeof s.clearEssenceBonus === 'number' && s.clearEssenceBonus >= 0) BOSS_CLEAR_ESSENCE_BONUS = s.clearEssenceBonus;
@@ -2101,7 +2109,11 @@ async function saveBossRoguelikeConfig(){
     comboStreakBonusPerHit: BOSS_COMBO_STREAK_BONUS_PER_HIT,
     comboStreakCap: BOSS_COMBO_STREAK_CAP,
     minionSpawnChance: BOSS_MINION_SPAWN_CHANCE,
+    minionHpScaleRate: BOSS_MINION_HP_SCALE_RATE,
     eventTriggerChance: BOSS_EVENT_TRIGGER_CHANCE,
+    eventCurveRate: BOSS_EVENT_CURVE_RATE,
+    eventCurveMinMult: BOSS_EVENT_CURVE_MIN_MULT,
+    eventCurveMaxMult: BOSS_EVENT_CURVE_MAX_MULT,
     treasureCoins: BOSS_TREASURE_COINS,
     stageEssence: BOSS_STAGE_ESSENCE,
     clearEssenceBonus: BOSS_CLEAR_ESSENCE_BONUS,
@@ -2146,16 +2158,19 @@ function bossTodayStr(){
   const day = String(d.getDate()).padStart(2,'0');
   return `${y}-${m}-${day}`;
 }
-function bossFreshState(){
+// 方案A：擊敗才升輪，沒擊敗就重打同一輪。cycle 預設 1（第一次挑戰／換季），
+// 呼叫端（ensureBossState）會依「昨天是否擊敗」決定要傳入 cycle+1 還是原本的 cycle。
+function bossFreshState(cycle){
+  cycle = cycle || 1;
   return {
     seasonId: CURRENT_SEASON_ID,
     resetDate: bossTodayStr(),
-    cycle: 1,
+    cycle,
     stage: 1,
-    hp: bossStageMaxHp(1,1),
-    maxHp: bossStageMaxHp(1,1),
+    hp: bossStageMaxHp(1,cycle),
+    maxHp: bossStageMaxHp(1,cycle),
     cycleDamage: 0, // 本輪（尚未破台的這個 cycle）累積造成的傷害，僅供顯示用
-    comboStreak: 0, // 🔥 資料骨架：連續組合命中次數，每日隨進度重置一起歸零（尚未接上攻擊流程）
+    comboStreak: 0, // 🔥 連續組合命中次數（對子/豹子），沒接住就歸零；已接上 rollDiceAttack/resolveBossAttack
     minion: null,   // 👹 目前存活的小怪：{typeId, hp, maxHp}，已接上 resolveBossAttack 的攻擊流程
     activeEvent: null, // ✨ 目前生效中的隨機事件：{id, hitsLeft, value}，換階/換輪時可能重抽（見 maybeTriggerBossEvent）
     pendingChest: false, // 🎁 是否有待開啟的寶箱（玩家需先 3 選 1 才能繼續攻擊，見 resolveBossChestChoice）
@@ -2213,13 +2228,18 @@ async function savePlayerBossStateCAS(nickname, prevUpdatedAt, newState){
 // 資料庫已有一筆但需要覆蓋（換季／跨天／損毀資料）時用 CAS 覆蓋，沒搶到
 // 就重讀最新狀態再試；資料庫完全沒有這筆（第一次挑戰）才直接寫入，沒有
 // 「蓋掉別人進度」的風險（本來就是自己的 key）。
+// 【方案A】同一賽季內的跨天重置才需要延續昨天的輪數：昨天擊敗了（clearedToday）
+// 就 cycle+1（更難），沒擊敗就維持原本 cycle 重打一次；換季或第一次挑戰則從
+// cycle 1 開始（s 不存在，或 seasonId 對不上，都不算「同一賽季的跨天」）。
 async function ensureBossState(nickname, attempt){
   attempt = attempt || 0;
   if(attempt >= 8) throw new Error('ensureBossState contention exceeded retries');
   const {state: s, raw, updatedAt} = await loadPlayerBossStateRaw(nickname);
   const needsReset = !s || s.seasonId !== CURRENT_SEASON_ID || s.resetDate !== bossTodayStr();
   if(needsReset){
-    const fresh = bossFreshState();
+    const sameSeasonRollover = s && s.seasonId === CURRENT_SEASON_ID;
+    const nextCycle = sameSeasonRollover ? (s.clearedToday ? (s.cycle||1) + 1 : (s.cycle||1)) : 1;
+    const fresh = bossFreshState(nextCycle);
     if(raw){
       const applied = await savePlayerBossStateCAS(nickname, updatedAt, fresh);
       if(applied) return fresh;
@@ -2231,11 +2251,11 @@ async function ensureBossState(nickname, attempt){
   return s;
 }
 // 階段四：攻擊邏輯改寫 —— 用玩家裝備的 3 顆骰子取代原本的武器/飾品加成。
-// 武器/飾品加成（BOSS_WEAPON_DMG_BONUS 等）不再影響 Boss 戰，改為只在遠征生效；
+// 職業武器/飾品加成已不影響 Boss 戰，改為只在遠征生效（GM 後台對應設定已移除）；
 // 這裡刻意不去讀 professionItems，Boss 戰的傷害完全由骰子決定。
 // 注意：這裡呼叫的骰子相關 function（ensureDiceInventory / DICE_FACE_MULT 等）
 // 在檔案稍後才定義，但因為都是 function 宣告會被提升（hoisted），提前呼叫沒有問題。
-function rollDiceAttack(p, activeEvent){
+function rollDiceAttack(p, activeEvent, comboStreak){
   ensureDiceInventory(p);
   const equippedIds = p.diceSlots.filter(id => id && p.dice[id]);
   const rolls = equippedIds.map(id => {
@@ -2270,6 +2290,12 @@ function rollDiceAttack(p, activeEvent){
   // 就有機會觸發，不再要求一定要裝滿 3 顆才算數。萬能面（wild）視為與任何數字相同。
   const combo = computeNumberCombo(rolls);
   if(combo.mult > 1) totalDamage *= (combo.mult + comboBoostBonus);
+  // 🔥 連擊加成：依「這次攻擊之前」已經累積的連續組合命中次數（comboStreak）
+  // 疊加額外傷害倍率，每級 +BOSS_COMBO_STREAK_BONUS_PER_HIT，封頂於 BOSS_COMBO_STREAK_CAP。
+  // 這次攻擊本身是否觸發組合（進而讓下次攻擊的 streak +1）交給 resolveBossAttack 更新，
+  // 這裡只負責讀取傳入的既有 streak 值來套用傷害加成，不做累加。
+  const comboStreakBonus = Math.min((comboStreak||0) * BOSS_COMBO_STREAK_BONUS_PER_HIT, BOSS_COMBO_STREAK_CAP);
+  if(comboStreakBonus > 0) totalDamage *= (1 + comboStreakBonus);
   // 金幣返還：多個效果面疊加時直接加總機率，但設上限避免疊到接近「打怪不用錢」。
   coinRefundChance = Math.min(coinRefundChance, 0.8);
   const coinRefunded = coinRefundChance > 0 && Math.random() < coinRefundChance;
@@ -2295,6 +2321,7 @@ function rollDiceAttack(p, activeEvent){
     rolls, atkBonus, critRateBonus, critDmgBonus, isCrit,
     flatDmgBonus, comboBoostBonus, contribBonusPct, coinRefunded,
     comboTier: combo.tier, sameNumber: combo.tier === 'triple', // sameNumber 保留給舊程式相容，等同「豹子」
+    comboStreakUsed: comboStreak||0, comboStreakBonus,
     eventApplied,
   };
 }
@@ -2327,7 +2354,7 @@ function computeNumberCombo(rolls){
 // （溢出）傷害才繼續打 Boss。小怪被打死後，沒有存活小怪時才有機會刷出新的
 // 一隻（不會同時存在 2 隻）。實際的金幣獎勵留給呼叫端用 minionResult
 // 另外走 updatePlayerCAS 發放，這裡只負責 boss/小怪血量本身的讀-改-寫。
-async function resolveBossAttack(nickname, damage){
+async function resolveBossAttack(nickname, damage, comboTier){
   for(let attempt = 0; attempt < 8; attempt++){
     const {state: boss, raw, updatedAt} = await loadPlayerBossStateRaw(nickname);
     if(!boss || !raw){
@@ -2342,6 +2369,17 @@ async function resolveBossAttack(nickname, damage){
       const ae = {...newBoss.activeEvent, hitsLeft: newBoss.activeEvent.hitsLeft - 1};
       newBoss.activeEvent = ae.hitsLeft > 0 ? ae : null;
     }
+    // 🔥 連擊：這次攻擊若開出對子/豹子（comboTier 非 null）就累加連擊數，
+    // 沒開出則整個歸零重來——傷害本身已經在呼叫端 rollDiceAttack 用「攻擊前」
+    // 的 streak 值算好套用了，這裡只負責更新給「下一次攻擊」使用的 streak。
+    // 封頂存值：超過封頂加成所需的次數後再累加也沒有實際效果，避免顯示一個
+    // 意義不大的巨大數字。
+    const comboStreakCapCount = BOSS_COMBO_STREAK_BONUS_PER_HIT > 0
+      ? Math.ceil(BOSS_COMBO_STREAK_CAP / BOSS_COMBO_STREAK_BONUS_PER_HIT)
+      : Infinity;
+    newBoss.comboStreak = (comboTier === 'pair' || comboTier === 'triple')
+      ? Math.min((boss.comboStreak||0) + 1, comboStreakCapCount)
+      : 0;
     let bossDamage = damage;
     let minionResult = null; // 給呼叫端顯示訊息/發獎用：{typeId, killed, hp, maxHp}
     if(newBoss.minion){
@@ -2359,7 +2397,7 @@ async function resolveBossAttack(nickname, damage){
     }
     let minionSpawned = null;
     if(!newBoss.minion && Math.random() < BOSS_MINION_SPAWN_CHANCE){
-      minionSpawned = spawnBossMinion();
+      minionSpawned = spawnBossMinion(newBoss.cycle);
       newBoss.minion = minionSpawned;
     }
     newBoss.hp = Math.max(0, boss.hp - bossDamage);
@@ -2470,6 +2508,22 @@ async function clearBossPendingChest(nickname){
 }
 // choice: 'coins' | 'essence' | 'material'。材料寶箱掉落玩家「目前生效中職業」對應的材料，
 // 若玩家還沒選職業，退而求其次隨機給一種（藥草/礦石/木料），避免發一個完全用不到的空獎勵。
+// 🎁 寶箱盲選：3 個寶箱位置對應的實際獎勵類型是隨機洗牌過的，玩家看不到內容，
+// 只能憑感覺選一個。用 cycle+stage 當 key 快取洗牌結果，確保同一個寶箱在畫面
+// 多次重繪（例如輪詢）之間位置不會跳動，只有進到新的階段/輪次才會重新洗牌。
+let bossChestShuffleCache = {key: null, order: null};
+function getBossChestShuffleOrder(boss){
+  const key = `${boss.cycle}-${boss.stage}`;
+  if(bossChestShuffleCache.key !== key){
+    const order = ['coins','essence','material'];
+    for(let i=order.length-1;i>0;i--){
+      const j = Math.floor(Math.random()*(i+1));
+      [order[i], order[j]] = [order[j], order[i]];
+    }
+    bossChestShuffleCache = {key, order};
+  }
+  return bossChestShuffleCache.order;
+}
 async function resolveBossChestChoice(nickname, choice){
   const clearedBoss = await clearBossPendingChest(nickname);
   if(!clearedBoss) return null; // 玩家不存在（理論上不會發生，保底）
@@ -2593,7 +2647,7 @@ async function performBossAttack(){
     showToast(tt('今日已擊敗 Boss，請明天再來挑戰新一輪！', "You've already defeated today's Boss - come back tomorrow for a new cycle!"));
     return;
   }
-  const burst = rollDiceAttack(p, currentBoss.activeEvent);
+  const burst = rollDiceAttack(p, currentBoss.activeEvent, currentBoss.comboStreak||0);
   await playDiceRollAnimation(equippedIds.map(id => p.dice[id]), burst);
 
   if(!burst.coinRefunded){
@@ -2607,7 +2661,7 @@ async function performBossAttack(){
 
   let result;
   try{
-    result = await resolveBossAttack(p.nickname, burst.damage);
+    result = await resolveBossAttack(p.nickname, burst.damage, burst.comboTier);
   }catch(e){
     showToast(tt('Boss 狀態忙碌中，請稍後再試','Boss state is busy, try again shortly'));
     renderTab();
@@ -2646,7 +2700,7 @@ async function performBossAttack(){
     defeatMsg = tt(`⚔️ 「${BOSS_STAGE_META[newBoss.stage-2].label}」被擊破！Boss 進入「${BOSS_STAGE_META[newBoss.stage-1].label}」！${stageEssenceReward?`　💠精華 +${stageEssenceReward.essence}`:''}`, `⚔️ "${BOSS_STAGE_META[newBoss.stage-2].labelEn}" defeated! The Boss enters "${BOSS_STAGE_META[newBoss.stage-1].labelEn}"!${stageEssenceReward?`  💠Essence +${stageEssenceReward.essence}`:''}`);
   }
 
-  state.bossLastAttack = {damage: burst.damage, contrib: contribGain, rolls: burst.rolls, comboTier: burst.comboTier, sameNumber: burst.sameNumber, isCrit: burst.isCrit, eventApplied: burst.eventApplied};
+  state.bossLastAttack = {damage: burst.damage, contrib: contribGain, rolls: burst.rolls, comboTier: burst.comboTier, sameNumber: burst.sameNumber, isCrit: burst.isCrit, eventApplied: burst.eventApplied, comboStreakUsed: burst.comboStreakUsed, comboStreakBonus: burst.comboStreakBonus, comboStreakAfter: newBoss.comboStreak};
   checkAchievementUnlocks(state.player);
   renderTab();
   updateHeaderCoins();
@@ -2692,6 +2746,7 @@ async function performBossAttack(){
     const bonusTags = [];
     if(burst.comboTier === 'triple') bonusTags.push(tt('🎯豹子×2','🎯Triple×2'));
     else if(burst.comboTier === 'pair') bonusTags.push(tt(`✌️對子×${DICE_COMBO_MULT.pair}`, `✌️Pair×${DICE_COMBO_MULT.pair}`));
+    if(burst.comboStreakBonus > 0) bonusTags.push(tt(`🔥連擊+${Math.round(burst.comboStreakBonus*100)}%`, `🔥Streak+${Math.round(burst.comboStreakBonus*100)}%`));
     if(burst.isCrit) bonusTags.push(tt('💥暴擊','💥Crit'));
     if(burst.coinRefunded) bonusTags.push(tt('♻️金幣未消耗','♻️Coin refunded'));
     const bonusStr = bonusTags.length ? `（${bonusTags.join('、')}）` : '';
@@ -3315,15 +3370,18 @@ function renderBoss(body){
     }
     // 🎁 階段C：有待開啟的寶箱時，先讓玩家 3 選 1，選完才繼續顯示戰鬥畫面/能攻擊。
     if(boss.pendingChest){
+      const chestOrder = getBossChestShuffleOrder(boss);
+      const chestLabels = [
+        tt('神秘寶箱 一','Mystery Chest I'),
+        tt('神秘寶箱 二','Mystery Chest II'),
+        tt('神秘寶箱 三','Mystery Chest III'),
+      ];
       const chestHtml = `<div class="panel" style="text-align:center;">
         <h2>🎁 ${tt('星軌寶箱','Star-Trail Chest')}</h2>
-        <p class="sub">${tt('選擇一項獎勵開啟','Choose one reward to open')}</p>
+        <p class="sub">${tt('三個寶箱裡藏著金幣、骰子精華或職業材料，憑直覺選一個開啟吧！','Three chests hide coins, Dice Essence, or profession materials - pick one on instinct!')}</p>
         <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:14px;">
-          <button class="btn" id="chest-choice-coins">✦ ${tt(`金幣寶箱（${BOSS_TREASURE_COINS.min}-${BOSS_TREASURE_COINS.max}）`, `Coin Chest (${BOSS_TREASURE_COINS.min}-${BOSS_TREASURE_COINS.max})`)}</button>
-          <button class="btn" id="chest-choice-essence">💠 ${tt(`精華寶箱（${BOSS_CHEST_ESSENCE.min}-${BOSS_CHEST_ESSENCE.max}）`, `Essence Chest (${BOSS_CHEST_ESSENCE.min}-${BOSS_CHEST_ESSENCE.max})`)}</button>
-          <button class="btn" id="chest-choice-material">🌿 ${tt(`材料寶箱（${BOSS_CHEST_MATERIAL_QTY.min}-${BOSS_CHEST_MATERIAL_QTY.max}）`, `Material Chest (${BOSS_CHEST_MATERIAL_QTY.min}-${BOSS_CHEST_MATERIAL_QTY.max})`)}</button>
+          ${chestOrder.map((choice,i)=>`<button class="btn" id="chest-choice-${choice}">🎁 ${chestLabels[i]}</button>`).join('')}
         </div>
-        <p class="sub" style="margin-top:12px;">${tt('材料寶箱會依你目前的職業掉落對應材料','Material chest drops the material matching your current profession')}</p>
       </div>`;
       if(myGen !== bossRenderGen) return;
       const bossScrollY3 = window.scrollY;
@@ -3380,12 +3438,15 @@ function renderBoss(body){
       ${boss.minion ? (()=>{
         const mMeta = BOSS_MINION_TYPES.find(m => m.id === boss.minion.typeId) || BOSS_MINION_TYPES[0];
         const mPct = Math.max(0, Math.min(100, (boss.minion.hp/boss.minion.maxHp)*100));
-        return `<div style="border:1px solid var(--danger);border-radius:10px;padding:10px 12px;margin-bottom:10px;background:rgba(193,91,91,0.08);">
-          <div class="countdown" style="margin-bottom:6px;">${mMeta.icon} ${tt('小怪出現','A minion appeared')}：<b style="color:#ff8080;">${tt(mMeta.labelZh, mMeta.labelEn)}</b>　${tt('（優先承受這次攻擊傷害，殺死後才有溢出傷害打Boss）','(Absorbs this attack first — overflow damage carries to the Boss)')}</div>
-          <div style="background:var(--bg-panel-raised, rgba(255,255,255,0.06));border-radius:999px;height:12px;overflow:hidden;border:1px solid var(--line);margin-bottom:4px;">
-            <div style="height:100%;width:${mPct}%;background:linear-gradient(90deg, var(--danger), #ff8080);"></div>
+        return `<div style="border:1px solid var(--danger);border-radius:10px;padding:10px 12px;margin-bottom:10px;background:rgba(193,91,91,0.08);display:flex;gap:10px;align-items:center;">
+          ${mMeta.img ? `<img src="${mMeta.img}" alt="${tt(mMeta.labelZh, mMeta.labelEn)}" style="width:56px;height:56px;object-fit:cover;border-radius:8px;border:1px solid var(--danger);flex-shrink:0;" />` : ''}
+          <div style="flex:1;min-width:0;">
+            <div class="countdown" style="margin-bottom:6px;">${mMeta.icon} ${tt('小怪出現','A minion appeared')}：<b style="color:#ff8080;">${tt(mMeta.labelZh, mMeta.labelEn)}</b>　${tt('（優先承受這次攻擊傷害，殺死後才有溢出傷害打Boss）','(Absorbs this attack first — overflow damage carries to the Boss)')}</div>
+            <div style="background:var(--bg-panel-raised, rgba(255,255,255,0.06));border-radius:999px;height:12px;overflow:hidden;border:1px solid var(--line);margin-bottom:4px;">
+              <div style="height:100%;width:${mPct}%;background:linear-gradient(90deg, var(--danger), #ff8080);"></div>
+            </div>
+            <div class="countdown">${boss.minion.hp.toLocaleString()} / ${boss.minion.maxHp.toLocaleString()} HP</div>
           </div>
-          <div class="countdown">${boss.minion.hp.toLocaleString()} / ${boss.minion.maxHp.toLocaleString()} HP</div>
         </div>`;
       })() : ''}
       ${boss.activeEvent ? (()=>{
@@ -3398,6 +3459,7 @@ function renderBoss(body){
         </div>`;
       })() : ''}
       <div class="countdown" style="margin-bottom:10px;">${tt('本輪已造成傷害','Damage this cycle')}：<b style="color:var(--gold-bright);">${(boss.cycleDamage||0).toLocaleString()}</b></div>
+      ${(boss.comboStreak||0) > 0 ? `<div class="countdown" style="margin-bottom:10px;">🔥 ${tt('連擊中','Combo streak')}：<b style="color:var(--gold-bright);">×${boss.comboStreak}</b>　（${tt('下次攻擊加成','next hit bonus')} +${Math.round(Math.min((boss.comboStreak||0) * BOSS_COMBO_STREAK_BONUS_PER_HIT, BOSS_COMBO_STREAK_CAP) * 100)}%）</div>` : ''}
       <div style="border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:10px;display:flex;flex-direction:column;gap:4px;background:rgba(139,107,209,0.06);">
         <div class="countdown">🎁 ${tt('擊殺獎勵','Kill Reward')}（${tt('基礎','base')}）：<b style="color:var(--gold-bright);">✦${bossCurrentBaseReward(boss.cycle).coins}</b></div>
         <div class="countdown">🏆 ${tt('擊殺獎池','Kill Bonus Pool')}（${tt('全額入袋','all yours')}）：<b style="color:var(--gold-bright);">✦${bossCurrentBonusPool(boss.cycle).coins.toLocaleString()}</b></div>
@@ -3419,11 +3481,12 @@ function renderBoss(body){
         const lastRoll = state.bossLastAttack;
         const lastRollComboHtml = lastRoll && lastRoll.comboTier === 'triple' ? tt('　🎯豹子×2','　🎯Triple×2')
           : lastRoll && lastRoll.comboTier === 'pair' ? tt(`　✌️對子×${DICE_COMBO_MULT.pair}`, `　✌️Pair×${DICE_COMBO_MULT.pair}`) : '';
+        const lastRollStreakHtml = lastRoll && lastRoll.comboStreakBonus > 0 ? tt(`　🔥連擊+${Math.round(lastRoll.comboStreakBonus*100)}%`, `　🔥Streak+${Math.round(lastRoll.comboStreakBonus*100)}%`) : '';
         const lastRollEventHtml = lastRoll && lastRoll.eventApplied ? (()=>{
           const eMeta = BOSS_EVENT_TYPES.find(e => e.id === lastRoll.eventApplied.id);
           return eMeta ? `　${eMeta.icon}${tt(eMeta.labelZh, eMeta.labelEn)}` : '';
         })() : '';
-        const lastRollHtml = (lastRoll && lastRoll.rolls) ? `<div class="countdown" style="margin-top:6px;">${tt('上次擲骰','Last roll')}：${lastRoll.rolls.map(r=>r.face.num).join(' · ')}${lastRollComboHtml}${lastRoll.isCrit ? tt('　💥暴擊','　💥Crit') : ''}${lastRollEventHtml}</div>` : '';
+        const lastRollHtml = (lastRoll && lastRoll.rolls) ? `<div class="countdown" style="margin-top:6px;">${tt('上次擲骰','Last roll')}：${lastRoll.rolls.map(r=>r.face.num).join(' · ')}${lastRollComboHtml}${lastRollStreakHtml}${lastRoll.isCrit ? tt('　💥暴擊','　💥Crit') : ''}${lastRollEventHtml}</div>` : '';
         return `<div style="border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:10px;display:flex;flex-direction:column;gap:6px;">
           <div class="countdown">🎲 ${tt('已裝備骰子','Equipped dice')}：</div>
           <div>${slotsHtml}</div>
@@ -3917,7 +3980,7 @@ const ACHIEVEMENTS = [
     nameZh: '命運編織者', nameEn: 'Weaver of Destiny',
     descZh: '集齊本賽季第 13 張傳說卡「蛇夫座・持蛇者」', descEn: "Obtain this season's 13th legendary card, \"Ophiuchus · The Serpent Bearer\"",
     image: ACHIEVEMENT_IMAGES.weaver_of_destiny,
-    glow: true,
+    glow: 'purple',
     check(p){ ensureMaterials(p); return SEASON_CARDS.every(c=>p.seasonCards[c.id]); },
     progress(p){ ensureMaterials(p); const n = SEASON_CARDS.filter(c=>p.seasonCards[c.id]).length; return `${n}/${SEASON_CARDS.length}`; },
   },
@@ -4046,6 +4109,7 @@ function badgeGlowClass(a){
   if(a.glow === 'red') return ' badge-glow-red';
   if(a.glow === 'blue') return ' badge-glow-blue';
   if(a.glow === 'green') return ' badge-glow-green';
+  if(a.glow === 'purple') return ' badge-glow-purple';
   if(a.glow === 'rainbow') return ' badge-glow-rainbow';
   if(a.glow) return ' badge-glow-gold';
   return '';
@@ -4193,7 +4257,7 @@ async function showPlayerProfile(nickname){
     </div>
     <div class="profile-modal-stats">
       <div class="profile-modal-stat"><div class="val">${totalCards}</div><div class="lbl">${tt('收藏卡牌','Cards Collected')}</div></div>
-      <div class="profile-modal-stat"><div class="val">Lv.${Math.min(6, expLv)}</div><div class="lbl">${tt('遠征等級','Expedition Lv.')}</div></div>
+      <div class="profile-modal-stat"><div class="val">Lv.${Math.min(EXP_MAX_LEVEL, expLv)}</div><div class="lbl">${tt('遠征等級','Expedition Lv.')}</div></div>
     </div>
     <div class="profile-modal-note" style="font-size:11px;color:var(--muted);font-family:'Space Mono',monospace;margin-bottom:14px;">${tt(`加入時間：${joinedLabel}`, `Joined: ${joinedLabel}`)}</div>
     <div class="profile-modal-actions">
@@ -5161,7 +5225,9 @@ async function claimExpedition(){
     p.expeditionStreak = 0;
     p.expeditionRecklessStreak = 0;
     // 🛡️守護：帶出去的卡牌按比例退回一部分（原本全損，這裡按 type 各自四捨五入退回）
-    const keepPct = blessingCurse ? (blessingCurse.failCardKeepPct||0) : 0;
+    // 守護效果可能來自出征當下選的 blessingCurse，也可能來自途中跟神秘商人多抽到的 extraBlessings，兩者需疊加（封頂100%）
+    const extraKeepPct = (exp.extraBlessings||[]).reduce((s,c)=>s+(c.failCardKeepPct||0), 0);
+    const keepPct = Math.min(1, (blessingCurse ? (blessingCurse.failCardKeepPct||0) : 0) + extraKeepPct);
     if(keepPct > 0 && exp.staked){
       let refundedTotal = 0;
       Object.keys(exp.staked).forEach(cid=>{
@@ -5297,7 +5363,14 @@ function expeditionEventLogLine(event){
   const def = EXPEDITION_CHOICE_EVENT_POOL.find(e=>e.id===event.eventId);
   const opt = def && def.options.find(o=>o.id===event.chosenOptionId);
   const autoTag = event.autoResolved ? tt('（逾時自動）','（timed out）') : '';
-  return `${def?def.icon:'❓'} ${tt(def?def.labelZh:event.eventId, def?def.labelEn:event.eventId)}：${opt ? tt(opt.labelZh, opt.labelEn) : '-'}${autoTag}`;
+  const drawnIds = (event.result && event.result.extraBlessingIds) || [];
+  const drawnTxt = drawnIds.length
+    ? '　→　' + drawnIds.map(cid=>{
+        const c = EXPEDITION_BLESSING_CURSE_POOL.find(x=>x.id===cid);
+        return c ? `${c.icon}${tt(c.labelZh, c.labelEn)}` : cid;
+      }).join('、')
+    : '';
+  return `${def?def.icon:'❓'} ${tt(def?def.labelZh:event.eventId, def?def.labelEn:event.eventId)}：${opt ? tt(opt.labelZh, opt.labelEn) : '-'}${autoTag}${drawnTxt}`;
 }
 // 遠征頁很多互動（選風險等級、翻牌、選卡）都只是改 draft 狀態、跟家具/武器/飾品的選擇無關，
 // 但這些互動的 onclick 直接呼叫 render() 整段重繪，原生 <select>/<checkbox> 會被換成全新 DOM、
@@ -5535,6 +5608,12 @@ async function renderExpedition(body){
       if(result && result.error){
         showToast(result.error==='item' ? tt('庫存不足','Not enough stock') : tt('金幣不足','Not enough coins'));
         return;
+      }
+      if(result && result.extraBlessingIds && result.extraBlessingIds.length){
+        result.extraBlessingIds.forEach(cid=>{
+          const card = EXPEDITION_BLESSING_CURSE_POOL.find(c=>c.id===cid);
+          if(card) showToast(tt(`✨ 商人給了你一張「${card.icon}${card.labelZh}」：${card.descZh}`, `✨ The merchant gave you "${card.icon}${card.labelEn}": ${card.descEn}`));
+        });
       }
       await savePlayer(state.player);
       render();
@@ -8439,6 +8518,7 @@ function renderResonance(body){
       <span style="font-family:'Space Mono',monospace;font-size:13px;color:var(--gold-bright);">${tt(`目前金幣：✦ ${p.coins}`, `Your coins: ✦ ${p.coins}`)}</span>
     </div>
     <p class="sub" style="margin:10px 0 0;font-size:12px;">${tt(`超級共鳴花費較高，其餘規則相同，但三張史詩會直接卷走獎池的 ${SLOT_SETTINGS.megaJackpotMult} 倍！`, `Mega Resonance costs more with the same rules otherwise, but three Epics take ${SLOT_SETTINGS.megaJackpotMult}x the jackpot pool!`)}</p>
+    <p class="sub" style="margin:6px 0 0;font-size:12px;color:var(--muted);">${tt('當你發現自己已登上消費榜一，請記住：真正的賭桌，才是你該遠離的地方。','If you find yourself topping the spending leaderboard, remember: the real gambling table is the one you should stay away from.')}</p>
   </div>`;
 
   body.innerHTML = html;
@@ -9866,19 +9946,6 @@ async function renderGM(body){
       <div><label>${tt('固定傷害','Fixed damage')}</label><input type="number" id="gm-boss-dmg" value="${BOSS_BURST_DAMAGE}" min="0" style="width:90px;" /></div>
       <div><label>${tt('貢獻轉換率 %（依實際傷害）','Contribution rate % (per damage dealt)')}</label><input type="number" id="gm-boss-contrib" value="${Math.round(BOSS_CONTRIB_RATE*100)}" min="0" step="0.1" style="width:80px;" /></div>
     </div>
-    <div class="farm-upgrade-title" style="margin-top:10px;">${tt('星象超爆發設定','Mega Astral Burst Settings')}</div>
-    <div class="form-row">
-      <div><label>${tt('消耗金幣','Coin cost')}</label><input type="number" id="gm-boss-mega-cost" value="${BOSS_MEGA_COIN_COST}" min="0" style="width:80px;" /></div>
-      <div><label>${tt('固定傷害','Fixed damage')}</label><input type="number" id="gm-boss-mega-dmg" value="${BOSS_MEGA_BURST_DAMAGE}" min="0" style="width:90px;" /></div>
-      <div><label>⚔️ ${tt('使用武器需消耗','Weapon cost')}</label><input type="number" id="gm-boss-mega-weapon-cost" value="${BOSS_MEGA_WEAPON_COST}" min="0" style="width:80px;" /></div>
-      <div><label>💍 ${tt('飾品最多疊用','Accessory max stack')}</label><input type="number" id="gm-boss-mega-accessory-max" value="${BOSS_MEGA_ACCESSORY_MAX}" min="0" style="width:80px;" /></div>
-    </div>
-    <div class="farm-upgrade-title" style="margin-top:10px;">${tt('職業武器／飾品加成（Boss 戰）','Profession Weapon/Accessory Bonuses (Boss Battle)')}</div>
-    <div class="form-row">
-      <div><label>⚔️ ${tt('武器：傷害加成 %','Weapon: damage bonus %')}</label><input type="number" id="gm-boss-weapon-pct" value="${Math.round(BOSS_WEAPON_DMG_BONUS*100)}" min="0" style="width:90px;" /></div>
-      <div><label>💍 ${tt('飾品：每個暴擊率 %','Accessory: crit % each')}</label><input type="number" id="gm-boss-accessory-crit-pct" value="${Math.round(BOSS_ACCESSORY_CRIT_PER*100)}" min="0" style="width:90px;" /></div>
-      <div><label>💥 ${tt('暴擊：傷害加成 %','Crit: damage bonus %')}</label><input type="number" id="gm-boss-accessory-critdmg-pct" value="${Math.round(BOSS_ACCESSORY_CRIT_DMG_BONUS*100)}" min="0" style="width:90px;" /></div>
-    </div>
     <div class="farm-upgrade-title" style="margin-top:10px;">${tt('擊敗獎勵：基礎（人人有份，凡有貢獻皆得；第1輪基準值）','Defeat reward: base (flat, any contributor; baseline for cycle 1)')}</div>
     <div class="form-row">
       <div><label>✦ ${tt('金幣','Coins')}</label><input type="number" id="gm-boss-base-coins" value="${BOSS_BASE_REWARD.coins}" min="0" style="width:90px;" /></div>
@@ -10444,15 +10511,8 @@ async function renderGM(body){
     const contribRatePct = parseFloat(document.getElementById('gm-boss-contrib').value);
     const baseCoins = parseFloat(document.getElementById('gm-boss-base-coins').value);
     const bonusCoins = parseFloat(document.getElementById('gm-boss-bonus-coins').value);
-    const megaCost = parseFloat(document.getElementById('gm-boss-mega-cost').value);
-    const megaDmg = parseFloat(document.getElementById('gm-boss-mega-dmg').value);
-    const megaWeaponCost = parseFloat(document.getElementById('gm-boss-mega-weapon-cost').value);
-    const megaAccessoryMax = parseFloat(document.getElementById('gm-boss-mega-accessory-max').value);
-    const weaponPct = parseFloat(document.getElementById('gm-boss-weapon-pct').value);
-    const accCritPct = parseFloat(document.getElementById('gm-boss-accessory-crit-pct').value);
-    const accCritDmgPct = parseFloat(document.getElementById('gm-boss-accessory-critdmg-pct').value);
     const rewardMult = parseFloat(document.getElementById('gm-boss-reward-mult').value);
-    const nums = [...hp, diff, cost, dmg, contribRatePct, megaCost, megaDmg, megaWeaponCost, megaAccessoryMax, baseCoins, bonusCoins, weaponPct, accCritPct, accCritDmgPct, rewardMult];
+    const nums = [...hp, diff, cost, dmg, contribRatePct, baseCoins, bonusCoins, rewardMult];
     if(nums.some(v=>isNaN(v)||v<0) || diff <= 0 || rewardMult <= 0){
       showToast(tt('請輸入有效的非負數字','Please enter a valid non-negative number')); return;
     }
@@ -10461,16 +10521,9 @@ async function renderGM(body){
     BOSS_COIN_COST = cost;
     BOSS_BURST_DAMAGE = dmg;
     BOSS_CONTRIB_RATE = contribRatePct / 100;
-    BOSS_MEGA_COIN_COST = megaCost;
-    BOSS_MEGA_BURST_DAMAGE = megaDmg;
-    BOSS_MEGA_WEAPON_COST = megaWeaponCost;
-    BOSS_MEGA_ACCESSORY_MAX = megaAccessoryMax;
     BOSS_BASE_REWARD = {coins: baseCoins};
     BOSS_BONUS_POOL = {coins: bonusCoins};
     BOSS_REWARD_MULT = rewardMult;
-    BOSS_WEAPON_DMG_BONUS = weaponPct / 100;
-    BOSS_ACCESSORY_CRIT_PER = accCritPct / 100;
-    BOSS_ACCESSORY_CRIT_DMG_BONUS = accCritDmgPct / 100;
     await saveBossConfig();
     showToast(tt('Boss 設定已更新','Boss settings updated'));
     renderTab();
@@ -10482,16 +10535,9 @@ async function renderGM(body){
     BOSS_COIN_COST = DEFAULT_BOSS_COIN_COST;
     BOSS_BURST_DAMAGE = DEFAULT_BOSS_BURST_DAMAGE;
     BOSS_CONTRIB_RATE = DEFAULT_BOSS_CONTRIB_RATE;
-    BOSS_MEGA_COIN_COST = DEFAULT_BOSS_MEGA_COIN_COST;
-    BOSS_MEGA_BURST_DAMAGE = DEFAULT_BOSS_MEGA_BURST_DAMAGE;
-    BOSS_MEGA_WEAPON_COST = DEFAULT_BOSS_MEGA_WEAPON_COST;
-    BOSS_MEGA_ACCESSORY_MAX = DEFAULT_BOSS_MEGA_ACCESSORY_MAX;
     BOSS_BASE_REWARD = {...DEFAULT_BOSS_BASE_REWARD};
     BOSS_BONUS_POOL = {...DEFAULT_BOSS_BONUS_POOL};
     BOSS_REWARD_MULT = DEFAULT_BOSS_REWARD_MULT;
-    BOSS_WEAPON_DMG_BONUS = DEFAULT_BOSS_WEAPON_DMG_BONUS;
-    BOSS_ACCESSORY_CRIT_PER = DEFAULT_BOSS_ACCESSORY_CRIT_PER;
-    BOSS_ACCESSORY_CRIT_DMG_BONUS = DEFAULT_BOSS_ACCESSORY_CRIT_DMG_BONUS;
     await saveBossConfig();
     showToast(tt('已還原為預設 Boss 設定','Reverted to default boss settings'));
     renderTab();
