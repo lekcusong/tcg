@@ -553,6 +553,16 @@
     0%,100%{ box-shadow:0 0 6px 2px rgba(79,178,134,0.55), 0 2px 10px rgba(0,0,0,0.45); }
     50%{ box-shadow:0 0 20px 8px rgba(79,178,134,0.95), 0 2px 10px rgba(0,0,0,0.45); }
   }
+  .badge-glow-rainbow{animation: badge-rainbow-glow 2.4s linear infinite;}
+  @keyframes badge-rainbow-glow{
+    0%{ border-color:#ff5b5b; box-shadow:0 0 8px 3px rgba(255,91,91,0.75), 0 2px 10px rgba(0,0,0,0.45); }
+    16%{ border-color:#ffb84d; box-shadow:0 0 8px 3px rgba(255,184,77,0.75), 0 2px 10px rgba(0,0,0,0.45); }
+    33%{ border-color:#f0e04d; box-shadow:0 0 8px 3px rgba(240,224,77,0.75), 0 2px 10px rgba(0,0,0,0.45); }
+    50%{ border-color:#4fd67a; box-shadow:0 0 8px 3px rgba(79,214,122,0.75), 0 2px 10px rgba(0,0,0,0.45); }
+    66%{ border-color:#4a90e2; box-shadow:0 0 8px 3px rgba(74,144,226,0.75), 0 2px 10px rgba(0,0,0,0.45); }
+    83%{ border-color:#a05bf0; box-shadow:0 0 8px 3px rgba(160,91,240,0.75), 0 2px 10px rgba(0,0,0,0.45); }
+    100%{ border-color:#ff5b5b; box-shadow:0 0 8px 3px rgba(255,91,91,0.75), 0 2px 10px rgba(0,0,0,0.45); }
+  }
   /* 階段五：擲骰動畫（3 顆骰子搖晃 + 數字捲動，開獎後定格並套用品質色光/加成標籤） */
   .dice-roll-anim{position:relative;display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:14px;padding:6px 0;}
   .dice-roll-die{width:58px;height:58px;border-radius:14px;border:2px solid var(--line);background:linear-gradient(160deg, rgba(255,255,255,0.08), rgba(0,0,0,0.25));display:flex;align-items:center;justify-content:center;font-family:'Cinzel',serif;font-weight:700;font-size:24px;color:#fff;animation:dice-shake-anim .32s ease-in-out infinite;}
@@ -1754,6 +1764,26 @@ const DEFAULT_STAR_CHART_COST_TIERS = [80, 200, 400]; // 該元素第1/2/3個節
 const DEFAULT_STAR_CHART_BONUS_PER_NODE = {fire:5, wind:5, water:5, earth:10}; // 每點亮一個節點的百分比加成
 let STAR_CHART_COST_TIERS = [...DEFAULT_STAR_CHART_COST_TIERS];
 let STAR_CHART_BONUS_PER_NODE = {...DEFAULT_STAR_CHART_BONUS_PER_NODE};
+
+// 行星圈：太陽/月亮/火星/木星/金星/水星，各 3 節點。沿用日月之輝與星座節點同一套
+// STAR_CHART_COST_TIERS 花費，但加成數值固定寫死、不開放 GM 調整。
+const STAR_CHART_PLANET_DEFS = {
+  sun:     {label:'太陽', labelEn:'Sun',     icon:'☀️', descZh:'Boss 傷害加成',       descEn:'Boss Damage Bonus',        bonusPerNode:5},
+  moon:    {label:'月亮', labelEn:'Moon',    icon:'🌙', descZh:'Boss 暴擊率加成',     descEn:'Boss Crit Rate Bonus',     bonusPerNode:5},
+  mars:    {label:'火星', labelEn:'Mars',    icon:'♂️', descZh:'遠征成功率加成',      descEn:'Expedition Success Bonus', bonusPerNode:2},
+  jupiter: {label:'木星', labelEn:'Jupiter', icon:'♃', descZh:'遠征獎勵區間加成',    descEn:'Expedition Reward Bonus',  bonusPerNode:5},
+  venus:   {label:'金星', labelEn:'Venus',   icon:'♀️', descZh:'拍賣行手續費減免',    descEn:'Auction Fee Reduction',    bonusPerNode:2},
+  mercury: {label:'水星', labelEn:'Mercury', icon:'☿', descZh:'職業材料掉落機率+數量', descEn:'Material Drop Chance+Qty', bonusPerNode:5},
+};
+const STAR_CHART_PLANET_NODES = Object.keys(STAR_CHART_PLANET_DEFS).flatMap(key=>{
+  const def = STAR_CHART_PLANET_DEFS[key];
+  return [1,2,3].map(tier=>({
+    id: `${key}_${tier}`, planet: key, tier,
+    label: `${def.label} ${['I','II','III'][tier-1]}`,
+    labelEn: `${def.labelEn} ${['I','II','III'][tier-1]}`,
+  }));
+});
+const STAR_CHART_MERCURY_EXTRA_QTY_CHANCE_PER_NODE = 0.10; // 水星專屬第二效果：每節點 +10% 機率多掉 1 個材料，固定值
 async function loadStarChartConfig(){
   try{
     const r = await storage.get(seasonKey('starchart'));
@@ -1783,6 +1813,31 @@ function starChartCoinMultiplier(p){ return 1 + starChartBonusPercent(p,'fire')/
 function starChartContribMultiplier(p){ return 1 + starChartBonusPercent(p,'wind')/100; }
 function starChartGrowMsMultiplier(p){ return Math.max(0.1, 1 - starChartBonusPercent(p,'water')/100); }
 function starChartYieldMultiplier(p){ return 1 + starChartBonusPercent(p,'earth')/100; }
+function starChartAllZodiacUnlocked(p){
+  ensureMaterials(p);
+  return STAR_CHART_ZODIAC.every(z=>p.starChart.unlocked.includes(z.id));
+}
+function starChartUnlockedCountByPlanet(p, planet){
+  ensureMaterials(p);
+  return p.starChart.unlocked.filter(id=>{
+    const n = STAR_CHART_PLANET_NODES.find(pn=>pn.id===id);
+    return n && n.planet===planet;
+  }).length;
+}
+function starChartPlanetNodeCost(p, planet){
+  const count = starChartUnlockedCountByPlanet(p, planet);
+  return STAR_CHART_COST_TIERS[Math.min(count, STAR_CHART_COST_TIERS.length-1)];
+}
+function starChartPlanetBonusPercent(p, planet){
+  return starChartUnlockedCountByPlanet(p, planet) * (STAR_CHART_PLANET_DEFS[planet].bonusPerNode); // 百分點，固定值不受 GM 調整
+}
+function starChartSunDamageMultiplier(p){ return 1 + starChartPlanetBonusPercent(p,'sun')/100; } // Boss 傷害
+function starChartMoonCritRateBonus(p){ return starChartPlanetBonusPercent(p,'moon')/100; } // Boss 暴擊率（0~1）
+function starChartMarsSuccessBonus(p){ return starChartPlanetBonusPercent(p,'mars')/100; } // 遠征成功率（0~1）
+function starChartJupiterRewardBonus(p){ return starChartPlanetBonusPercent(p,'jupiter')/100; } // 遠征獎勵區間（0~1）
+function starChartVenusFeeReductionPct(p){ return starChartPlanetBonusPercent(p,'venus')/100; } // 拍賣行手續費減免（0~1，直接扣掉百分點）
+function starChartMercuryDropChanceBonus(p){ return starChartPlanetBonusPercent(p,'mercury'); } // 百分點，+5%/節點封頂15%（35%→50%）
+function starChartMercuryExtraQtyChance(p){ return starChartUnlockedCountByPlanet(p,'mercury') * STAR_CHART_MERCURY_EXTRA_QTY_CHANCE_PER_NODE; } // 0~1
 async function unlockStarChartNode(zodiacId){
   const p = state.player;
   ensureMaterials(p);
@@ -1796,6 +1851,24 @@ async function unlockStarChartNode(zodiacId){
   await savePlayer(p);
   render();
   showToast(tt(`✦ 點亮「${tt(z.label,z.labelEn)}」！`, `✦ Lit up "${z.labelEn}"!`));
+}
+async function unlockStarChartPlanetNode(nodeId){
+  const p = state.player;
+  ensureMaterials(p);
+  const n = STAR_CHART_PLANET_NODES.find(pn=>pn.id===nodeId);
+  if(!n) return;
+  if(p.starChart.unlocked.includes(nodeId)){ showToast(tt('這個行星節點已經點亮了','This planet node is already lit')); return; }
+  if(!starChartAllZodiacUnlocked(p)){ showToast(tt('要先點滿全部 12 星座才能解鎖行星圈','Light up all 12 zodiac nodes first to unlock the Planet Ring')); return; }
+  const idx = STAR_CHART_PLANET_NODES.filter(pn=>pn.planet===n.planet).indexOf(n);
+  const alreadyUnlocked = starChartUnlockedCountByPlanet(p, n.planet);
+  if(idx !== alreadyUnlocked){ showToast(tt('要照順序點亮','Unlock in order')); return; }
+  const cost = starChartPlanetNodeCost(p, n.planet);
+  if(p.materials.moon < cost){ showToast(tt(`日月之輝不足，需要 ${cost}`, `Not enough Sun-Moon Brilliance, need ${cost}`)); return; }
+  p.materials.moon -= cost;
+  p.starChart.unlocked.push(nodeId);
+  await savePlayer(p);
+  render();
+  showToast(tt(`✦ 點亮「${tt(n.label,n.labelEn)}」！`, `✦ Lit up "${n.labelEn}"!`));
 }
 
 // ---------- Boss 戰：星毒巨蛇（階段三）----------
@@ -2151,6 +2224,7 @@ function rollDiceAttack(p, activeEvent){
     else if(eff.kind === 'combo_boost') comboBoostBonus += eff.value;
     // 'wild' 沒有數值型加成，只影響下面 computeNumberCombo 的對子/豹子判定
   });
+  critRateBonus += starChartMoonCritRateBonus(p); // 🌙 星盤月亮節點：固定加成，不受骰子面效果封頂限制
   totalDamage += flatDmgBonus; // 固定傷害先加進基數，之後才吃百分比加成，這樣才「划算」
   if(atkBonus > 0) totalDamage *= (1 + atkBonus);
   let isCrit = critRateBonus > 0 && Math.random() < critRateBonus;
@@ -2181,7 +2255,7 @@ function rollDiceAttack(p, activeEvent){
     }
   }
   return {
-    damage: Math.max(1, Math.round(totalDamage)),
+    damage: Math.max(1, Math.round(totalDamage * starChartSunDamageMultiplier(p))), // ☀️ 星盤太陽節點：對最終傷害套倍率
     rolls, atkBonus, critRateBonus, critDmgBonus, isCrit,
     flatDmgBonus, comboBoostBonus, contribBonusPct, coinRefunded,
     comboTier: combo.tier, sameNumber: combo.tier === 'triple', // sameNumber 保留給舊程式相容，等同「豹子」
@@ -3382,13 +3456,58 @@ function renderStarChart(body){
         return `<div class="countdown">${lb.icon} ${tt(lb.zh,lb.en)}：<b style="color:var(--gold-bright);">+${pct}%</b> (${cnt}/3)</div>`;
       }).join('')}
     </div>
+    <div style="margin-top:20px;border-top:1px solid var(--line);padding-top:14px;">
+      <h3 style="margin:0 0 6px;">🪐 ${tt('行星圈','Planet Ring')}</h3>
+      <p class="sub">${tt('行星節點的加成數值固定，不受 GM 面板調整。三節點需依序點亮。','Planet node bonuses are fixed values and are not adjustable via the GM panel. Nodes within a planet must be unlocked in order.')}</p>
+      ${(()=>{
+        const zodiacDone = starChartAllZodiacUnlocked(p);
+        const zodiacCount = p.starChart.unlocked.filter(id=>STAR_CHART_ZODIAC_BY_ID[id]).length;
+        return zodiacDone ? '' : `<div class="countdown" style="margin-top:8px;color:var(--muted);">🔒 ${tt(`先點滿全部 12 星座才能解鎖行星圈（目前 ${zodiacCount}/12）`, `Light up all 12 zodiac nodes first to unlock the Planet Ring (currently ${zodiacCount}/12)`)}</div>`;
+      })()}
+      ${Object.keys(STAR_CHART_PLANET_DEFS).map(key=>{
+        const def = STAR_CHART_PLANET_DEFS[key];
+        const nodes = STAR_CHART_PLANET_NODES.filter(n=>n.planet===key);
+        const cnt = starChartUnlockedCountByPlanet(p, key);
+        const pct = starChartPlanetBonusPercent(p, key);
+        const zodiacDone = starChartAllZodiacUnlocked(p);
+        const extraLine = key==='mercury'
+          ? `　${tt('多掉1個機率','+1 qty chance')} <b style="color:var(--gold-bright);">+${Math.round(starChartMercuryExtraQtyChance(p)*100)}%</b>`
+          : '';
+        return `<div style="margin-top:12px;padding:10px;border:1px solid var(--line);border-radius:10px;${zodiacDone?'':'opacity:0.55;'}">
+          <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;">
+            <div>${def.icon} <b>${tt(def.label,def.labelEn)}</b>　<span class="sub" style="display:inline;">${tt(def.descZh,def.descEn)}</span></div>
+            <div class="countdown" style="margin:0;">${key==='venus' ? '-' : '+'}${pct}%${extraLine} (${cnt}/3)</div>
+          </div>
+          <div style="display:flex;gap:8px;justify-content:center;margin-top:8px;flex-wrap:wrap;">
+            ${nodes.map(n=>{
+              const unlocked = p.starChart.unlocked.includes(n.id);
+              const idx = nodes.indexOf(n);
+              const canUnlock = zodiacDone && !unlocked && idx === cnt;
+              const cost = starChartPlanetNodeCost(p, key);
+              const lockTitle = !zodiacDone ? tt('需先點滿12星座','Requires all 12 zodiac nodes lit') : (unlocked?'':` (${tt('消耗','Cost')} 🌙${cost})`);
+              return `<div class="sc-node ${unlocked?'unlocked':'locked'}" data-planet-node="${n.id}" style="position:static;transform:none;margin:0;width:64px;${canUnlock?'':unlocked?'':'opacity:0.5;'}" title="${tt(n.label,n.labelEn)}${lockTitle}">
+                <div class="sc-node-icon">${def.icon}</div>
+                <div class="sc-node-label">${tt(n.label,n.labelEn)}</div>
+              </div>`;
+            }).join('')}
+          </div>
+        </div>`;
+      }).join('')}
+    </div>
   </div>`;
   body.innerHTML = html;
-  body.querySelectorAll('.sc-node').forEach(el=>{
+  body.querySelectorAll('.sc-node[data-zodiac]').forEach(el=>{
     el.onclick = ()=>{
       const zid = el.dataset.zodiac;
       if(p.starChart.unlocked.includes(zid)) return;
       unlockStarChartNode(zid);
+    };
+  });
+  body.querySelectorAll('.sc-node[data-planet-node]').forEach(el=>{
+    el.onclick = ()=>{
+      const nid = el.dataset.planetNode;
+      if(p.starChart.unlocked.includes(nid)) return;
+      unlockStarChartPlanetNode(nid);
     };
   });
 }
@@ -3401,6 +3520,8 @@ const DEFAULT_SLOT_SETTINGS = {
   multRare: 15,
   contribRate: 10,   // 百分比，未中獎時投入獎池
   jackpotBase: 200,  // 中頭獎後獎池重置的保底金額
+  megaCost: 1000,       // 「超級共鳴」每次花費
+  megaJackpotMult: 5,   // 「超級共鳴」中頭獎（三張史詩）時，拿走的獎池倍率
 };
 let SLOT_SETTINGS = {...DEFAULT_SLOT_SETTINGS};
 let SLOT_JACKPOT = DEFAULT_SLOT_SETTINGS.jackpotBase;
@@ -3530,6 +3651,7 @@ const ACHIEVEMENT_IMAGES = {
   market_mogul: 'https://lekcusong.github.io/tcg/assets/market_mogul.jpg',
   auction_grandmaster_img: 'https://lekcusong.github.io/tcg/assets/auction_grandmaster_img.png',
   jackpot_champion_img: 'https://lekcusong.github.io/tcg/assets/jackpot_champion_img.png',
+  mega_jackpot_champion_img: 'https://lekcusong.github.io/tcg/assets/mega_jackpot_champion_img.png',
   weaver_of_destiny: 'https://lekcusong.github.io/tcg/assets/weaver_of_destiny.jpg',
   expedition_lv3: 'https://lekcusong.github.io/tcg/assets/expedition_lv3.jpg',
   expedition_lv6: 'https://lekcusong.github.io/tcg/assets/expedition_lv6.jpg',
@@ -3661,6 +3783,15 @@ const ACHIEVEMENTS = [
     check(p){ return ((p.stats && p.stats.totalJackpotWins) || 0) >= 1; },
     progress(p){ return `${Math.min(1, (p.stats && p.stats.totalJackpotWins) || 0)}/1`; },
   },
+  {
+    key: 'mega_jackpot_champion',
+    nameZh: '超級共鳴之主', nameEn: 'Lord of Mega Resonance',
+    descZh: '在超級共鳴中抽中三張史詩牌，獨得獎池 5 倍大獎', descEn: 'Draw three Epic cards in Mega Resonance and win 5x the jackpot pool',
+    image: ACHIEVEMENT_IMAGES.mega_jackpot_champion_img,
+    glow: 'rainbow',
+    check(p){ return ((p.stats && p.stats.totalMegaJackpotWins) || 0) >= 1; },
+    progress(p){ return `${Math.min(1, (p.stats && p.stats.totalMegaJackpotWins) || 0)}/1`; },
+  },
 ];
 const ACHIEVEMENT_BY_KEY = Object.fromEntries(ACHIEVEMENTS.map(a=>[a.key,a]));
 
@@ -3738,6 +3869,7 @@ function badgeGlowClass(a){
   if(a.glow === 'red') return ' badge-glow-red';
   if(a.glow === 'blue') return ' badge-glow-blue';
   if(a.glow === 'green') return ' badge-glow-green';
+  if(a.glow === 'rainbow') return ' badge-glow-rainbow';
   if(a.glow) return ' badge-glow-gold';
   return '';
 }
@@ -4724,6 +4856,8 @@ async function confirmStartExpedition(tierId, durationKey, itemUsage){
     furnitureBonus, furnitureCount,
     weaponUsed, weaponRewardPct,
     accessoryCount, accessoryFloorPct,
+    starChartSuccessBonus: starChartMarsSuccessBonus(p), // ♂️ 星盤火星節點：出征當下 snapshot，之後點新節點不影響已出征的這趟
+    starChartRewardBonus: starChartJupiterRewardBonus(p), // ♃ 星盤木星節點：同上
     potionMinutesUsed: 0, // 階段四：進行中頁面使用藥水縮時，會累加這個欄位
     riskLevel: riskKey, risk, // 階段二：風險等級快照，結算時（階段四）直接讀取
     blessingCurse, // 階段二：這趟帶著出征的祝福/詛咒卡快照（null 表示未解鎖或無），事件節點/結算時讀取
@@ -4799,6 +4933,7 @@ async function claimExpedition(){
     + (risk.successDelta||0)
     + (blessingCurse ? (blessingCurse.successDelta||0) : 0)
     + eventSuccessDelta
+    + (exp.starChartSuccessBonus||0)
   ));
   const success = Math.random() < effectiveRate;
   p.expedition = null;
@@ -4812,7 +4947,7 @@ async function claimExpedition(){
     const accessoryPct = exp.accessoryFloorPct||0;
     const blessingRangePct = blessingCurse ? (blessingCurse.rewardRangePctDelta||0) : 0;
     const riskMult = risk.rewardMult || 1;
-    const totalRangePct = Math.max(-0.95, weaponPct + blessingRangePct + eventRewardPctDelta);
+    const totalRangePct = Math.max(-0.95, weaponPct + blessingRangePct + eventRewardPctDelta + (exp.starChartRewardBonus||0));
     const boostedMin = variant.rewardCoinsMin * (1 + totalRangePct) * riskMult;
     const boostedMax = variant.rewardCoinsMax * (1 + totalRangePct) * riskMult;
     const rangeMin = Math.min(boostedMin, boostedMax);
@@ -5050,6 +5185,33 @@ async function renderExpedition(body){
       return c ? `${c.icon||''} ${escapeHtml(c.name)} ×${exp.staked[cid]}` : `${cid} ×${exp.staked[cid]}`;
     }).join('　');
     const inProgressLabel = tier ? `：${expeditionTierLabel(tier)}・${expeditionDurationLabel(exp.durationKey)}` : '';
+    const variant = tier && tier.durations ? tier.durations[exp.durationKey] : null;
+    let variantLine = '';
+    if(variant){
+      // 只套用「出征當下就已固定」的加成（家具/武器/飾品/風險等級/祝福詛咒），
+      // 尚未觸發的遭遇事件節點效果無法預知，故不計入，顯示為「大概」估計值。
+      const risk = exp.risk || {successDelta:0, rewardMult:1};
+      const blessingCurse = exp.blessingCurse || null;
+      const effRate = Math.min(1, Math.max(0,
+        variant.successRate
+        + (exp.furnitureBonus||0)
+        + (risk.successDelta||0)
+        + (blessingCurse ? (blessingCurse.successDelta||0) : 0)
+        + (exp.starChartSuccessBonus||0)
+      ));
+      const weaponPct = exp.weaponRewardPct||0;
+      const accessoryPct = exp.accessoryFloorPct||0;
+      const blessingRangePct = blessingCurse ? (blessingCurse.rewardRangePctDelta||0) : 0;
+      const riskMult = risk.rewardMult || 1;
+      const totalRangePct = Math.max(-0.95, weaponPct + blessingRangePct + (exp.starChartRewardBonus||0));
+      const boostedMin = variant.rewardCoinsMin * (1 + totalRangePct) * riskMult;
+      const boostedMax = variant.rewardCoinsMax * (1 + totalRangePct) * riskMult;
+      const rangeMin = Math.min(boostedMin, boostedMax);
+      const rangeMax = Math.max(boostedMin, boostedMax);
+      const effMin = Math.round(Math.min(rangeMax, rangeMin + (rangeMax - rangeMin) * accessoryPct));
+      const effMax = Math.round(rangeMax);
+      variantLine = `<p class="sub">🎲 ${tt(`成功率約 ${Math.round(effRate*100)}%`, `~${Math.round(effRate*100)}% success`)}　✦ ${tt(`預估獎勵 ${effMin}–${effMax} 金幣、經驗 +${variant.rewardExp}`, `Est. reward ${effMin}-${effMax} coins, +${variant.rewardExp} exp`)}<br><span style="font-size:11px;color:var(--muted);">${tt('（未包含尚未觸發的遭遇事件效果）','(excludes effects from encounter events not yet triggered)')}</span></p>`;
+    }
     const potionQty = p.professionItems.potion_small||0;
     const rogueLine = (exp.riskLevel && exp.riskLevel !== 'standard') || exp.blessingCurse
       ? `<p class="sub">${exp.riskLevel && exp.riskLevel!=='standard' ? tt(`🎲 風險：${EXPEDITION_RISK_LEVELS[exp.riskLevel]?.labelZh||exp.riskLevel}　`, `🎲 Risk: ${EXPEDITION_RISK_LEVELS[exp.riskLevel]?.labelEn||exp.riskLevel}　`) : ''}${exp.blessingCurse ? `${exp.blessingCurse.icon} ${tt(exp.blessingCurse.labelZh, exp.blessingCurse.labelEn)}` : ''}</p>`
@@ -5062,6 +5224,7 @@ async function renderExpedition(body){
     html += `<div class="panel">
       <h2>${tt('進行中的遠征','Expedition In Progress')}${inProgressLabel}</h2>
       <p class="sub">${tt('帶出去的卡牌','Cards brought along')}：${stakedLines}</p>
+      ${variantLine}
       ${rogueLine}
       ${ready
         ? `<div class="countdown" style="color:var(--gold-bright);margin-bottom:10px;">${tt('遠征已歸來！','The expedition has returned!')}</div>
@@ -5340,10 +5503,12 @@ async function harvestPlot(plotIndex, opts){
       }
     }
     let materialDrop = null;
-    if(Math.random() < FARM_MATERIAL_DROP_CHANCE){
+    const mercuryDropChance = FARM_MATERIAL_DROP_CHANCE + starChartMercuryDropChanceBonus(p)/100; // 水星節點：+5%/節點，封頂50%
+    if(Math.random() < mercuryDropChance){
       ensureProfession(p);
       const materialId = PROFESSION_MATERIAL_IDS[Math.floor(Math.random()*PROFESSION_MATERIAL_IDS.length)];
-      const qty = FARM_MATERIAL_DROP_MIN + Math.floor(Math.random()*(FARM_MATERIAL_DROP_MAX-FARM_MATERIAL_DROP_MIN+1));
+      let qty = FARM_MATERIAL_DROP_MIN + Math.floor(Math.random()*(FARM_MATERIAL_DROP_MAX-FARM_MATERIAL_DROP_MIN+1));
+      if(Math.random() < starChartMercuryExtraQtyChance(p)) qty += 1; // 水星節點：+10%/節點機率多掉1個
       p.professionMaterials[materialId] = (p.professionMaterials[materialId]||0) + qty;
       const def = PROFESSION_DEFS.find(d=>d.materialId===materialId);
       materialDrop = {materialId, qty, icon: def ? def.materialIcon : '', label: def ? professionMaterialLabel(def) : materialId};
@@ -6375,6 +6540,7 @@ async function doLogin(nick, password, confirmPassword){
       }
       p = newPlayer(nick, hash);
       await savePlayer(p);
+      addToPlayerIndex(p.nickname).catch(()=>{});
       showToast(tt(`歡迎加入，${nick}！已為你建立帳號 ✦`, `Welcome, ${nick}! Your account has been created ✦`));
     } else if(!p.passwordHash){
       p.passwordHash = hash;
@@ -6495,14 +6661,16 @@ let notifBadgeSeenIds = new Set();
 let chatUnreadCount = 0;
 // 中頭獎（三張 Epic）時，發信箱通知給「全服」所有玩家（離線玩家下次登入也會看到，不只是當下在線才收到 toast）
 async function broadcastJackpotWin(winnerNick, amount){
-  const allPlayers = await fetchAllPlayers();
-  await Promise.all(allPlayers.map(p=>{
-    if(!p.nickname || p.nickname.toLowerCase() === winnerNick.toLowerCase()) return null;
-    return createNotification(p.nickname, winnerNick, 'jackpot_win', {amount});
+  // 改讀輕量暱稱索引，不再整包下載全站玩家完整資料
+  const nicknames = await fetchPlayerIndex();
+  await Promise.all(nicknames.map(nick=>{
+    if(!nick || nick.toLowerCase() === winnerNick.toLowerCase()) return null;
+    return createNotification(nick, winnerNick, 'jackpot_win', {amount});
   }));
 }
-async function pullSlot(){
-  if(state.player.coins < SLOT_SETTINGS.cost){ showToast(tt('金幣不足，無法共鳴','Not enough coins to resonate')); return; }
+async function pullSlot(isMega){
+  const cost = isMega ? SLOT_SETTINGS.megaCost : SLOT_SETTINGS.cost;
+  if(state.player.coins < cost){ showToast(tt('金幣不足，無法共鳴','Not enough coins to resonate')); return; }
   const drawn = [weightedDraw(), weightedDraw(), weightedDraw()];
 
   // 先在區域變數裡試算這次的結果，成功存檔後才套用到 state.player。
@@ -6512,7 +6680,7 @@ async function pullSlot(){
   const prevCards = {...state.player.cards};
   const prevStats = state.player.stats ? {...state.player.stats} : null;
 
-  let coins = prevCoins - SLOT_SETTINGS.cost;
+  let coins = prevCoins - cost;
   const cards = {...state.player.cards};
   drawn.forEach(c=>{ cards[c.id] = (cards[c.id]||0) + 1; });
 
@@ -6534,39 +6702,44 @@ async function pullSlot(){
   }
 
   if(allSame && rarities[0] === 'epic'){
-    winAmount = SLOT_JACKPOT;
+    winAmount = isMega ? Math.round(SLOT_JACKPOT * SLOT_SETTINGS.megaJackpotMult) : SLOT_JACKPOT;
     coins += winAmount;
     winTier = 'jackpot';
-    winMsg = tt(`✨💫 命運共鳴！贏得整個獎池 ✦${winAmount}！`, `✨💫 Fated Resonance! Won the entire jackpot pool ✦${winAmount}!`);
+    winMsg = isMega
+      ? tt(`✨💫🔥 超級命運共鳴！贏得獎池 ${SLOT_SETTINGS.megaJackpotMult} 倍 ✦${winAmount}！`, `✨💫🔥 Mega Fated Resonance! Won ${SLOT_SETTINGS.megaJackpotMult}x the jackpot pool - ✦${winAmount}!`)
+      : tt(`✨💫 命運共鳴！贏得整個獎池 ✦${winAmount}！`, `✨💫 Fated Resonance! Won the entire jackpot pool ✦${winAmount}!`);
     jackpotAfterWin = SLOT_SETTINGS.jackpotBase;
   } else if(allSame && rarities[0] === 'rare'){
-    winAmount = SLOT_SETTINGS.cost * SLOT_SETTINGS.multRare;
+    winAmount = cost * SLOT_SETTINGS.multRare;
     coins += winAmount;
     winTier = 'rare';
     winMsg = tt(`✨ 三張稀有共鳴！獲得 ✦${winAmount} 金幣`, `✨ Three Rare Resonance! Won ✦${winAmount} coins`);
   } else if(allSame && rarities[0] === 'uncommon'){
-    winAmount = SLOT_SETTINGS.cost * SLOT_SETTINGS.multUncommon;
+    winAmount = cost * SLOT_SETTINGS.multUncommon;
     coins += winAmount;
     winTier = 'uncommon';
     winMsg = tt(`✨ 三張罕見共鳴！獲得 ✦${winAmount} 金幣`, `✨ Three Uncommon Resonance! Won ✦${winAmount} coins`);
   } else if(allSame && rarities[0] === 'common'){
-    winAmount = SLOT_SETTINGS.cost * SLOT_SETTINGS.multCommon;
+    winAmount = cost * SLOT_SETTINGS.multCommon;
     coins += winAmount;
     winTier = 'common';
     winMsg = tt(`✨ 三張普通共鳴！獲得 ✦${winAmount} 金幣`, `✨ Three Common Resonance! Won ✦${winAmount} coins`);
   } else {
-    const contrib = Math.round(SLOT_SETTINGS.cost * SLOT_SETTINGS.contribRate / 100);
+    const contrib = Math.round(cost * SLOT_SETTINGS.contribRate / 100);
     jackpotContribution = SLOT_JACKPOT + contrib;
   }
 
   // 把這次結果套用到本地玩家物件，準備存檔；下面若存檔失敗會整組復原。
   state.player.coins = coins;
-  state.player.slotSpend = prevSlotSpend + SLOT_SETTINGS.cost;
+  state.player.slotSpend = prevSlotSpend + cost;
   state.player.cards = cards;
   bumpQuest(state.player, 'slot', 1);
   if(winTier === 'jackpot'){
     state.player.stats = state.player.stats || {};
     state.player.stats.totalJackpotWins = (state.player.stats.totalJackpotWins || 0) + 1;
+    if(isMega){
+      state.player.stats.totalMegaJackpotWins = (state.player.stats.totalMegaJackpotWins || 0) + 1;
+    }
   }
   state.drawResults = drawn;
   state.drawSource = 'slot';
@@ -6607,6 +6780,19 @@ async function pullSlot(){
     lastSeenBroadcastTs = Date.now();
   }
 }
+// ---------- 分頁在背景時暫停輪詢，降低 egress ----------
+// 下面幾條 setInterval 輪詢（中獎跑馬燈、獎池、稱號、通知、聊天…）原本不管
+// 分頁是否可見都照常打 API；玩家把分頁丟到背景分頁、或手機螢幕關掉時，
+// 這些輪詢仍會持續發請求耗用流量。這裡讓每條輪詢在背景時直接跳過（完全
+// 不發請求），並在分頁恢復可見時立刻補跑一次，避免玩家切回來時看到過期資料。
+const visiblePollCallbacks = [];
+function registerVisiblePoll(fn){ visiblePollCallbacks.push(fn); }
+document.addEventListener('visibilitychange', ()=>{
+  if(document.visibilityState === 'visible'){
+    visiblePollCallbacks.forEach(fn=>{ try{ fn(); }catch(e){ /* ignore */ } });
+  }
+});
+
 // ---------- Presence (online / last seen) heartbeat ----------
 async function updatePresenceHeartbeat(){
   if(!state.nickname || !state.player) return;
@@ -6621,7 +6807,8 @@ function initPresenceHeartbeat(){
   });
 }
 function initWinBroadcastPoll(){
-  setInterval(async ()=>{
+  const poll = async ()=>{
+    if(document.visibilityState !== 'visible') return; // 背景分頁不輪詢
     if(!state.nickname) return;
     try{
       const r = await storage.get('config:latest_win');
@@ -6633,31 +6820,39 @@ function initWinBroadcastPoll(){
         showToast(tt(`✨ ${w.nickname} 觸發了${tierLabel}，贏得 ✦${w.amount} 金幣！`, `✨ ${w.nickname} triggered ${tierLabel}, winning ✦${w.amount} coins!`));
       }
     }catch(e){ /* ignore */ }
-  }, 15000);
+  };
+  setInterval(poll, 15000);
+  registerVisiblePoll(poll);
 }
 // 定期把獎池數字跟伺服器同步，這樣即使玩家沒有按下抽卡、只是停留在頁面上，
 // 畫面上顯示的獎池也不會停留在剛打開頁面那一刻的過期快照
 function initSlotJackpotPoll(){
-  setInterval(async ()=>{
+  const poll = async ()=>{
+    if(document.visibilityState !== 'visible') return; // 背景分頁不輪詢
     if(!state.nickname) return;
     const before = SLOT_JACKPOT;
     await syncSlotJackpot();
     if(SLOT_JACKPOT !== before && state.tab === 'resonance'){
       renderTab();
     }
-  }, 10000);
+  };
+  setInterval(poll, 10000);
+  registerVisiblePoll(poll);
 }
 // 定期輪詢目前的稱號持有者（唯讀），讓所有玩家即使沒有自己打開排行榜，也能看到
 // 別人身上稱號的即時變化（例如聊天室、個人檔案顯示的稱號）
 function initTitleHolderPoll(){
-  setInterval(async ()=>{
+  const poll = async ()=>{
+    if(document.visibilityState !== 'visible') return; // 背景分頁不輪詢
     if(!state.nickname) return;
     const before = JSON.stringify(TITLE_HOLDERS);
     await loadTitleHolders();
     if(JSON.stringify(TITLE_HOLDERS) !== before && (state.tab==='leaderboard' || state.tab==='chat')){
       renderTab();
     }
-  }, 20000);
+  };
+  setInterval(poll, 20000);
+  registerVisiblePoll(poll);
 }
 
 // ---------- Friends ----------
@@ -6667,6 +6862,25 @@ function freqKey(id){ return `freq:${id}`; }
 // 每個在線玩家每次輪詢都重複下載全站所有人的通知，流量隨玩家數/
 // 通知數倍增）。
 function notifKey(nick, id){ return `notif:${(nick||'').toLowerCase()}:${id}`; }
+// 通知的輕量 meta key（注意：故意放在 notif: 前綴「之外」的獨立 namespace，
+// 避免被 fetchNotifications 的 storage.list('notif:<nick>:') 前綴掃描也一併撈到）。
+// 只記錄「最新一筆通知的 id + 時間戳」，輪詢時先讀這個小 key，沒變就代表沒有
+// 新通知，不必再對每一筆通知各發一次 storage.get（N+1）。
+function notifMetaKey(nick){ return `notifmeta:${(nick||'').toLowerCase()}`; }
+async function touchNotifMeta(nick, lastId){
+  try{ await storage.set(notifMetaKey(nick), JSON.stringify({lastId, updatedAt: Date.now()})); }
+  catch(e){ /* best effort，meta 寫入失敗頂多讓輪詢多做一次整包重抓，不影響正確性 */ }
+}
+async function fetchNotifMeta(nick){
+  try{
+    const r = await storage.get(notifMetaKey(nick));
+    if(!r) return null;
+    return JSON.parse(r.value);
+  }catch(e){ return null; }
+}
+function notifMetaSignature(meta){
+  return meta ? `${meta.lastId}:${meta.updatedAt}` : '';
+}
 // 依玩家分流：key 前綴帶上暱稱，讓 fetchPendingRewardsFor 只需查詢
 // 該玩家自己的資料，不會被全站 pendingreward: 資料量拖累、撞到
 // PostgREST 預設回傳筆數上限而撈不到（曾導致「有通知但收不到卡」）。
@@ -6693,6 +6907,7 @@ async function createNotification(to, from, type, extra){
   if((to||'').toLowerCase() === (from||'').toLowerCase()) return; // don't notify yourself
   const n = {id: uid(), to, from, type, read:false, createdAt: Date.now(), ...extra};
   try{ await storage.set(notifKey(to, n.id), JSON.stringify(n)); }catch(e){ /* best effort */ }
+  touchNotifMeta(to, n.id).catch(()=>{});
   pruneNotifications(to).catch(()=>{});
 }
 async function pruneNotifications(nick){
@@ -6814,9 +7029,15 @@ function notifText(n){
   return tt(`${n.from} 在你的花園留下了紀錄`, `${n.from} left a note in your garden`);
 }
 function initNotifPoll(){
-  setInterval(async ()=>{
+  let lastNotifMetaSig; // 初始為 undefined，確保第一次一定會真的抓一次
+  const poll = async ()=>{
+    if(document.visibilityState !== 'visible') return; // 背景分頁不輪詢
     if(!state.nickname) return;
     try{
+      const meta = await fetchNotifMeta(state.nickname);
+      const sig = notifMetaSignature(meta);
+      if(sig === lastNotifMetaSig) return; // meta 沒變，代表沒有新通知，不需要整包重抓
+      lastNotifMetaSig = sig;
       const notifs = await fetchNotifications();
       const unread = notifs.filter(n=>!n.read);
       const newOnes = unread.filter(n=>!notifBadgeSeenIds.has(n.id));
@@ -6825,7 +7046,9 @@ function initNotifPoll(){
       const badge = document.getElementById('notif-badge');
       if(badge){ badge.style.display = notifUnreadCount>0 ? 'inline-flex' : 'none'; badge.textContent = notifUnreadCount>9?'9+':String(notifUnreadCount); }
     }catch(e){ /* ignore */ }
-  }, 12000);
+  };
+  setInterval(poll, 12000);
+  registerVisiblePoll(poll);
 }
 
 // ---------- Chat channel ----------
@@ -6891,7 +7114,8 @@ async function deleteChatMessage(id){
 }
 function initChatPoll(){
   let lastPollMetaSig = null;
-  setInterval(async ()=>{
+  const poll = async ()=>{
+    if(document.visibilityState !== 'visible') return; // 背景分頁不輪詢
     if(!state.nickname || state.tab !== 'chat') return;
     try{
       const meta = await fetchChatMeta();
@@ -6910,7 +7134,9 @@ function initChatPoll(){
       if(newInput && draft){ newInput.value = draft; if(hadFocus) newInput.focus(); }
       markChatAsRead();
     }catch(e){ /* ignore */ }
-  }, 4000);
+  };
+  setInterval(poll, 4000);
+  registerVisiblePoll(poll);
 }
 function updateChatBadgeDom(){
   const badge = document.getElementById('chat-tab-badge');
@@ -6927,7 +7153,8 @@ async function markChatAsRead(){
 }
 function initChatUnreadPoll(){
   let lastUnreadMetaSig = null;
-  setInterval(async ()=>{
+  const poll = async ()=>{
+    if(document.visibilityState !== 'visible') return; // 背景分頁不輪詢
     if(!state.nickname || !state.player) return;
     if(state.tab === 'chat') return; // already tracked as read while viewing
     try{
@@ -6940,7 +7167,9 @@ function initChatUnreadPoll(){
       chatUnreadCount = messages.filter(m=>m.nickname !== state.nickname && m.createdAt > lastSeen).length;
       updateChatBadgeDom();
     }catch(e){ /* ignore */ }
-  }, 15000);
+  };
+  setInterval(poll, 15000);
+  registerVisiblePoll(poll);
 }
 
 async function fetchFriendRequests(){
@@ -6955,6 +7184,60 @@ async function fetchFriendRequests(){
   }catch(e){ return []; }
 }
 
+// ---------- 玩家暱稱輕量索引 ----------
+// broadcastJackpotWin 之前呼叫 fetchAllPlayers() 只是為了拿到全部玩家的暱稱，
+// 卻要把每個玩家的完整存檔（卡牌、材料、骰子…可能好幾十 KB）都下載下來，
+// 中獎越常發生，這筆浪費就越常發生。這裡改成只維護一份「暱稱清單」的
+// 小 key，中獎廣播只需要讀這一個小檔案。索引在玩家註冊、被 GM 刪除時
+// 即時更新；也會在排行榜快取重算、GM 主控台開啟時（這兩處本來就會抓一次
+// 全部玩家完整資料）順便補齊漏掉的舊帳號，不需要額外的網路請求。
+const PLAYER_INDEX_KEY = 'config:player_index';
+async function fetchPlayerIndex(){
+  try{
+    const r = await storage.get(PLAYER_INDEX_KEY);
+    if(!r) return [];
+    const arr = JSON.parse(r.value);
+    return Array.isArray(arr) ? arr : [];
+  }catch(e){ return []; }
+}
+async function addToPlayerIndex(nick){
+  if(!nick) return;
+  try{
+    const idx = await fetchPlayerIndex();
+    const lower = nick.toLowerCase();
+    if(!idx.some(n=>n.toLowerCase()===lower)){
+      idx.push(nick);
+      await storage.set(PLAYER_INDEX_KEY, JSON.stringify(idx));
+    }
+  }catch(e){ /* best effort：索引寫入失敗頂多讓中獎廣播漏抓這位玩家，不影響玩家資料本身 */ }
+}
+async function removeFromPlayerIndex(nick){
+  if(!nick) return;
+  try{
+    const idx = await fetchPlayerIndex();
+    const lower = nick.toLowerCase();
+    const next = idx.filter(n=>n.toLowerCase()!==lower);
+    if(next.length !== idx.length) await storage.set(PLAYER_INDEX_KEY, JSON.stringify(next));
+  }catch(e){ /* ignore */ }
+}
+// 利用「本來就已經抓到手」的完整玩家清單，順便補齊索引裡漏掉的暱稱
+// （例如索引機制上線前就已存在的舊帳號）。不額外發任何請求抓玩家資料。
+async function syncPlayerIndexFromPlayers(players){
+  try{
+    const idx = await fetchPlayerIndex();
+    const known = new Set(idx.map(n=>n.toLowerCase()));
+    const next = idx.slice();
+    let changed = false;
+    (players||[]).forEach(p=>{
+      if(p && p.nickname && !known.has(p.nickname.toLowerCase())){
+        known.add(p.nickname.toLowerCase());
+        next.push(p.nickname);
+        changed = true;
+      }
+    });
+    if(changed) await storage.set(PLAYER_INDEX_KEY, JSON.stringify(next));
+  }catch(e){ /* ignore */ }
+}
 async function fetchAllPlayers(){
   try{
     const list = await storage.list('player:');
@@ -7221,8 +7504,9 @@ async function loadAuctionConfig(){
 async function saveAuctionConfig(){
   await storage.set('config:auction_fee', JSON.stringify({feePct: AUCTION_FEE_PCT}));
 }
-function auctionFeeAmount(price){
-  return Math.min(price, Math.round((price||0) * AUCTION_FEE_PCT));
+function auctionFeeAmount(price, venusReductionPct){
+  const effPct = Math.max(0, AUCTION_FEE_PCT - (venusReductionPct||0)); // ♀️ 星盤金星節點：以賣家的加成減免手續費百分點
+  return Math.min(price, Math.round((price||0) * effPct));
 }
 async function listAuction(itemType, itemId, qty, startBid, buyoutPrice, durMs){
   if(!itemId){ showToast(tt('請選擇物品','Please choose an item')); return; }
@@ -7336,7 +7620,8 @@ async function buyoutAuction(auctionId){
   bumpQuest(state.player, 'auction', 1);
   ensureStats(state.player).totalAuctionTrades += 1;
   await savePlayer(state.player);
-  const fee = auctionFeeAmount(price);
+  const sellerForFee = (auction.seller === state.nickname) ? state.player : await loadPlayer(auction.seller);
+  const fee = auctionFeeAmount(price, sellerForFee ? starChartVenusFeeReductionPct(sellerForFee) : 0);
   const payout = price - fee;
   // 賣家收款走 pendingReward：賣家不是當前操作者，若直接 loadPlayer+savePlayer，
   // 賣家自己那邊若同時存檔會把這筆收款覆蓋掉（同「沒收到卡」的成因）。
@@ -7357,7 +7642,8 @@ async function resolveAuction(auction){
   if(auction.currentBidder){
     await grantAuctionItem(auction.currentBidder, auction.itemType, auction.itemId, auction.qty, auction.diceData);
     await createPendingReward(auction.currentBidder, 'auction_trade_stat', {});
-    const fee = auctionFeeAmount(auction.currentBid);
+    const sellerForFee = await loadPlayer(auction.seller);
+    const fee = auctionFeeAmount(auction.currentBid, sellerForFee ? starChartVenusFeeReductionPct(sellerForFee) : 0);
     const payout = auction.currentBid - fee;
     await createPendingReward(auction.seller, 'auction_sale', {amount: payout});
     await createNotification(auction.seller, auction.currentBidder, 'auction_sold', {cardName: itemName, price: payout});
@@ -7572,6 +7858,7 @@ async function gmDeletePlayer(targetNick){
   if(!p){ showToast(tt('找不到此玩家','Player not found')); return; }
   if(!confirm(tt(`確定要永久刪除玩家「${p.nickname}」嗎？此動作無法復原。`, `Permanently delete player "${p.nickname}"? This cannot be undone.`))) return;
   await storage.delete(playerKey(p.nickname));
+  removeFromPlayerIndex(p.nickname).catch(()=>{});
   gmLookupResult = null;
   showToast(tt('已刪除該玩家帳號','Player account deleted'));
   renderTab();
@@ -7937,13 +8224,17 @@ function renderResonance(body){
   html += `<div class="countdown" style="margin-bottom:10px;">${tt(`目前獎池：<b style="color:var(--gold-bright);">✦ ${SLOT_JACKPOT}</b>`, `Current jackpot: <b style="color:var(--gold-bright);">✦ ${SLOT_JACKPOT}</b>`)}</div>
     <div style="display:flex;align-items:center;justify-content:center;gap:14px;flex-wrap:wrap;">
       <button class="btn" id="slot-btn" ${p.coins < SLOT_SETTINGS.cost ? 'disabled' : ''}>${tt(`共鳴一次（✦ ${SLOT_SETTINGS.cost}）`, `Resonate once (✦ ${SLOT_SETTINGS.cost})`)}</button>
+      <button class="btn" id="mega-slot-btn" style="border-color:var(--legendary-b);background:linear-gradient(180deg, rgba(139,63,214,0.28), rgba(139,63,214,0.08));color:var(--legendary-a);" ${p.coins < SLOT_SETTINGS.megaCost ? 'disabled' : ''}>${tt(`🔥 超級共鳴（✦ ${SLOT_SETTINGS.megaCost}，大獎 x${SLOT_SETTINGS.megaJackpotMult}）`, `🔥 Mega Resonance (✦ ${SLOT_SETTINGS.megaCost}, jackpot x${SLOT_SETTINGS.megaJackpotMult})`)}</button>
       <span style="font-family:'Space Mono',monospace;font-size:13px;color:var(--gold-bright);">${tt(`目前金幣：✦ ${p.coins}`, `Your coins: ✦ ${p.coins}`)}</span>
     </div>
+    <p class="sub" style="margin:10px 0 0;font-size:12px;">${tt(`超級共鳴花費較高，其餘規則相同，但三張史詩會直接卷走獎池的 ${SLOT_SETTINGS.megaJackpotMult} 倍！`, `Mega Resonance costs more with the same rules otherwise, but three Epics take ${SLOT_SETTINGS.megaJackpotMult}x the jackpot pool!`)}</p>
   </div>`;
 
   body.innerHTML = html;
   const slotBtn = document.getElementById('slot-btn');
-  if(slotBtn) slotBtn.onclick = pullSlot;
+  if(slotBtn) slotBtn.onclick = ()=>pullSlot(false);
+  const megaSlotBtn = document.getElementById('mega-slot-btn');
+  if(megaSlotBtn) megaSlotBtn.onclick = ()=>pullSlot(true);
 
   if(showDrawResults){
     COLLECTION_MODAL_LIST = state.drawResults.map(c=>c.id);
@@ -8216,7 +8507,7 @@ async function renderAuction(body){
   <div class="panel">
     <h2>${t('createAuctionHeader')}</h2>
     <p class="sub">${tt('設定起標價、一口價（至少填一個），讓其他占卜師競標或直接購買你的卡片、材料、職業成品或骰子','Set a starting bid and/or a buyout price (at least one), so other diviners can bid on or directly buy your cards, materials, profession items, or dice')}</p>
-    <p class="sub" style="color:var(--muted);">${tt(`💰 成交後將收取 ${Math.round(AUCTION_FEE_PCT*100)}% 手續費，實際到手金額會略低於成交價`, `💰 A ${Math.round(AUCTION_FEE_PCT*100)}% fee is charged on sale — you'll receive slightly less than the final price`)}</p>
+    <p class="sub" style="color:var(--muted);">${tt(`💰 成交後將收取 ${Math.round(Math.max(0,AUCTION_FEE_PCT-starChartVenusFeeReductionPct(state.player))*100)}% 手續費，實際到手金額會略低於成交價`, `💰 A ${Math.round(Math.max(0,AUCTION_FEE_PCT-starChartVenusFeeReductionPct(state.player))*100)}% fee is charged on sale — you'll receive slightly less than the final price`)}</p>
     <div class="form-row" style="margin-bottom:2px;">
       <div><label>${tt('物品類型','Item type')}</label>
         <select id="auc-type-select">
@@ -8767,6 +9058,7 @@ const LEADERBOARD_CACHE_KEY = 'config:leaderboard_cache';
 const LEADERBOARD_CACHE_TTL_MS = 3 * 60 * 1000; // 3 分鐘內重複打開不重抓
 async function computeLeaderboards(){
   const allPlayers = await fetchAllPlayers();
+  syncPlayerIndexFromPlayers(allPlayers).catch(()=>{}); // 順便補齊暱稱索引，不額外發請求
   const players = allPlayers.filter(pl=>pl.nickname.toLowerCase() !== GM_NICKNAME.toLowerCase());
   const byCards = players.map(pl=>({nickname:pl.nickname, total: playerTotalCards(pl)}))
     .sort((a,b)=>b.total-a.total).slice(0,10);
@@ -8918,6 +9210,7 @@ async function renderGM(body){
 
   const cardOptions = DECK.map(c=>`<option value="${c.id}">${c.name}（${RARITY_LABEL[c.rarity]}）</option>`).join('');
   const allPlayers = (await fetchAllPlayers()).sort((a,b)=>(b.coins||0)-(a.coins||0));
+  syncPlayerIndexFromPlayers(allPlayers).catch(()=>{}); // 順便補齊暱稱索引，不額外發請求
   const allFriendships = await fetchAllFriendships();
   const friendCountMap = {};
   allFriendships.forEach(f=>{
@@ -8961,7 +9254,7 @@ async function renderGM(body){
   await loadAvatarShop().catch(()=>{});
   html += `<div class="panel">
     <h2>${tt('🖼 頭像商店','🖼 Avatar Shop')}</h2>
-    <p class="sub">${tt('上傳自訂圖片頭像，設定貢獻點價格，玩家可在「頭像」分頁用貢獻點購買並永久解鎖','Upload custom image avatars and set a contribution-point price - players can buy and permanently unlock them from the Avatar tab')}</p>
+    <p class="sub">${tt('把圖片上傳到 GitHub repo 的 assets 資料夾後，貼上網址即可上架，設定貢獻點價格，玩家可在「頭像」分頁用貢獻點購買並永久解鎖','Upload the image to the assets folder in the GitHub repo, then paste its URL to list it and set a contribution-point price - players can buy and permanently unlock it from the Avatar tab')}</p>
     ${SHOP_AVATARS.length ? `
       <div class="badge-grid" style="margin-bottom:14px;">
         ${SHOP_AVATARS.map(a=>`
@@ -8987,9 +9280,15 @@ async function renderGM(body){
     </div>
     <div class="form-row">
       <div style="flex:1;min-width:220px;">
-        <label>${tt('上傳圖片','Upload image')}</label>
-        <input type="file" id="gm-avatar-shop-file" accept="image/*" />
-        <div class="who" style="margin-top:4px;">${tt('建議使用方形圖片，檔案小於 500KB','Recommend a square image under 500KB')}</div>
+        <label>${tt('圖片網址','Image URL')}</label>
+        <input type="text" id="gm-avatar-shop-url" placeholder="https://lekcusong.github.io/tcg/assets/xxx.png" />
+        <div class="who" style="margin-top:4px;">${tt('請先把圖片檔上傳到 GitHub repo 的 assets 資料夾，再把網址貼在這裡（跟橫幅圖片同一種做法）。建議使用方形圖片。','Upload the image file to the assets folder in the GitHub repo first, then paste its URL here (same approach as the banner images). Recommend a square image.')}</div>
+      </div>
+    </div>
+    <div class="form-row" id="gm-avatar-shop-url-preview-row" style="display:none;">
+      <div class="badge-card" style="width:88px;">
+        <div class="badge-img-wrap"><img id="gm-avatar-shop-url-preview" style="width:100%;height:100%;object-fit:cover;" /></div>
+        <div class="who">${tt('預覽','Preview')}</div>
       </div>
     </div>
     <div class="form-row">
@@ -9228,6 +9527,11 @@ async function renderGM(body){
     <div class="form-row">
       <div><label>${tt('未中獎抽成 %（存入獎池）','Non-win rake % (into jackpot)')}</label><input type="number" id="gm-slot-contrib" value="${SLOT_SETTINGS.contribRate}" min="0" max="100" style="width:80px;" /></div>
       <div><label>${tt('頭獎後獎池重置為','Jackpot resets to')}</label><input type="number" id="gm-slot-jackpot-base" value="${SLOT_SETTINGS.jackpotBase}" min="0" style="width:100px;" /></div>
+    </div>
+    <p class="sub" style="margin-top:14px;">${tt('🔥 超級共鳴：花費更高的單獨按鍵，三普通／三罕見／三稀有沿用上面的固定倍率（以超級共鳴花費計算），未中獎抽成比例也沿用上面設定；只有中頭獎（三張史詩）的獎池倍率單獨設定。','🔥 Mega Resonance: a separate, higher-cost button. Common/Uncommon/Rare wins reuse the multipliers above (applied to the Mega cost), and the non-win rake % above also applies. Only the jackpot payout multiplier is set separately.')}</p>
+    <div class="form-row">
+      <div><label>${tt('超級共鳴花費','Mega pull cost')}</label><input type="number" id="gm-slot-mega-cost" value="${SLOT_SETTINGS.megaCost}" min="1" style="width:90px;" /></div>
+      <div><label>${tt('超級共鳴頭獎倍率','Mega jackpot multiplier')}</label><input type="number" id="gm-slot-mega-jackpot-mult" value="${SLOT_SETTINGS.megaJackpotMult}" min="0" step="0.5" style="width:80px;" /></div>
     </div>
     <div class="form-row">
       <button class="btn small" id="gm-slot-save-btn">${tt('儲存共鳴設定','Save Resonance Settings')}</button>
@@ -9537,36 +9841,40 @@ async function renderGM(body){
     renderTab();
   };
 
+  const avatarShopUrlInput = document.getElementById('gm-avatar-shop-url');
+  const avatarShopUrlPreviewRow = document.getElementById('gm-avatar-shop-url-preview-row');
+  const avatarShopUrlPreview = document.getElementById('gm-avatar-shop-url-preview');
+  if(avatarShopUrlInput) avatarShopUrlInput.oninput = ()=>{
+    const url = avatarShopUrlInput.value.trim();
+    if(url && avatarShopUrlPreview){
+      avatarShopUrlPreview.src = url;
+      avatarShopUrlPreviewRow.style.display = '';
+    } else if(avatarShopUrlPreviewRow){
+      avatarShopUrlPreviewRow.style.display = 'none';
+    }
+  };
   const avatarShopAddBtn = document.getElementById('gm-avatar-shop-add-btn');
   if(avatarShopAddBtn) avatarShopAddBtn.onclick = async ()=>{
     const nameInput = document.getElementById('gm-avatar-shop-name');
     const costInput = document.getElementById('gm-avatar-shop-cost');
-    const fileInput = document.getElementById('gm-avatar-shop-file');
+    const urlInput = document.getElementById('gm-avatar-shop-url');
     const name = nameInput ? nameInput.value.trim() : '';
     const cost = costInput ? parseInt(costInput.value, 10) : NaN;
-    const file = fileInput && fileInput.files && fileInput.files[0];
+    const url = urlInput ? urlInput.value.trim() : '';
     if(!name){ showToast(tt('請輸入頭像名稱','Please enter an avatar name')); return; }
     if(isNaN(cost) || cost <= 0){ showToast(tt('請輸入有效的貢獻點價格','Please enter a valid contribution cost')); return; }
-    if(!file){ showToast(tt('請先選擇一張圖片','Please choose an image first')); return; }
-    if(!file.type || !file.type.startsWith('image/')){ showToast(tt('請選擇圖片檔案','Please choose an image file')); return; }
-    const MAX_BYTES = 1.5 * 1024 * 1024; // 頭像會存進商店清單且常駐載入，限制小一點
-    if(file.size > MAX_BYTES){ showToast(tt('圖片檔案過大，請壓縮到 1.5MB 以下','Image is too large, please compress it under 1.5MB')); return; }
+    if(!url){ showToast(tt('請先貼上圖片網址','Please paste an image URL first')); return; }
+    if(!/^https?:\/\//i.test(url)){ showToast(tt('請輸入完整的 http(s) 網址','Please enter a full http(s) URL')); return; }
     avatarShopAddBtn.disabled = true;
-    avatarShopAddBtn.textContent = tt('上傳中...','Uploading...');
+    avatarShopAddBtn.textContent = tt('上架中...','Adding...');
     try{
-      const dataUrl = await new Promise((resolve, reject)=>{
-        const reader = new FileReader();
-        reader.onload = ()=>resolve(reader.result);
-        reader.onerror = ()=>reject(new Error('read failed'));
-        reader.readAsDataURL(file);
-      });
       const id = 'shop_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,7);
-      SHOP_AVATARS.push({id, name, cost, image: dataUrl, unlisted:false});
+      SHOP_AVATARS.push({id, name, cost, image: url, unlisted:false});
       await saveAvatarShop();
       showToast(tt('頭像已上架 🖼','Avatar added to the shop 🖼'));
       renderTab();
     }catch(e){
-      showToast(tt('上傳失敗，請再試一次','Upload failed, please try again'));
+      showToast(tt('上架失敗，請再試一次','Failed to add, please try again'));
       avatarShopAddBtn.disabled = false;
       avatarShopAddBtn.textContent = tt('上架頭像','Add to Shop');
     }
@@ -9781,6 +10089,8 @@ async function renderGM(body){
       multRare: parseFloat(document.getElementById('gm-slot-mult-rare').value),
       contribRate: parseFloat(document.getElementById('gm-slot-contrib').value),
       jackpotBase: parseFloat(document.getElementById('gm-slot-jackpot-base').value),
+      megaCost: parseFloat(document.getElementById('gm-slot-mega-cost').value),
+      megaJackpotMult: parseFloat(document.getElementById('gm-slot-mega-jackpot-mult').value),
     };
     if(Object.values(s).some(v=>isNaN(v) || v < 0)){ showToast(tt('請輸入有效的非負數字','Please enter a valid non-negative number')); return; }
     await saveSlotSettings(s);
