@@ -1967,10 +1967,11 @@ let BOSS_COMBO_STREAK_CAP = DEFAULT_BOSS_COMBO_STREAK_CAP;
 // 👹 小怪：Boss 戰鬥過程中額外出現的小怪。攻擊時若目前有存活小怪，這次攻擊的
 // 傷害會優先打在小怪身上；打不死則剩餘（溢出）傷害才繼續打 Boss。小怪被擊殺
 // 後立刻發放金幣獎勵，沒有小怪存活時每次攻擊才有機會刷出新的一隻。
+// 💠 essenceChance/essenceMin/essenceMax：擊殺時額外掉落骰子精華的機率與數量區間（獨立於金幣，可能同時掉）
 const BOSS_MINION_TYPES = [
-  {id:'imp',   icon:'👹', labelZh:'骰靈小惡魔', labelEn:'Dice Imp',        hp:150, rewardCoinsMin:10, rewardCoinsMax:25, weight:5},
-  {id:'wisp',  icon:'👻', labelZh:'星軌幽光',   labelEn:'Star-Trail Wisp', hp:80,  rewardCoinsMin:5,  rewardCoinsMax:15, weight:4},
-  {id:'golem', icon:'🗿', labelZh:'碎石護衛',   labelEn:'Stone Guardian',  hp:400, rewardCoinsMin:30, rewardCoinsMax:60, weight:1},
+  {id:'imp',   icon:'👹', labelZh:'骰靈小惡魔', labelEn:'Dice Imp',        hp:150, rewardCoinsMin:10, rewardCoinsMax:25, weight:5, essenceChance:0.6, essenceMin:1, essenceMax:3},
+  {id:'wisp',  icon:'👻', labelZh:'星軌幽光',   labelEn:'Star-Trail Wisp', hp:80,  rewardCoinsMin:5,  rewardCoinsMax:15, weight:4, essenceChance:0.4, essenceMin:1, essenceMax:2},
+  {id:'golem', icon:'🗿', labelZh:'碎石護衛',   labelEn:'Stone Guardian',  hp:400, rewardCoinsMin:30, rewardCoinsMax:60, weight:1, essenceChance:0.9, essenceMin:5, essenceMax:10},
 ];
 const DEFAULT_BOSS_MINION_SPAWN_CHANCE = 0.15; // 每次攻擊、且目前沒有存活小怪時，有此機率額外刷出一隻
 let BOSS_MINION_SPAWN_CHANCE = DEFAULT_BOSS_MINION_SPAWN_CHANCE;
@@ -2011,37 +2012,61 @@ const BOSS_EVENT_TYPES = [
     descZh:'下一次攻擊傷害 -30%……小心！', descEn:'Your next attack deals -30% damage... watch out!',
     kind:'debuff', weight:1, hits:1, value:0.30},
 ];
-const DEFAULT_BOSS_EVENT_TRIGGER_CHANCE = 0.35; // 每次換階/換輪時，觸發隨機事件卡的機率
+const DEFAULT_BOSS_EVENT_TRIGGER_CHANCE = 0.35; // 每次換階/換輪時，觸發「祝福/風暴/詛咒/迷霧」事件卡的機率（不含寶箱，寶箱獨立判定見下）
 let BOSS_EVENT_TRIGGER_CHANCE = DEFAULT_BOSS_EVENT_TRIGGER_CHANCE;
 const DEFAULT_BOSS_TREASURE_COINS = {min:50, max:120};
 let BOSS_TREASURE_COINS = {...DEFAULT_BOSS_TREASURE_COINS};
+// 💠 骰子精華獎勵（階段A）：每破一階固定發放，全破三階再加一筆通關加碼，兩者都乘上
+// bossRewardMult(cycle)，跟金幣獎勵一樣「輪數越高獎勵越高」。
+const DEFAULT_BOSS_STAGE_ESSENCE = 10;
+let BOSS_STAGE_ESSENCE = DEFAULT_BOSS_STAGE_ESSENCE;
+const DEFAULT_BOSS_CLEAR_ESSENCE_BONUS = 30;
+let BOSS_CLEAR_ESSENCE_BONUS = DEFAULT_BOSS_CLEAR_ESSENCE_BONUS;
+function bossCurrentStageEssence(cycle){ return Math.round(BOSS_STAGE_ESSENCE * bossRewardMult(cycle)); }
+function bossCurrentClearEssence(cycle){ return Math.round(BOSS_CLEAR_ESSENCE_BONUS * bossRewardMult(cycle)); }
+// 🎁 寶箱選擇（階段C）：金幣寶箱沿用 BOSS_TREASURE_COINS，另外新增精華寶箱與職業材料寶箱。
+const DEFAULT_BOSS_CHEST_ESSENCE = {min:15, max:30};
+let BOSS_CHEST_ESSENCE = {...DEFAULT_BOSS_CHEST_ESSENCE};
+const DEFAULT_BOSS_CHEST_MATERIAL_QTY = {min:5, max:10};
+let BOSS_CHEST_MATERIAL_QTY = {...DEFAULT_BOSS_CHEST_MATERIAL_QTY};
+// 🎁 寶箱獨立判定機率：跟祝福/風暴/詛咒/迷霧的 BOSS_EVENT_TRIGGER_CHANCE 分開算，
+// 不佔用那 4 張卡的權重池（見 pickBossEvent 已排除 treasure），單純每次換階
+// 就直接骰一次「要不要出寶箱」。
+const DEFAULT_BOSS_CHEST_TRIGGER_CHANCE = 0.30;
+let BOSS_CHEST_TRIGGER_CHANCE = DEFAULT_BOSS_CHEST_TRIGGER_CHANCE;
 
-// 依 BOSS_EVENT_TYPES 的 weight 權重抽一張事件卡。
+// 依 BOSS_EVENT_TYPES 的 weight 權重抽一張事件卡（寶箱已獨立判定，這裡排除在外，
+// 只在祝福/風暴/詛咒/迷霧之間抽）。
 function pickBossEvent(){
-  const totalWeight = BOSS_EVENT_TYPES.reduce((sum, e) => sum + e.weight, 0);
+  const pool = BOSS_EVENT_TYPES.filter(e => e.id !== 'treasure');
+  const totalWeight = pool.reduce((sum, e) => sum + e.weight, 0);
   let roll = Math.random() * totalWeight;
-  let picked = BOSS_EVENT_TYPES[BOSS_EVENT_TYPES.length - 1];
-  for(const e of BOSS_EVENT_TYPES){
+  let picked = pool[pool.length - 1];
+  for(const e of pool){
     if(roll < e.weight){ picked = e; break; }
     roll -= e.weight;
   }
   return picked;
 }
-// 換階/換輪時呼叫：以 BOSS_EVENT_TRIGGER_CHANCE 機率決定是否觸發事件卡，
-// 直接就地修改傳入的 newBoss（清掉舊事件、寫入新的 activeEvent 或套用詛咒血量）。
-// 回傳值給呼叫端（resolveBossAttack → performBossAttack）用來顯示訊息/發放寶箱與詛咒補償；
-// buff/debuff 卡不需要額外發獎，回傳 {id, kind} 純粹供顯示用。
+// 換階/換輪時呼叫：寶箱獨立判定（BOSS_CHEST_TRIGGER_CHANCE），觸發就直接標記待開啟、
+// 不再往下抽其他事件卡；沒觸發寶箱才照舊以 BOSS_EVENT_TRIGGER_CHANCE 機率抽
+// 祝福/風暴/詛咒/迷霧其中一張。直接就地修改傳入的 newBoss（清掉舊事件、寫入新的
+// activeEvent 或套用詛咒血量）。回傳值給呼叫端（resolveBossAttack → performBossAttack）
+// 用來顯示訊息/發放寶箱與詛咒補償；buff/debuff 卡不需要額外發獎，回傳 {id, kind} 純粹供顯示用。
 function maybeTriggerBossEvent(newBoss){
   newBoss.activeEvent = null; // 進新階段一律先清掉上一階殘留的事件效果，同時間只會有一張事件卡生效
+  const treasureMeta = BOSS_EVENT_TYPES.find(e => e.id === 'treasure');
+  if(Math.random() < BOSS_CHEST_TRIGGER_CHANCE){
+    // 階段C：不再當場自動決定獎勵，改成標記「待開啟」，由玩家在 Boss 分頁 3 選 1
+    // （金幣／骰子精華／職業材料），實際發放走 resolveBossChestChoice。
+    newBoss.pendingChest = true;
+    return {id: 'treasure', kind: treasureMeta ? treasureMeta.kind : 'instant'};
+  }
   if(Math.random() >= BOSS_EVENT_TRIGGER_CHANCE) return null;
   const ev = pickBossEvent();
   if(ev.kind === 'buff' || ev.kind === 'debuff'){
     newBoss.activeEvent = {id: ev.id, hitsLeft: ev.hits, value: ev.value || 0};
     return {id: ev.id, kind: ev.kind};
-  }
-  if(ev.id === 'treasure'){
-    const coins = Math.round(BOSS_TREASURE_COINS.min + Math.random() * (BOSS_TREASURE_COINS.max - BOSS_TREASURE_COINS.min));
-    return {id: ev.id, kind: ev.kind, coins};
   }
   if(ev.id === 'curse'){
     const bonusHp = Math.round(newBoss.maxHp * (ev.value || 0.20));
@@ -2063,6 +2088,11 @@ async function loadBossRoguelikeConfig(){
       if(typeof s.minionSpawnChance === 'number' && s.minionSpawnChance >= 0 && s.minionSpawnChance <= 1) BOSS_MINION_SPAWN_CHANCE = s.minionSpawnChance;
       if(typeof s.eventTriggerChance === 'number' && s.eventTriggerChance >= 0 && s.eventTriggerChance <= 1) BOSS_EVENT_TRIGGER_CHANCE = s.eventTriggerChance;
       if(s.treasureCoins) BOSS_TREASURE_COINS = s.treasureCoins;
+      if(typeof s.stageEssence === 'number' && s.stageEssence >= 0) BOSS_STAGE_ESSENCE = s.stageEssence;
+      if(typeof s.clearEssenceBonus === 'number' && s.clearEssenceBonus >= 0) BOSS_CLEAR_ESSENCE_BONUS = s.clearEssenceBonus;
+      if(s.chestEssence) BOSS_CHEST_ESSENCE = s.chestEssence;
+      if(s.chestMaterialQty) BOSS_CHEST_MATERIAL_QTY = s.chestMaterialQty;
+      if(typeof s.chestTriggerChance === 'number' && s.chestTriggerChance >= 0 && s.chestTriggerChance <= 1) BOSS_CHEST_TRIGGER_CHANCE = s.chestTriggerChance;
     }
   }catch(e){ /* keep defaults */ }
 }
@@ -2073,6 +2103,11 @@ async function saveBossRoguelikeConfig(){
     minionSpawnChance: BOSS_MINION_SPAWN_CHANCE,
     eventTriggerChance: BOSS_EVENT_TRIGGER_CHANCE,
     treasureCoins: BOSS_TREASURE_COINS,
+    stageEssence: BOSS_STAGE_ESSENCE,
+    clearEssenceBonus: BOSS_CLEAR_ESSENCE_BONUS,
+    chestEssence: BOSS_CHEST_ESSENCE,
+    chestMaterialQty: BOSS_CHEST_MATERIAL_QTY,
+    chestTriggerChance: BOSS_CHEST_TRIGGER_CHANCE,
   }));
 }
 
@@ -2123,6 +2158,7 @@ function bossFreshState(){
     comboStreak: 0, // 🔥 資料骨架：連續組合命中次數，每日隨進度重置一起歸零（尚未接上攻擊流程）
     minion: null,   // 👹 目前存活的小怪：{typeId, hp, maxHp}，已接上 resolveBossAttack 的攻擊流程
     activeEvent: null, // ✨ 目前生效中的隨機事件：{id, hitsLeft, value}，換階/換輪時可能重抽（見 maybeTriggerBossEvent）
+    pendingChest: false, // 🎁 是否有待開啟的寶箱（玩家需先 3 選 1 才能繼續攻擊，見 resolveBossChestChoice）
   };
 }
 // 注意：這裡不再吞掉讀取失敗（網路抖動、API 錯誤等）。storage.get() 本身在
@@ -2356,12 +2392,29 @@ async function resolveBossAttack(nickname, damage){
 async function grantBossMinionReward(nickname, minionTypeId){
   const meta = BOSS_MINION_TYPES.find(m => m.id === minionTypeId) || BOSS_MINION_TYPES[0];
   const rewardCoins = Math.round(meta.rewardCoinsMin + Math.random() * (meta.rewardCoinsMax - meta.rewardCoinsMin));
+  // 💠 精華掉落機率/數量獨立於金幣，兩者可能同時發放（見 BOSS_MINION_TYPES 的 essence* 欄位）
+  let rewardEssence = 0;
+  if(Math.random() < (meta.essenceChance||0)){
+    rewardEssence = Math.round(meta.essenceMin + Math.random() * (meta.essenceMax - meta.essenceMin));
+  }
   const applied = await updatePlayerCAS(nickname, (player)=>{
     ensureMaterials(player);
     player.coins = (player.coins||0) + rewardCoins;
+    if(rewardEssence > 0) player.materials.diceEssence = (player.materials.diceEssence||0) + rewardEssence;
   });
   if(!applied) return null; // 玩家不存在（理論上不會發生，保底）
-  return {coins: rewardCoins};
+  return {coins: rewardCoins, essence: rewardEssence};
+}
+// 💠 每破一階（非全破）發放的骰子精華，跟小怪/寶箱獨立，走自己的 CAS 更新。
+async function grantBossStageEssence(nickname, cycle){
+  const essence = bossCurrentStageEssence(cycle);
+  if(essence <= 0) return {essence: 0};
+  const applied = await updatePlayerCAS(nickname, (player)=>{
+    ensureMaterials(player);
+    player.materials.diceEssence = (player.materials.diceEssence||0) + essence;
+  });
+  if(!applied) return null;
+  return {essence};
 }
 
 // ✨ 隨機事件（寶箱／詛咒）獎勵發放：金額已經在 maybeTriggerBossEvent 觸發當下
@@ -2386,17 +2439,70 @@ async function settleBossReward(nickname, cycle){
   const baseReward = bossCurrentBaseReward(cycle);
   const bonusPool = bossCurrentBonusPool(cycle);
   const rewardCoins = baseReward.coins + bonusPool.coins;
+  const rewardEssence = bossCurrentClearEssence(cycle); // 💠 全破三階的通關加碼精華
   // 用 CAS 安全地把獎勵加上去：即使玩家這一刻剛好也在收成、買賣而觸發別的
   // 存檔動作，這裡的重試機制都會在「當下最新」的資料上重新加總，不會被
   // 互相蓋掉。
   const applied = await updatePlayerCAS(nickname, (player)=>{
     player.coins = (player.coins||0) + rewardCoins;
+    ensureMaterials(player);
+    player.materials.diceEssence = (player.materials.diceEssence||0) + rewardEssence;
   });
   if(!applied) return null; // 玩家不存在（理論上不會發生，保底）
   // 只有在確定獎勵真的寫進玩家資料後才發通知，避免「恭喜獲得獎勵」的通知
   // 先到，但錢包/背包其實沒真的加到的情況。
-  await createNotification(nickname, 'system', 'boss_reward', {coins: rewardCoins});
-  return {coins: rewardCoins};
+  await createNotification(nickname, 'system', 'boss_reward', {coins: rewardCoins, essence: rewardEssence});
+  return {coins: rewardCoins, essence: rewardEssence};
+}
+// 🎁 寶箱選擇（階段C）：先把 boss 狀態的 pendingChest 標記清掉（CAS，避免跟同一時間
+// 的攻擊/其他寶箱請求互相覆蓋），成功後才真正發放玩家選的那份獎勵。
+async function clearBossPendingChest(nickname){
+  for(let attempt = 0; attempt < 8; attempt++){
+    const {state: boss, raw, updatedAt} = await loadPlayerBossStateRaw(nickname);
+    if(!boss || !raw) return null;
+    if(!boss.pendingChest) return boss; // 已經被清掉（例如手滑連點两次選擇按鈕），視為成功
+    const newBoss = {...boss, pendingChest: false};
+    const applied = await savePlayerBossStateCAS(nickname, updatedAt, newBoss);
+    if(applied) return newBoss;
+    // 沒搶到：重讀最新狀態再試
+  }
+  throw new Error('clear pending chest contention exceeded retries');
+}
+// choice: 'coins' | 'essence' | 'material'。材料寶箱掉落玩家「目前生效中職業」對應的材料，
+// 若玩家還沒選職業，退而求其次隨機給一種（藥草/礦石/木料），避免發一個完全用不到的空獎勵。
+async function resolveBossChestChoice(nickname, choice){
+  const clearedBoss = await clearBossPendingChest(nickname);
+  if(!clearedBoss) return null; // 玩家不存在（理論上不會發生，保底）
+  if(choice === 'coins'){
+    const coins = Math.round(BOSS_TREASURE_COINS.min + Math.random() * (BOSS_TREASURE_COINS.max - BOSS_TREASURE_COINS.min));
+    const applied = await updatePlayerCAS(nickname, (player)=>{
+      player.coins = (player.coins||0) + coins;
+    });
+    if(!applied) return null;
+    return {choice, coins};
+  }
+  if(choice === 'essence'){
+    const essence = Math.round(BOSS_CHEST_ESSENCE.min + Math.random() * (BOSS_CHEST_ESSENCE.max - BOSS_CHEST_ESSENCE.min));
+    const applied = await updatePlayerCAS(nickname, (player)=>{
+      ensureMaterials(player);
+      player.materials.diceEssence = (player.materials.diceEssence||0) + essence;
+    });
+    if(!applied) return null;
+    return {choice, essence};
+  }
+  if(choice === 'material'){
+    const qty = Math.round(BOSS_CHEST_MATERIAL_QTY.min + Math.random() * (BOSS_CHEST_MATERIAL_QTY.max - BOSS_CHEST_MATERIAL_QTY.min));
+    let materialId = null;
+    const applied = await updatePlayerCAS(nickname, (player)=>{
+      ensureProfession(player);
+      materialId = player.profession ? professionDef(player.profession).materialId
+        : PROFESSION_MATERIAL_IDS[Math.floor(Math.random() * PROFESSION_MATERIAL_IDS.length)];
+      player.professionMaterials[materialId] = (player.professionMaterials[materialId]||0) + qty;
+    });
+    if(!applied) return null;
+    return {choice, materialId, qty};
+  }
+  return null;
 }
 
 // 階段五：擲骰動畫。真正的骰子結果（burst）在動畫開始前就已經算好（rollDiceAttack
@@ -2518,10 +2624,12 @@ async function performBossAttack(){
     state.player = await loadPlayer(p.nickname);
   }
 
-  // ✨ 事件卡（寶箱／詛咒）獎勵：跟小怪獎勵一樣獨立走 CAS 發放，不影響已寫入的
-  // state.player；祝福/風暴/迷霧是 buff/debuff，不會走到這裡發獎，純粹顯示用。
+  // ✨ 事件卡獎勵：詛咒的補償金幣走 CAS 獨立發放，不影響已寫入的 state.player；
+  // 寶箱（treasure）改成階段C的「待選擇」流程，不在這裡自動發獎——實際獎勵要
+  // 等玩家在 Boss 分頁 3 選 1 之後才由 resolveBossChestChoice 發放；
+  // 祝福/風暴/迷霧是 buff/debuff，同樣不會走到這裡發獎，純粹顯示用。
   let eventReward = null;
-  if(eventTriggered && (eventTriggered.id === 'treasure' || eventTriggered.id === 'curse')){
+  if(eventTriggered && eventTriggered.id === 'curse'){
     eventReward = await grantBossEventReward(p.nickname, eventTriggered);
     state.player = await loadPlayer(p.nickname);
   }
@@ -2529,10 +2637,13 @@ async function performBossAttack(){
   let defeatMsg = '';
   if(cycleCompleteFor){
     const reward = await settleBossReward(p.nickname, cycleCompleteFor);
-    defeatMsg = tt(`🎉 你擊敗了「終焉蛇神」！獲得 ✦${reward?reward.coins:0} 金幣，Boss 已被擊退，明天再來挑戰新一輪（更難）！`, `🎉 You defeated the Doomsday Serpent God! Gained ✦${reward?reward.coins:0} coins - come back tomorrow for a new (harder) cycle!`);
+    defeatMsg = tt(`🎉 你擊敗了「終焉蛇神」！獲得 ✦${reward?reward.coins:0} 金幣、💠${reward?reward.essence:0} 骰子精華，Boss 已被擊退，明天再來挑戰新一輪（更難）！`, `🎉 You defeated the Doomsday Serpent God! Gained ✦${reward?reward.coins:0} coins and 💠${reward?reward.essence:0} Dice Essence - come back tomorrow for a new (harder) cycle!`);
     state.player = await loadPlayer(p.nickname);
   } else if(newBoss.stage > prevBoss.stage){
-    defeatMsg = tt(`⚔️ 「${BOSS_STAGE_META[newBoss.stage-2].label}」被擊破！Boss 進入「${BOSS_STAGE_META[newBoss.stage-1].label}」！`, `⚔️ "${BOSS_STAGE_META[newBoss.stage-2].labelEn}" defeated! The Boss enters "${BOSS_STAGE_META[newBoss.stage-1].labelEn}"!`);
+    // 💠 每破一階（非全破）額外發放骰子精華，跟金幣/事件獎勵各自獨立走 CAS
+    const stageEssenceReward = await grantBossStageEssence(p.nickname, newBoss.cycle);
+    if(stageEssenceReward) state.player = await loadPlayer(p.nickname);
+    defeatMsg = tt(`⚔️ 「${BOSS_STAGE_META[newBoss.stage-2].label}」被擊破！Boss 進入「${BOSS_STAGE_META[newBoss.stage-1].label}」！${stageEssenceReward?`　💠精華 +${stageEssenceReward.essence}`:''}`, `⚔️ "${BOSS_STAGE_META[newBoss.stage-2].labelEn}" defeated! The Boss enters "${BOSS_STAGE_META[newBoss.stage-1].labelEn}"!${stageEssenceReward?`  💠Essence +${stageEssenceReward.essence}`:''}`);
   }
 
   state.bossLastAttack = {damage: burst.damage, contrib: contribGain, rolls: burst.rolls, comboTier: burst.comboTier, sameNumber: burst.sameNumber, isCrit: burst.isCrit, eventApplied: burst.eventApplied};
@@ -2566,7 +2677,7 @@ async function performBossAttack(){
     const meta = BOSS_EVENT_TYPES.find(e => e.id === eventTriggered.id);
     if(meta){
       if(eventTriggered.id === 'treasure'){
-        eventMsgPart += tt(`　${meta.icon}觸發「${meta.labelZh}」！獲得 ✦${eventReward?eventReward.coins:0}`, `　${meta.icon}${meta.labelEn} triggered! Gained ✦${eventReward?eventReward.coins:0}`);
+        eventMsgPart += tt(`　${meta.icon}觸發「${meta.labelZh}」！請到下方選擇要開啟的獎勵`, `　${meta.icon}${meta.labelEn} triggered! Choose your reward below`);
       } else if(eventTriggered.id === 'curse'){
         eventMsgPart += tt(`　${meta.icon}觸發「${meta.labelZh}」！本階段血量 +20%，補償 ✦${eventReward?eventReward.coins:0}`, `　${meta.icon}${meta.labelEn} triggered! This stage's HP +20%, compensation ✦${eventReward?eventReward.coins:0}`);
       } else {
@@ -3202,6 +3313,56 @@ function renderBoss(body){
       if(bossAlreadyRendered) window.scrollTo(0, bossScrollY2);
       return;
     }
+    // 🎁 階段C：有待開啟的寶箱時，先讓玩家 3 選 1，選完才繼續顯示戰鬥畫面/能攻擊。
+    if(boss.pendingChest){
+      const chestHtml = `<div class="panel" style="text-align:center;">
+        <h2>🎁 ${tt('星軌寶箱','Star-Trail Chest')}</h2>
+        <p class="sub">${tt('選擇一項獎勵開啟','Choose one reward to open')}</p>
+        <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:14px;">
+          <button class="btn" id="chest-choice-coins">✦ ${tt(`金幣寶箱（${BOSS_TREASURE_COINS.min}-${BOSS_TREASURE_COINS.max}）`, `Coin Chest (${BOSS_TREASURE_COINS.min}-${BOSS_TREASURE_COINS.max})`)}</button>
+          <button class="btn" id="chest-choice-essence">💠 ${tt(`精華寶箱（${BOSS_CHEST_ESSENCE.min}-${BOSS_CHEST_ESSENCE.max}）`, `Essence Chest (${BOSS_CHEST_ESSENCE.min}-${BOSS_CHEST_ESSENCE.max})`)}</button>
+          <button class="btn" id="chest-choice-material">🌿 ${tt(`材料寶箱（${BOSS_CHEST_MATERIAL_QTY.min}-${BOSS_CHEST_MATERIAL_QTY.max}）`, `Material Chest (${BOSS_CHEST_MATERIAL_QTY.min}-${BOSS_CHEST_MATERIAL_QTY.max})`)}</button>
+        </div>
+        <p class="sub" style="margin-top:12px;">${tt('材料寶箱會依你目前的職業掉落對應材料','Material chest drops the material matching your current profession')}</p>
+      </div>`;
+      if(myGen !== bossRenderGen) return;
+      const bossScrollY3 = window.scrollY;
+      body.innerHTML = bossNavHtml + chestHtml;
+      bindBossNav();
+      if(bossAlreadyRendered) window.scrollTo(0, bossScrollY3);
+      const doChestChoice = async (choice)=>{
+        ['chest-choice-coins','chest-choice-essence','chest-choice-material'].forEach(id=>{
+          const b = document.getElementById(id);
+          if(b) b.disabled = true;
+        });
+        try{
+          const result = await resolveBossChestChoice(p.nickname, choice);
+          if(result){
+            state.player = await loadPlayer(p.nickname);
+            let msg = '';
+            if(result.choice === 'coins') msg = tt(`🎁 開啟金幣寶箱，獲得 ✦${result.coins}！`, `🎁 Opened the coin chest, gained ✦${result.coins}!`);
+            else if(result.choice === 'essence') msg = tt(`🎁 開啟精華寶箱，獲得 💠${result.essence} 骰子精華！`, `🎁 Opened the essence chest, gained 💠${result.essence} Dice Essence!`);
+            else if(result.choice === 'material'){
+              const def = PROFESSION_DEFS.find(d=>d.materialId===result.materialId);
+              const label = def ? professionMaterialLabel(def) : result.materialId;
+              const icon = def ? def.materialIcon : '';
+              msg = tt(`🎁 開啟材料寶箱，獲得 ${icon}${label} ×${result.qty}！`, `🎁 Opened the material chest, gained ${icon}${label} ×${result.qty}!`);
+            }
+            if(msg) showToast(msg);
+          }
+        } finally {
+          renderTab();
+          updateHeaderCoins();
+        }
+      };
+      const coinsBtn = document.getElementById('chest-choice-coins');
+      const essenceBtn = document.getElementById('chest-choice-essence');
+      const materialBtn = document.getElementById('chest-choice-material');
+      if(coinsBtn) coinsBtn.onclick = ()=>doChestChoice('coins');
+      if(essenceBtn) essenceBtn.onclick = ()=>doChestChoice('essence');
+      if(materialBtn) materialBtn.onclick = ()=>doChestChoice('material');
+      return;
+    }
     const meta = BOSS_STAGE_META[boss.stage-1];
     const pct = Math.max(0, Math.min(100, (boss.hp/boss.maxHp)*100));
     let html = `<div class="panel">
@@ -3240,6 +3401,7 @@ function renderBoss(body){
       <div style="border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:10px;display:flex;flex-direction:column;gap:4px;background:rgba(139,107,209,0.06);">
         <div class="countdown">🎁 ${tt('擊殺獎勵','Kill Reward')}（${tt('基礎','base')}）：<b style="color:var(--gold-bright);">✦${bossCurrentBaseReward(boss.cycle).coins}</b></div>
         <div class="countdown">🏆 ${tt('擊殺獎池','Kill Bonus Pool')}（${tt('全額入袋','all yours')}）：<b style="color:var(--gold-bright);">✦${bossCurrentBonusPool(boss.cycle).coins.toLocaleString()}</b></div>
+        <div class="countdown">💠 ${tt('破階精華','Per-stage Essence')}：<b style="color:var(--gold-bright);">${bossCurrentStageEssence(boss.cycle)}</b>　|　💠 ${tt('通關加碼','Clear bonus')}：<b style="color:var(--gold-bright);">${bossCurrentClearEssence(boss.cycle)}</b></div>
       </div>
       ${(()=>{
         const equipped = p.diceSlots.map(id => id ? p.dice[id] : null);
@@ -3646,6 +3808,7 @@ const ACHIEVEMENT_IMAGES = {
   harvest_master: 'https://lekcusong.github.io/tcg/assets/harvest_master.jpg',
   major_collector: 'https://lekcusong.github.io/tcg/assets/major_collector.jpg',
   tarot_tycoon: 'https://lekcusong.github.io/tcg/assets/tarot_tycoon.jpg',
+  millionaire: 'https://lekcusong.github.io/tcg/assets/millionaire.png',
   minor_arcana_master: 'https://lekcusong.github.io/tcg/assets/minor_arcana_master.jpg',
   grand_tarot_master: 'https://lekcusong.github.io/tcg/assets/grand_tarot_master.jpg',
   market_mogul: 'https://lekcusong.github.io/tcg/assets/market_mogul.jpg',
@@ -3690,6 +3853,15 @@ const ACHIEVEMENTS = [
     image: ACHIEVEMENT_IMAGES.tarot_tycoon,
     check(p){ return (p.coins||0) >= 100000; },
     progress(p){ return `${Math.min(100000, p.coins||0).toLocaleString()}/100,000`; },
+  },
+  {
+    key: 'millionaire',
+    nameZh: '百萬富翁', nameEn: 'Millionaire',
+    descZh: '個人資產累積達到 1,000,000 金幣', descEn: 'Accumulate 1,000,000 coins',
+    image: ACHIEVEMENT_IMAGES.millionaire,
+    glow: true,
+    check(p){ return (p.coins||0) >= 1000000; },
+    progress(p){ return `${Math.min(1000000, p.coins||0).toLocaleString()}/1,000,000`; },
   },
   {
     key: 'minor_arcana_master',
@@ -3804,9 +3976,10 @@ const TITLES = [
   {key:'resonance', nameZh:'命運豪賭者', nameEn:'Fate Gambler', icon:'✨'},
   {key:'streak', nameZh:'亡命連勝之王', nameEn:'Reckless Streak King', icon:'🔥'},
   {key:'boss', nameZh:'屠神使者', nameEn:'Godslayer', icon:'👹'},
+  {key:'harvest', nameZh:'田園宗師', nameEn:'Farming Grandmaster', icon:'🌻'},
 ];
 const TITLE_BY_KEY = Object.fromEntries(TITLES.map(t=>[t.key,t]));
-let TITLE_HOLDERS = {wealth:null, collection:null, resonance:null, streak:null, boss:null, updatedAt:0};
+let TITLE_HOLDERS = {wealth:null, collection:null, resonance:null, streak:null, boss:null, harvest:null, updatedAt:0};
 async function loadTitleHolders(){
   try{
     const r = await storage.get('config:title_holders');
@@ -3818,6 +3991,7 @@ async function loadTitleHolders(){
         resonance: s.resonance || null,
         streak: s.streak || null,
         boss: s.boss || null,
+        harvest: s.harvest || null,
         updatedAt: s.updatedAt || 0,
       };
     }
@@ -3828,23 +4002,26 @@ async function saveTitleHolders(){
   await storage.set('config:title_holders', JSON.stringify(TITLE_HOLDERS));
 }
 // 依排行榜頁面已經算好的榜單重新判斷榜首，若有變動才寫回，避免每次開排行榜都打一次寫入
-async function refreshTitleHoldersFromLeaderboards(byCoins, byCards, bySlotSpend, byStreak, byBossDamage){
+async function refreshTitleHoldersFromLeaderboards(byCoins, byCards, bySlotSpend, byStreak, byBossDamage, byHarvest){
   const nextWealth = (byCoins[0] && byCoins[0].coins > 0) ? byCoins[0].nickname : null;
   const nextCollection = (byCards[0] && byCards[0].total > 0) ? byCards[0].nickname : null;
   const nextResonance = (bySlotSpend[0] && bySlotSpend[0].spend > 0) ? bySlotSpend[0].nickname : null;
   const nextStreak = (byStreak && byStreak[0] && byStreak[0].streak > 0) ? byStreak[0].nickname : null;
   const nextBoss = (byBossDamage && byBossDamage[0] && byBossDamage[0].damage > 0) ? byBossDamage[0].nickname : null;
+  const nextHarvest = (byHarvest && byHarvest[0] && byHarvest[0].harvests > 0) ? byHarvest[0].nickname : null;
   const changed = nextWealth !== TITLE_HOLDERS.wealth
     || nextCollection !== TITLE_HOLDERS.collection
     || nextResonance !== TITLE_HOLDERS.resonance
     || nextStreak !== TITLE_HOLDERS.streak
-    || nextBoss !== TITLE_HOLDERS.boss;
+    || nextBoss !== TITLE_HOLDERS.boss
+    || nextHarvest !== TITLE_HOLDERS.harvest;
   if(changed){
     TITLE_HOLDERS.wealth = nextWealth;
     TITLE_HOLDERS.collection = nextCollection;
     TITLE_HOLDERS.resonance = nextResonance;
     TITLE_HOLDERS.streak = nextStreak;
     TITLE_HOLDERS.boss = nextBoss;
+    TITLE_HOLDERS.harvest = nextHarvest;
     await saveTitleHolders();
   }
 }
@@ -6024,6 +6201,7 @@ const T = {
   leaderSlotHeader: {zh:'✨ 三牌共鳴消費排行榜', en:'✨ Resonance Spending Leaderboard'},
   leaderStreakHeader: {zh:'🔥 遠征亡命連勝榜', en:'🔥 Expedition Reckless Streak Leaderboard'},
   leaderBossHeader: {zh:'👹 Boss 單擊最高傷害榜', en:'👹 Boss Highest Single Hit Leaderboard'},
+  leaderHarvestHeader: {zh:'🌻 種菜收成次數排行榜', en:'🌻 Crop Harvest Count Leaderboard'},
   gmHeader: {zh:'⚡ GM 管理控制台', en:'⚡ GM Console'},
   allPlayersHeader: {zh:'所有玩家', en:'All Players'},
   grantCoinsHeader: {zh:'發放金幣', en:'Grant Coins'},
@@ -6924,9 +7102,31 @@ async function pruneNotifications(nick){
 // grant being silently overwritten if the player's client saves stale data
 // in the meantime) ----------
 async function createPendingReward(targetNick, grantKind, payload){
+  // id 只在這裡產生一次，下面重試迴圈永遠對同一個 key 寫入同一份內容，
+  // 所以重試不會導致玩家收到兩次獎勵（覆蓋式寫入，非疊加）。
   const r = {id: uid(), to: targetNick, grantKind, createdAt: Date.now(), ...payload};
-  try{ await storage.set(pendingRewardKey(targetNick, r.id), JSON.stringify(r)); return true; }
-  catch(e){ return false; }
+  const key = pendingRewardKey(targetNick, r.id);
+  const body = JSON.stringify(r);
+  const RETRY_DELAYS_MS = [300, 600]; // 失敗後重試 2 次，間隔遞增
+  let lastErr = null;
+  for(let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++){
+    try{
+      await storage.set(key, body);
+      return true;
+    }catch(e){
+      lastErr = e;
+      if(attempt < RETRY_DELAYS_MS.length){
+        await new Promise(res=>setTimeout(res, RETRY_DELAYS_MS[attempt]));
+      }
+    }
+  }
+  // 全部重試都失敗：記錄下來方便事後排查/補償，並在 console 留下詳細資訊。
+  console.error('createPendingReward failed after retries', {targetNick, grantKind, payload, error: lastErr});
+  try{
+    const failKey = `failedreward:${(targetNick||'').toLowerCase()}:${r.id}`;
+    await storage.set(failKey, JSON.stringify({...r, failedAt: Date.now(), errorMessage: lastErr ? String(lastErr.message||lastErr) : 'unknown'}));
+  }catch(e){ /* 連失敗記錄都寫不進去，只能靠 console.error 了 */ }
+  return false;
 }
 async function fetchPendingRewardsFor(nick){
   try{
@@ -7020,7 +7220,7 @@ function notifText(n){
   if(n.type==='auction_outbid') return tt(`你在『${n.cardName}』的出價已被 ${n.from} 超過（目前 ${n.price} 枚金幣）`, `Your bid on "${n.cardName}" was outbid by ${n.from} (now ✦${n.price})`);
   if(n.type==='wtb_filled') return tt(`${n.from} 賣給了你 x${n.qty}『${n.cardName}』，花費 ${n.price*n.qty} 枚金幣`, `${n.from} sold you x${n.qty} "${n.cardName}" for ✦${n.price*n.qty}`);
   if(n.type==='auction_won') return tt(`恭喜！你以 ✦${n.price} 枚金幣贏得了『${n.cardName}』的拍賣`, `Congratulations! You won the auction for "${n.cardName}" for ✦${n.price}`);
-  if(n.type==='boss_reward') return tt(`你擊敗了 Boss！獲得了 ✦${n.coins} 枚金幣`, `You defeated the Boss! You received ✦${n.coins} coins`);
+  if(n.type==='boss_reward') return tt(`你擊敗了 Boss！獲得了 ✦${n.coins} 枚金幣${n.essence?`、💠${n.essence} 骰子精華`:''}`, `You defeated the Boss! You received ✦${n.coins} coins${n.essence?` and 💠${n.essence} Dice Essence`:''}`);
   if(n.type==='jackpot_win') return tt(`✨💫 ${n.from} 觸發了命運共鳴，獨得整包 ✦${n.amount} 獎池！`, `✨💫 ${n.from} triggered a Fated Resonance and won the entire ✦${n.amount} jackpot pool!`);
   if(n.type==='gm_grant'){
     if(n.grantKind==='coins') return tt(`GM 發放了 ✦${n.amount} 枚金幣給你`, `GM granted you ✦${n.amount} coins`);
@@ -7625,14 +7825,22 @@ async function buyoutAuction(auctionId){
   const payout = price - fee;
   // 賣家收款走 pendingReward：賣家不是當前操作者，若直接 loadPlayer+savePlayer，
   // 賣家自己那邊若同時存檔會把這筆收款覆蓋掉（同「沒收到卡」的成因）。
-  await createPendingReward(auction.seller, 'auction_sale', {amount: payout});
+  // createPendingReward 內建重試，這裡只需處理「重試後仍失敗」的情況。
+  const sellerPayoutOk = await createPendingReward(auction.seller, 'auction_sale', {amount: payout});
   auction.status = 'completed';
   auction.currentBid = price;
   auction.currentBidder = state.nickname;
   auction.viaBuyout = true;
   await storage.set(`auction:${auctionId}`, JSON.stringify(auction));
   await createNotification(auction.seller, state.nickname, 'auction_sold', {cardName: itemName, price: payout, viaBuyout:true});
-  showToast(tt('購買成功！✦','Purchase successful! ✦'));
+  if(sellerPayoutOk){
+    showToast(tt('購買成功！✦','Purchase successful! ✦'));
+  } else {
+    // 商品與金幣已經在買家這邊完成扣款/入手，賣家的入帳失敗紀錄已寫入
+    // failedreward:，需要 GM 後續查看並手動補發。買家操作本身仍算成功，
+    // 但提示一下，避免買家以為異常是自己這邊造成的。
+    showToast(tt('購買成功，但賣家收款延遲，系統已記錄將盡快處理 ✦','Purchase successful, but the seller\'s payout is delayed — this has been logged for follow-up ✦'));
+  }
   renderTab();
   updateHeaderCoins();
 }
@@ -7645,6 +7853,9 @@ async function resolveAuction(auction){
     const sellerForFee = await loadPlayer(auction.seller);
     const fee = auctionFeeAmount(auction.currentBid, sellerForFee ? starChartVenusFeeReductionPct(sellerForFee) : 0);
     const payout = auction.currentBid - fee;
+    // 這裡是背景自動結算（沒有明確的「操作中玩家」可以跳 toast），
+    // 失敗時 createPendingReward 內部會重試、寫 failedreward: 記錄並 console.error，
+    // 之後可在 GM 後台或 storage 查 failedreward: 前綴找出所有未成功發放的收款。
     await createPendingReward(auction.seller, 'auction_sale', {amount: payout});
     await createNotification(auction.seller, auction.currentBidder, 'auction_sold', {cardName: itemName, price: payout});
     await createNotification(auction.currentBidder, auction.seller, 'auction_won', {cardName: itemName, price: auction.currentBid});
@@ -9061,16 +9272,18 @@ async function computeLeaderboards(){
   syncPlayerIndexFromPlayers(allPlayers).catch(()=>{}); // 順便補齊暱稱索引，不額外發請求
   const players = allPlayers.filter(pl=>pl.nickname.toLowerCase() !== GM_NICKNAME.toLowerCase());
   const byCards = players.map(pl=>({nickname:pl.nickname, total: playerTotalCards(pl)}))
-    .sort((a,b)=>b.total-a.total).slice(0,10);
+    .sort((a,b)=>b.total-a.total).slice(0,5);
   const byCoins = players.map(pl=>({nickname:pl.nickname, coins: pl.coins||0}))
-    .sort((a,b)=>b.coins-a.coins).slice(0,10);
+    .sort((a,b)=>b.coins-a.coins).slice(0,5);
   const bySlotSpend = players.map(pl=>({nickname:pl.nickname, spend: pl.slotSpend||0}))
-    .sort((a,b)=>b.spend-a.spend).slice(0,10);
+    .sort((a,b)=>b.spend-a.spend).slice(0,5);
   const byStreak = players.map(pl=>({nickname:pl.nickname, streak: pl.expeditionRecklessStreak||0}))
-    .sort((a,b)=>b.streak-a.streak).slice(0,10);
+    .sort((a,b)=>b.streak-a.streak).slice(0,5);
   const byBossDamage = players.map(pl=>({nickname:pl.nickname, damage: (pl.stats && pl.stats.maxBossHitDamage) || 0}))
-    .sort((a,b)=>b.damage-a.damage).slice(0,10);
-  return {byCards, byCoins, bySlotSpend, byStreak, byBossDamage, updatedAt: Date.now()};
+    .sort((a,b)=>b.damage-a.damage).slice(0,5);
+  const byHarvest = players.map(pl=>({nickname:pl.nickname, harvests: (pl.stats && pl.stats.totalHarvests) || 0}))
+    .sort((a,b)=>b.harvests-a.harvests).slice(0,5);
+  return {byCards, byCoins, bySlotSpend, byStreak, byBossDamage, byHarvest, updatedAt: Date.now()};
 }
 async function fetchLeaderboards(){
   try{
@@ -9086,9 +9299,9 @@ async function fetchLeaderboards(){
 }
 async function renderLeaderboard(body){
   body.innerHTML = `<div class="loading-line">${tt('讀取排行榜中...','Loading leaderboard...')}</div>`;
-  const {byCards, byCoins, bySlotSpend, byStreak, byBossDamage} = await fetchLeaderboards();
+  const {byCards, byCoins, bySlotSpend, byStreak, byBossDamage, byHarvest} = await fetchLeaderboards();
 
-  refreshTitleHoldersFromLeaderboards(byCoins, byCards, bySlotSpend, byStreak, byBossDamage).catch(()=>{});
+  refreshTitleHoldersFromLeaderboards(byCoins, byCards, bySlotSpend, byStreak, byBossDamage, byHarvest).catch(()=>{});
 
   const medal = i => i===0?'🥇':i===1?'🥈':i===2?'🥉':`#${i+1}`;
   const isMe = nick => state.nickname && nick.toLowerCase()===state.nickname.toLowerCase();
@@ -9144,6 +9357,17 @@ async function renderLeaderboard(body){
       <div class="listing">
         <div class="left"><div class="icon-box">${medal(i)}</div><div class="meta"><div data-view-profile="${escapeHtml(pl.nickname)}">${escapeHtml(pl.nickname)}${isMe(pl.nickname)?` <span style="color:var(--gold-bright);">(${tt('你','you')})</span>`:''}${nameWithTitlesHtml(pl.nickname)}</div></div></div>
         <div class="right"><span class="price">⚔️ ${pl.damage.toLocaleString()}</span></div>
+      </div>
+    `).join('')}
+  </div>`;
+
+  html += `<div class="panel">
+    <h2>${t('leaderHarvestHeader')}</h2>
+    <p class="sub">${tt('依農場累計收成作物次數排名','Ranked by total crops harvested on the farm')}</p>
+    ${byHarvest.length===0 || byHarvest[0].harvests<=0 ? `<div class="empty-note">${tt('目前尚無玩家收成過作物','No player has harvested any crops yet')}</div>` : byHarvest.filter(pl=>pl.harvests>0).map((pl,i)=>`
+      <div class="listing">
+        <div class="left"><div class="icon-box">${medal(i)}</div><div class="meta"><div data-view-profile="${escapeHtml(pl.nickname)}">${escapeHtml(pl.nickname)}${isMe(pl.nickname)?` <span style="color:var(--gold-bright);">(${tt('你','you')})</span>`:''}${nameWithTitlesHtml(pl.nickname)}</div></div></div>
+        <div class="right"><span class="price">🌻 ${tt(`${pl.harvests} 次`, `${pl.harvests} harvests`)}</span></div>
       </div>
     `).join('')}
   </div>`;
