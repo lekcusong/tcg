@@ -184,6 +184,29 @@
   .cf-uncommon .card-face{background:linear-gradient(160deg, #17332a, #142521);}
   .cf-rare .card-face{background:linear-gradient(160deg, #2c1f45, #1e1533);}
   .cf-legendary .card-face{background:linear-gradient(160deg, #3a2a1a, #2a1530);box-shadow:0 0 20px rgba(185,140,240,0.25) inset;}
+
+  .pet-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:10px;}
+  .pet-card{
+    position:relative;background:var(--bg-panel-raised);border:1px solid var(--line);border-radius:10px;
+    padding:14px 8px 10px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:2px;
+  }
+  .pet-card .rarity-tag{position:absolute;top:6px;left:6px;font-size:9px;padding:2px 6px;border-radius:999px;}
+  .pet-card.pet-locked{opacity:0.5;}
+  .pet-icon{font-size:30px;margin:14px 0 4px;}
+  .pet-icon-img{width:64px;height:64px;object-fit:contain;border-radius:8px;}
+  .pet-name{font-family:'Cinzel',serif;font-size:12px;color:var(--cream);}
+  .pet-bonus{font-size:11px;color:var(--gold-bright);margin-top:2px;}
+  .pet-owned{font-size:11px;color:var(--muted);margin-bottom:6px;}
+  .pet-star{font-size:12px;color:var(--gold);letter-spacing:1px;margin-top:2px;}
+  .pet-btn-row{display:flex;flex-direction:column;gap:4px;width:100%;margin-top:4px;}
+  .pet-btn-row .btn{width:100%;}
+  .pet-feed-list{max-height:280px;overflow-y:auto;margin:12px 0;text-align:left;}
+  .pet-feed-row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 0;border-bottom:1px dashed rgba(255,255,255,0.1);}
+  .pet-feed-icon{font-size:20px;}
+  .pet-feed-name{flex:1;font-size:12px;color:var(--cream);}
+  .pet-feed-qty{display:flex;align-items:center;gap:6px;}
+  .pet-feed-qty span{min-width:18px;text-align:center;font-family:'Space Mono',monospace;}
+  .pet-feed-total{font-size:13px;color:var(--gold-bright);text-align:center;margin:10px 0;font-family:'Space Mono',monospace;}
   .cf-epic .card-face{background:linear-gradient(160deg, #3a2a1a, #2a1530);box-shadow:0 0 20px rgba(185,140,240,0.25) inset;}
 
   /* 這條規則故意放在稀有度背景設定之後，確保「有美術圖」時的顯示方式(完整不裁切)
@@ -473,7 +496,8 @@
   .farm-seed-btn:disabled{opacity:0.4;cursor:not-allowed;}
   .farm-seed-btn .fs-name{display:flex;align-items:center;gap:6px;}
   .farm-seed-btn .fs-cost{color:var(--gold);font-family:'Space Mono',monospace;white-space:nowrap;}
-  .farm-seed-tabs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;}
+  .farm-seed-tabs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;align-items:center;}
+  #farm-plant-all-btn{margin-left:auto;white-space:nowrap;}
   .farm-seed-tab{
     background:var(--bg-panel);border:1px solid var(--line);border-radius:20px;
     padding:5px 12px;font-size:12px;color:var(--cream);cursor:pointer;
@@ -725,6 +749,13 @@
   <div class="card-modal-box achievement-modal-box">
     <button class="card-modal-close" id="profile-modal-close">✕</button>
     <div id="profile-modal-content"></div>
+  </div>
+</div>
+
+<div id="pet-feed-modal" class="card-modal-overlay" style="display:none;">
+  <div class="card-modal-box achievement-modal-box">
+    <button class="card-modal-close" id="pet-feed-modal-close">✕</button>
+    <div id="pet-feed-modal-content"></div>
   </div>
 </div>
 
@@ -1203,10 +1234,327 @@ function ensureMaterials(p){
   if(typeof p.materials.moon !== 'number') p.materials.moon = 0;
   if(typeof p.materials.contrib !== 'number') p.materials.contrib = 0;
   if(typeof p.materials.diceEssence !== 'number') p.materials.diceEssence = 0; // 骰子精華：拆解骰子取得，用於強化骰子
+  if(typeof p.materials.featherShard !== 'number') p.materials.featherShard = 0; // 🪶 羽光碎片：花園收成時隨機取得，用於召喚寵物
+  if(typeof p.materials.windFeather !== 'number') p.materials.windFeather = 0; // 🪽 疾風羽毛：拆解重複寵物取得
   if(!p.seasonCards) p.seasonCards = {};
   if(!p.starChart) p.starChart = {unlocked:[]};
   if(!Array.isArray(p.unlockedAvatars)) p.unlockedAvatars = [];
   return p.materials;
+}
+
+// ---------- 寵物玩法（孵蛋收藏 + 出戰加成 + 餵養升星 + 拆解）----------
+function ensurePets(p){
+  if(!p.pets) p.pets = {};
+  if(typeof p.activePetId === 'undefined') p.activePetId = null;
+  if(typeof p.lastPetHatchAt !== 'number') p.lastPetHatchAt = 0;
+  if(!p.petStars) p.petStars = {}; // {petId: 1~5}
+  return p.pets;
+}
+// 星級系統設計備註：
+// - 星級範圍 ★1~★5，每次升星消耗「其他擁有的寵物」餵養，累積經驗達標即可嘗試升星
+// - 升星有失敗機率（依稀有度 × 星級遞增），失敗不倒退、不保底，飼料寵物一律消耗
+// - 實際加成 = 寵物基礎加成 × 星級倍率（每星 +30%）
+const PET_STAR_MAX = 5;
+function petStarBonusMult(star){ return 1 + 0.3*((star||1)-1); }
+// 成功率表：index 0 = ★1→★2, 1 = ★2→★3, 2 = ★3→★4, 3 = ★4→★5
+const PET_STAR_SUCCESS_RATE = {
+  common:   [1.00, 0.90, 0.80, 0.65],
+  uncommon: [0.95, 0.80, 0.60, 0.40],
+  rare:     [0.90, 0.65, 0.40, 0.20],
+  epic:     [0.75, 0.45, 0.25, 0.10],
+};
+// 升星所需經驗（基準值，依稀有度倍率放大；史詩約為普通的 2~3 倍）
+const PET_UPGRADE_EXP_BASE = [3, 5, 8, 12];
+const PET_RARITY_EXP_MULT = {common:1, uncommon:1.3, rare:1.6, epic:2.5};
+function petUpgradeExpRequired(rarity, star){
+  const idx = Math.max(0, Math.min(PET_UPGRADE_EXP_BASE.length-1, (star||1)-1));
+  return Math.round(PET_UPGRADE_EXP_BASE[idx] * (PET_RARITY_EXP_MULT[rarity]||1));
+}
+// 拿來餵養時，每隻飼料寵物依自身稀有度提供的經驗值
+const PET_FEED_EXP_VALUE = {common:1, uncommon:2, rare:4, epic:8};
+// 拆解重複寵物換取的 🪽 疾風羽毛，依稀有度遞增
+const PET_DISMANTLE_REWARD = {common:1, uncommon:2, rare:3, epic:5};
+function petStarLevel(p, petId){
+  ensurePets(p);
+  return p.petStars[petId] || 1;
+}
+const PET_CATALOG = [
+  {id:'pet_fox', name:'龍狐', nameEn:'Dragonfox', icon:'🦊', rarity:'common', image:'https://lekcusong.github.io/tcg/assets/pet-fox.jpg', dmgBonus:0.03},
+  {id:'pet_owl', name:'星梟', nameEn:'Star Owl', icon:'🦉', rarity:'common', image:'https://lekcusong.github.io/tcg/assets/pet-owl.jpg', dmgBonus:0.03},
+  {id:'pet_bat', name:'月蝠', nameEn:'Moon Bat', icon:'🦇', rarity:'common', image:'https://lekcusong.github.io/tcg/assets/pet-bat.jpg', dmgBonus:0.03},
+  {id:'pet_cat', name:'月影貓', nameEn:'Moonshade Cat', icon:'🐈\u200d⬛', rarity:'uncommon', image:'https://lekcusong.github.io/tcg/assets/pet-cat.jpg', dmgBonus:0.06},
+  {id:'pet_wolf', name:'幽狼', nameEn:'Spectral Wolf', icon:'🐺', rarity:'uncommon', image:'https://lekcusong.github.io/tcg/assets/pet-wolf.jpg', dmgBonus:0.06},
+  {id:'pet_raven', name:'預言鴉', nameEn:'Oracle Raven', icon:'🐦\u200d⬛', rarity:'uncommon', image:'https://lekcusong.github.io/tcg/assets/pet-raven.jpg', dmgBonus:0.06},
+  {id:'pet_dragon', name:'幼龍', nameEn:'Hatchling Dragon', icon:'🐉', rarity:'rare', image:'https://lekcusong.github.io/tcg/assets/pet-dragon.jpg', dmgBonus:0.10},
+  {id:'pet_tiger', name:'星紋虎', nameEn:'Starstripe Tiger', icon:'🐯', rarity:'rare', image:'https://lekcusong.github.io/tcg/assets/pet-tiger.jpg', dmgBonus:0.10},
+  {id:'pet_unicorn', name:'聖角獸', nameEn:'Sacred Unicorn', icon:'🦄', rarity:'epic', image:'https://lekcusong.github.io/tcg/assets/pet-unicorn.jpg', dmgBonus:0.18},
+];
+const PET_BY_ID = {};
+PET_CATALOG.forEach(pt=>{ PET_BY_ID[pt.id] = pt; });
+const PET_RARITY_WEIGHT = {common:58, uncommon:30, rare:10, epic:2};
+const PET_RARITY_LABEL = {common:{zh:'普通',en:'Common'}, uncommon:{zh:'罕見',en:'Uncommon'}, rare:{zh:'稀有',en:'Rare'}, epic:{zh:'史詩',en:'Epic'}};
+const PET_HATCH_COST_FEATHER = 5; // 🪶 召喚寵物所需羽光碎片（花園收成隨機取得）
+const PET_HATCH_COOLDOWN_MS = 3*60*60*1000; // 每 3 小時可孵一次蛋
+function petHatchReadyAt(p){ return (p.lastPetHatchAt||0) + PET_HATCH_COOLDOWN_MS; }
+function rollPetFromEgg(){
+  const total = Object.values(PET_RARITY_WEIGHT).reduce((a,b)=>a+b,0);
+  let roll = Math.random()*total;
+  let rarity = 'common';
+  for(const r of Object.keys(PET_RARITY_WEIGHT)){
+    if(roll < PET_RARITY_WEIGHT[r]){ rarity = r; break; }
+    roll -= PET_RARITY_WEIGHT[r];
+  }
+  const pool = PET_CATALOG.filter(pt=>pt.rarity===rarity);
+  return pool[Math.floor(Math.random()*pool.length)];
+}
+// 出戰寵物的傷害加成（套用在 Boss 戰的骰子攻擊上，見 rollDiceAttack）
+function petDamageBonus(p){
+  if(!p || !p.activePetId) return 0;
+  ensurePets(p);
+  if(!(p.pets[p.activePetId] > 0)) return 0;
+  const pet = PET_BY_ID[p.activePetId];
+  if(!pet) return 0;
+  return pet.dmgBonus * petStarBonusMult(petStarLevel(p, pet.id));
+}
+async function hatchPetEgg(){
+  const p = state.player;
+  ensureMaterials(p);
+  ensurePets(p);
+  const now = Date.now();
+  if(now < petHatchReadyAt(p)){
+    showToast(tt('蛋還沒孵化好，請再等等','The egg is not ready yet - please wait a bit longer'));
+    return;
+  }
+  if((p.materials.featherShard||0) < PET_HATCH_COST_FEATHER){
+    showToast(tt(`羽光碎片不足，需要 🪶${PET_HATCH_COST_FEATHER}`, `Not enough Feather Shards, need 🪶${PET_HATCH_COST_FEATHER}`));
+    return;
+  }
+  p.materials.featherShard -= PET_HATCH_COST_FEATHER;
+  p.lastPetHatchAt = now;
+  const pet = rollPetFromEgg();
+  p.pets[pet.id] = (p.pets[pet.id]||0) + 1;
+  if(!p.activePetId) p.activePetId = pet.id; // 第一隻寵物自動設為出戰
+  await savePlayer(p);
+  renderTab();
+  updateHeaderCoins();
+  const label = appLang==='zh' ? pet.name : pet.nameEn;
+  showToast(tt(`🥚 孵化成功！獲得「${label}」（${PET_RARITY_LABEL[pet.rarity].zh}）`, `🥚 Hatched a "${pet.nameEn}" (${PET_RARITY_LABEL[pet.rarity].en})!`), {legendary: pet.rarity==='epic'});
+}
+async function equipPet(petId){
+  const p = state.player;
+  ensurePets(p);
+  if(petId && !(p.pets[petId] > 0)) return;
+  p.activePetId = (p.activePetId === petId) ? null : petId;
+  await savePlayer(p);
+  renderTab();
+  showToast(p.activePetId ? tt('已設定出戰寵物','Companion pet set') : tt('已取消出戰寵物','Companion pet unequipped'));
+}
+// 花園頁面內嵌的寵物區塊：回傳 HTML 字串（不直接寫入 DOM），供 renderFarm 拼接在花園內容之後。
+function petSectionHtml(p){
+  ensureMaterials(p);
+  ensurePets(p);
+  const now = Date.now();
+  const readyAt = petHatchReadyAt(p);
+  const ready = now >= readyAt;
+  const remainMin = Math.ceil(Math.max(0, readyAt-now)/60000);
+  const canAfford = (p.materials.featherShard||0) >= PET_HATCH_COST_FEATHER;
+  const activePet = p.activePetId ? PET_BY_ID[p.activePetId] : null;
+
+  let html = `<div class="panel">
+    <h2>🥚 ${tt('孵蛋','Hatch an Egg')}</h2>
+    <p class="sub">${tt(`花費 🪶${PET_HATCH_COST_FEATHER} 羽光碎片孵化一顆神秘蛋，隨機獲得一隻寵物。羽光碎片可以在上面收成時隨機取得。孵化後需等待一段時間才能再孵下一顆。`, `Spend 🪶${PET_HATCH_COST_FEATHER} Feather Shards to hatch a mystery egg for a random pet. Feather Shards drop randomly when harvesting above. Wait a while before hatching another.`)}</p>
+    <div class="countdown" style="margin-bottom:10px;">🪶 ${tt('羽光碎片','Feather Shards')}：<b style="color:var(--gold-bright);">${p.materials.featherShard||0}</b></div>
+    <button class="btn" id="pet-hatch-btn" ${(ready && canAfford)?'':'disabled'}>${tt('孵化蛋 🥚','Hatch Egg 🥚')}</button>
+    ${!ready ? `<div class="countdown">${tt(`蛋還在孵化中，約 ${remainMin} 分鐘後可再孵`, `Egg is still incubating - about ${remainMin} min left`)}</div>` : (!canAfford ? `<div class="countdown">${tt('羽光碎片不足，收成看看吧','Not enough Feather Shards - try harvesting above')}</div>` : '')}
+  </div>`;
+
+  html += `<div class="panel">
+    <h2>${tt('出戰夥伴','Active Companion')}</h2>
+    <p class="sub">${tt('選一隻已孵化的寵物作為出戰夥伴，牠的加成會套用在 Boss 戰傷害上。', 'Choose a hatched pet as your active companion - its bonus applies to your Boss battle damage.')}</p>
+    ${activePet ? `<div class="farm-upgrade-line" style="color:var(--gold-bright);display:flex;align-items:center;gap:8px;">${activePet.image?`<img src="${activePet.image}" alt="" style="width:28px;height:28px;object-fit:contain;border-radius:5px;" />`:activePet.icon} ${appLang==='zh'?activePet.name:activePet.nameEn}　⚔️ +${Math.round(activePet.dmgBonus*100)}% ${tt('Boss 傷害','Boss damage')}</div>` : `<div class="farm-upgrade-line" style="color:var(--muted);">${tt('尚未設定出戰寵物','No companion set yet')}</div>`}
+  </div>`;
+
+  html += `<div class="panel"><h2>${tt('寵物圖鑑','Pet Collection')}</h2><div class="pet-grid">`;
+  PET_CATALOG.forEach(pt=>{
+    const owned = p.pets[pt.id]||0;
+    const isActive = p.activePetId === pt.id;
+    const label = appLang==='zh' ? pt.name : pt.nameEn;
+    const rarLabel = appLang==='zh' ? PET_RARITY_LABEL[pt.rarity].zh : PET_RARITY_LABEL[pt.rarity].en;
+    const star = petStarLevel(p, pt.id);
+    const starStr = '★'.repeat(star) + '☆'.repeat(PET_STAR_MAX-star);
+    const actualBonus = pt.dmgBonus * petStarBonusMult(star);
+    const canFeed = owned>0 && star < PET_STAR_MAX;
+    const canDismantle = owned>1;
+    html += `<div class="pet-card ${owned>0?'':'pet-locked'}">
+      <span class="rarity-tag rar-${pt.rarity}">${rarLabel}</span>
+      <div class="pet-icon">${owned>0 ? (pt.image ? `<img src="${pt.image}" alt="${escapeHtml(label)}" class="pet-icon-img" />` : pt.icon) : '❔'}</div>
+      <div class="pet-name">${owned>0 ? label : tt('未孵化','Undiscovered')}</div>
+      ${owned>0 ? `<div class="pet-star">${starStr}</div>
+      <div class="pet-bonus">⚔️ +${actualBonus.toFixed(1).replace(/\\.0$/,'')}%</div><div class="pet-owned">${tt('擁有','Owned')} × ${owned}</div>
+      <div class="pet-btn-row">
+        <button class="btn small ${isActive?'':'secondary'}" data-equip-pet="${pt.id}">${isActive?tt('出戰中','Active'):tt('設為出戰','Set Active')}</button>
+        <button class="btn small secondary" data-feed-pet="${pt.id}" ${canFeed?'':'disabled'}>${tt('餵養','Feed')}</button>
+        <button class="btn small secondary" data-dismantle-pet="${pt.id}" ${canDismantle?'':'disabled'}>${tt('拆解','Dismantle')}</button>
+      </div>` : ''}
+    </div>`;
+  });
+  html += `</div></div>`;
+  return html;
+}
+function bindPetSectionEvents(){
+  const hatchBtn = document.getElementById('pet-hatch-btn');
+  if(hatchBtn) hatchBtn.onclick = hatchPetEgg;
+  document.querySelectorAll('[data-equip-pet]').forEach(btn=>{
+    btn.onclick = ()=>equipPet(btn.dataset.equipPet);
+  });
+  document.querySelectorAll('[data-feed-pet]').forEach(btn=>{
+    btn.onclick = ()=>openPetFeedModal(btn.dataset.feedPet);
+  });
+  document.querySelectorAll('[data-dismantle-pet]').forEach(btn=>{
+    btn.onclick = ()=>dismantlePet(btn.dataset.dismantlePet);
+  });
+}
+// ---- 拆解：把重複的寵物換成 🪽 疾風羽毛 ----
+async function dismantlePet(petId){
+  const p = state.player;
+  ensurePets(p);
+  ensureMaterials(p);
+  const pt = PET_BY_ID[petId];
+  if(!pt) return;
+  const owned = p.pets[petId]||0;
+  if(owned <= 1) return; // 只有重複(擁有數量>1)的寵物能拆
+  const label = appLang==='zh' ? pt.name : pt.nameEn;
+  const reward = PET_DISMANTLE_REWARD[pt.rarity]||1;
+  if(!confirm(tt(`確定要拆解1隻${label}，換取🪽${reward}枚疾風羽毛嗎？`, `Dismantle 1 ${pt.nameEn} for 🪽${reward} Wind Feather(s)?`))) return;
+  p.pets[petId] = owned - 1;
+  p.materials.windFeather = (p.materials.windFeather||0) + reward;
+  await savePlayer(p);
+  renderTab();
+  showToast(tt(`🪽 拆解完成，獲得 ${reward} 枚疾風羽毛`, `🪽 Dismantled - received ${reward} Wind Feather(s)`));
+}
+// ---- 餵養升星彈窗 ----
+let PET_FEED_TARGET_ID = null;
+let PET_FEED_SELECTION = {}; // {petId: qty}
+function openPetFeedModal(petId){
+  const p = state.player;
+  ensurePets(p);
+  const pt = PET_BY_ID[petId];
+  if(!pt) return;
+  const owned = p.pets[petId]||0;
+  const star = petStarLevel(p, petId);
+  if(owned<=0 || star>=PET_STAR_MAX) return;
+  PET_FEED_TARGET_ID = petId;
+  PET_FEED_SELECTION = {};
+  document.getElementById('pet-feed-modal').style.display = 'flex';
+  renderPetFeedModal();
+}
+function closePetFeedModal(){
+  const overlay = document.getElementById('pet-feed-modal');
+  if(overlay) overlay.style.display = 'none';
+  PET_FEED_TARGET_ID = null;
+  PET_FEED_SELECTION = {};
+}
+function petFeedCurrentExp(){
+  let total = 0;
+  Object.keys(PET_FEED_SELECTION).forEach(id=>{
+    const qty = PET_FEED_SELECTION[id]||0;
+    const fpt = PET_BY_ID[id];
+    if(fpt) total += qty * (PET_FEED_EXP_VALUE[fpt.rarity]||1);
+  });
+  return total;
+}
+function renderPetFeedModal(){
+  const p = state.player;
+  const content = document.getElementById('pet-feed-modal-content');
+  if(!content || !PET_FEED_TARGET_ID) return;
+  const pt = PET_BY_ID[PET_FEED_TARGET_ID];
+  const star = petStarLevel(p, PET_FEED_TARGET_ID);
+  const label = appLang==='zh' ? pt.name : pt.nameEn;
+  const required = petUpgradeExpRequired(pt.rarity, star);
+  const successRate = (PET_STAR_SUCCESS_RATE[pt.rarity]||[])[star-1] ?? 0;
+  const candidates = PET_CATALOG.filter(cpt=>cpt.id!==PET_FEED_TARGET_ID && (p.pets[cpt.id]||0)>0);
+
+  let html = `
+    <div class="card-modal-name">${tt('餵養升星','Feed to Upgrade')} · ${pt.icon} ${label}</div>
+    <div class="card-modal-rarity">${'★'.repeat(star)}${'☆'.repeat(PET_STAR_MAX-star)} → ${tt('升級成功率','Success rate')} ${Math.round(successRate*100)}%</div>
+    <div class="pet-feed-list">`;
+  if(candidates.length === 0){
+    html += `<div class="countdown" style="margin:10px 0;">${tt('沒有其他可用的寵物可以餵養','No other pets available to feed')}</div>`;
+  }
+  candidates.forEach(cpt=>{
+    const cowned = p.pets[cpt.id]||0;
+    const clabel = appLang==='zh' ? cpt.name : cpt.nameEn;
+    const expEach = PET_FEED_EXP_VALUE[cpt.rarity]||1;
+    const qty = PET_FEED_SELECTION[cpt.id]||0;
+    html += `<div class="pet-feed-row" data-feed-row="${cpt.id}">
+      <span class="pet-feed-icon">${cpt.image?`<img src="${cpt.image}" alt="" style="width:24px;height:24px;object-fit:contain;border-radius:4px;vertical-align:middle;" />`:cpt.icon}</span>
+      <span class="pet-feed-name">${clabel}（${tt('擁有','Owned')} ${cowned}，${tt('每隻','each')} ${expEach} EXP）</span>
+      <div class="pet-feed-qty">
+        <button class="btn small secondary" data-feed-minus="${cpt.id}">-</button>
+        <span data-feed-qty-val="${cpt.id}">${qty}</span>
+        <button class="btn small secondary" data-feed-plus="${cpt.id}">+</button>
+      </div>
+    </div>`;
+  });
+  html += `</div>
+    <div class="pet-feed-total">${tt('目前累計經驗','Current EXP')} <b id="pet-feed-exp-now">${petFeedCurrentExp()}</b> / ${tt('這次升星所需','Required')} <b>${required}</b></div>
+    <button class="btn full" id="pet-feed-confirm-btn" ${petFeedCurrentExp()>=required?'':'disabled'}>${tt('確認餵養','Confirm Feed')}</button>
+  `;
+  content.innerHTML = html;
+
+  document.querySelectorAll('[data-feed-plus]').forEach(btn=>{
+    btn.onclick = ()=>{
+      const id = btn.dataset.feedPlus;
+      const maxQty = p.pets[id]||0;
+      const cur = PET_FEED_SELECTION[id]||0;
+      if(cur < maxQty){ PET_FEED_SELECTION[id] = cur+1; renderPetFeedModal(); }
+    };
+  });
+  document.querySelectorAll('[data-feed-minus]').forEach(btn=>{
+    btn.onclick = ()=>{
+      const id = btn.dataset.feedMinus;
+      const cur = PET_FEED_SELECTION[id]||0;
+      if(cur > 0){ PET_FEED_SELECTION[id] = cur-1; renderPetFeedModal(); }
+    };
+  });
+  const confirmBtn = document.getElementById('pet-feed-confirm-btn');
+  if(confirmBtn) confirmBtn.onclick = confirmPetFeed;
+}
+async function confirmPetFeed(){
+  const p = state.player;
+  ensurePets(p);
+  const petId = PET_FEED_TARGET_ID;
+  const pt = PET_BY_ID[petId];
+  if(!pt) return;
+  const star = petStarLevel(p, petId);
+  const required = petUpgradeExpRequired(pt.rarity, star);
+  if(petFeedCurrentExp() < required) return;
+  // 扣除選定的飼料寵物
+  Object.keys(PET_FEED_SELECTION).forEach(id=>{
+    const qty = PET_FEED_SELECTION[id]||0;
+    if(qty>0) p.pets[id] = Math.max(0, (p.pets[id]||0) - qty);
+  });
+  const successRate = (PET_STAR_SUCCESS_RATE[pt.rarity]||[])[star-1] ?? 0;
+  const success = Math.random() < successRate;
+  const label = appLang==='zh' ? pt.name : pt.nameEn;
+  if(success){
+    p.petStars[petId] = star + 1;
+  }
+  await savePlayer(p);
+  closePetFeedModal();
+  renderTab();
+  if(success){
+    showToast(tt(`✨${label} 升到 ★${star+1} 了！`, `✨ ${pt.nameEn} reached ★${star+1}!`), {legendary: pt.rarity==='epic'});
+  } else {
+    showToast(tt(`💔 升星失敗，${label} 維持在 ★${star}（飼料已消耗）`, `💔 Upgrade failed - ${pt.nameEn} stays at ★${star} (feed pets consumed)`));
+  }
+}
+function initPetFeedModal(){
+  const overlay = document.getElementById('pet-feed-modal');
+  const closeBtn = document.getElementById('pet-feed-modal-close');
+  if(!overlay || !closeBtn) return;
+  closeBtn.onclick = closePetFeedModal;
+  overlay.onclick = (e)=>{ if(e.target === overlay) closePetFeedModal(); };
 }
 
 // ---------- 職業玩法（階段一：資料結構）----------
@@ -1400,10 +1748,14 @@ function autoResolveExpeditionCombatEvent(p, event){
   return event.result;
 }
 
-// 花園收成時，隨機機率掉落職業材料（藥草/礦石/木料其中一種，不分作物種類，寫死不開放 GM 調整）
-const FARM_MATERIAL_DROP_CHANCE = 0.35; // 35% 機率掉落
-const FARM_MATERIAL_DROP_MIN = 1;
-const FARM_MATERIAL_DROP_MAX = 2; // 隨機 1~2 個
+// 花園收成時，隨機機率掉落職業材料：優先掉「目前職業對應」的那種材料，
+// 沒選職業時才隨機掉藥草/礦石/木料其中一種，寫死不開放 GM 調整
+const FARM_MATERIAL_DROP_CHANCE = 0.55; // 55% 機率掉落
+const FARM_MATERIAL_DROP_MIN = 2;
+const FARM_MATERIAL_DROP_MAX = 4; // 隨機 2~4 個
+const FEATHER_DROP_CHANCE = 0.08; // 🪶 羽光碎片：8% 機率掉落，獨立判定，不佔用上面的材料掉落機率
+const FEATHER_DROP_MIN = 1;
+const FEATHER_DROP_MAX = 2; // 隨機 1~2 個
 
 // 職業升級所需經驗表，公式仿照 expeditionNextLevelExp（先把骨架建好，之後可調整）
 const PROFESSION_MAX_LEVEL = 10;
@@ -1490,13 +1842,13 @@ const DEFAULT_PROFESSION_DEFS = [
   {id:'blacksmith', icon:'⚒️', labelZh:'鍛造師', labelEn:'Blacksmith',
     materialId:'ore', materialIcon:'⛏️', materialLabelZh:'礦石', materialLabelEn:'Ore',
     recipes:[
-      {itemId:'weapon_common', icon:'⚔️', labelZh:'武器（common）', labelEn:'Weapon (Common)', materialCost:8, staminaCost:15, exp:15},
-      {itemId:'accessory_common', icon:'💍', labelZh:'飾品（common）', labelEn:'Accessory (Common)', materialCost:5, staminaCost:10, exp:10},
+      {itemId:'weapon_common', icon:'⚔️', labelZh:'武器（common）', labelEn:'Weapon (Common)', materialCost:5, staminaCost:10, exp:15},
+      {itemId:'accessory_common', icon:'💍', labelZh:'飾品（common）', labelEn:'Accessory (Common)', materialCost:3, staminaCost:10, exp:10},
     ]},
   {id:'carpenter', icon:'🔨', labelZh:'木匠', labelEn:'Carpenter',
     materialId:'lumber', materialIcon:'🌳', materialLabelZh:'木料', materialLabelEn:'Lumber',
     recipes:[
-      {itemId:'furniture_common', icon:'🪑', labelZh:'家具（common）', labelEn:'Furniture (Common)', materialCost:8, staminaCost:15, exp:15},
+      {itemId:'furniture_common', icon:'🪑', labelZh:'家具（common）', labelEn:'Furniture (Common)', materialCost:5, staminaCost:10, exp:15},
     ]},
 ];
 // 材料成本/體力成本/經驗值是 GM 可調的部分；icon/label/itemId 等展示用資料維持不變，只複製數值欄位
@@ -2030,7 +2382,7 @@ function bossCurrentClearEssence(cycle){ return Math.round(BOSS_CLEAR_ESSENCE_BO
 // 🎁 寶箱選擇（階段C）：金幣寶箱沿用 BOSS_TREASURE_COINS，另外新增精華寶箱與職業材料寶箱。
 const DEFAULT_BOSS_CHEST_ESSENCE = {min:15, max:30};
 let BOSS_CHEST_ESSENCE = {...DEFAULT_BOSS_CHEST_ESSENCE};
-const DEFAULT_BOSS_CHEST_MATERIAL_QTY = {min:5, max:10};
+const DEFAULT_BOSS_CHEST_MATERIAL_QTY = {min:12, max:20};
 let BOSS_CHEST_MATERIAL_QTY = {...DEFAULT_BOSS_CHEST_MATERIAL_QTY};
 // 🎁 寶箱獨立判定機率：跟祝福/風暴/詛咒/迷霧的 BOSS_EVENT_TRIGGER_CHANCE 分開算，
 // 不佔用那 4 張卡的權重池（見 pickBossEvent 已排除 treasure），單純每次換階
@@ -2326,7 +2678,7 @@ function rollDiceAttack(p, activeEvent, comboStreak){
     }
   }
   return {
-    damage: Math.max(1, Math.round(totalDamage * starChartSunDamageMultiplier(p))), // ☀️ 星盤太陽節點：對最終傷害套倍率
+    damage: Math.max(1, Math.round(totalDamage * starChartSunDamageMultiplier(p) * (1 + petDamageBonus(p)))), // ☀️ 星盤太陽節點 + 🐾 出戰寵物：對最終傷害套倍率
     rolls, atkBonus, critRateBonus, critDmgBonus, isCrit,
     flatDmgBonus, comboBoostBonus, contribBonusPct, coinRefunded,
     comboTier: combo.tier, sameNumber: combo.tier === 'triple', // sameNumber 保留給舊程式相容，等同「豹子」
@@ -5894,6 +6246,56 @@ async function plantSeed(plotIndex, seedKey){
   render();
 }
 
+// 一鍵種植：把目前選定的種子種進所有空地，金幣不夠或地種完就停下來，最後統一存檔、統一提示一次
+async function plantSeedToAllEmpty(seedKey){
+  const p = state.player;
+  if(!p) return;
+  const seed = SEED_TYPES[seedKey];
+  if(!seed) return;
+  if((seed.tierLevel||0) > (p.farmLevel||0)){
+    showToast(tt(`花園等級需達 Lv.${seed.tierLevel} 才能解鎖此種子`, `Requires garden Lv.${seed.tierLevel} to unlock this seed`));
+    return;
+  }
+  if(seed.seasonOnly && !SEASON_ACTIVE){
+    showToast(tt('賽季已結束，無法再種植此種子','The season has ended - this seed can no longer be planted'));
+    return;
+  }
+  if(seed.unlockTotal){
+    const total = seed.uniqueUnlock ? playerUniqueCards(p) : playerTotalCards(p);
+    if(total < seed.unlockTotal){
+      const msg = seed.uniqueUnlock
+        ? tt(`收藏超過 ${seed.unlockTotal-1} 種不同卡牌才能種植${seedName(seed)}`, `Collect more than ${seed.unlockTotal-1} unique cards to unlock planting ${seedName(seed)}`)
+        : tt(`收藏滿 ${seed.unlockTotal} 張卡才能種植${seedName(seed)}`, `Collect ${seed.unlockTotal} cards to unlock planting ${seedName(seed)}`);
+      showToast(msg);
+      return;
+    }
+  }
+  const farm = ensureFarm(p);
+  const now = Date.now();
+  const effectiveGrowMs = Math.round(seed.growMs * starChartGrowMsMultiplier(p));
+  let planted = 0;
+  for(const plot of farm){
+    if(plot.seed) continue; // 只種空地
+    if((p.coins||0) < seed.cost) break; // 金幣不夠就停下來
+    p.coins -= seed.cost;
+    plot.seed = seedKey;
+    plot.plantedAt = now;
+    plot.readyAt = now + effectiveGrowMs;
+    plot.witherAt = seed.wither ? plot.readyAt + seed.witherMs : null;
+    plot.waterLog = {};
+    plot.stolenBy = [];
+    bumpQuest(p, 'plant', 1);
+    planted++;
+  }
+  if(planted === 0){
+    showToast(tt('沒有可種植的空地，或金幣不足','No empty plots to plant, or not enough coins'));
+    return;
+  }
+  await savePlayer(p);
+  showToast(tt(`已一鍵種下 ${planted} 顆${seedName(seed)}`, `Planted ${planted} × ${seedName(seed)}`));
+  render();
+}
+
 async function harvestPlot(plotIndex, opts){
   opts = opts || {};
   const p = state.player;
@@ -5932,14 +6334,21 @@ async function harvestPlot(plotIndex, opts){
     const mercuryDropChance = FARM_MATERIAL_DROP_CHANCE + starChartMercuryDropChanceBonus(p)/100; // 水星節點：+5%/節點，封頂50%
     if(Math.random() < mercuryDropChance){
       ensureProfession(p);
-      const materialId = PROFESSION_MATERIAL_IDS[Math.floor(Math.random()*PROFESSION_MATERIAL_IDS.length)];
+      // 優先掉「目前職業對應」的材料；沒選職業才隨機掉藥草/礦石/木料其中一種
+      const materialId = p.profession ? professionDef(p.profession).materialId
+        : PROFESSION_MATERIAL_IDS[Math.floor(Math.random()*PROFESSION_MATERIAL_IDS.length)];
       let qty = FARM_MATERIAL_DROP_MIN + Math.floor(Math.random()*(FARM_MATERIAL_DROP_MAX-FARM_MATERIAL_DROP_MIN+1));
       if(Math.random() < starChartMercuryExtraQtyChance(p)) qty += 1; // 水星節點：+10%/節點機率多掉1個
       p.professionMaterials[materialId] = (p.professionMaterials[materialId]||0) + qty;
       const def = PROFESSION_DEFS.find(d=>d.materialId===materialId);
       materialDrop = {materialId, qty, icon: def ? def.materialIcon : '', label: def ? professionMaterialLabel(def) : materialId};
     }
-    result = {withered:false, seedName: seedName(seed), coinGain, bonusCard, moonGain, materialDrop};
+    let featherDrop = 0;
+    if(Math.random() < FEATHER_DROP_CHANCE){
+      featherDrop = FEATHER_DROP_MIN + Math.floor(Math.random()*(FEATHER_DROP_MAX-FEATHER_DROP_MIN+1));
+      p.materials.featherShard = (p.materials.featherShard||0) + featherDrop;
+    }
+    result = {withered:false, seedName: seedName(seed), coinGain, bonusCard, moonGain, materialDrop, featherDrop};
     bumpQuest(p, 'harvest', 1);
     ensureStats(p).totalHarvests += 1;
   }
@@ -5959,6 +6368,7 @@ async function harvestOne(plotIndex){
     if(result.moonGain) msg += tt(` + 🌙 日月之輝 x${result.moonGain}`, ` + 🌙 Sun-Moon Brilliance x${result.moonGain}`);
     if(result.bonusCard) msg += tt(` + 額外一張「${result.bonusCard.name}」！`, ` + a bonus "${result.bonusCard.name}"!`);
     if(result.materialDrop) msg += tt(` + ${result.materialDrop.icon} ${result.materialDrop.label} x${result.materialDrop.qty}`, ` + ${result.materialDrop.icon} ${result.materialDrop.label} x${result.materialDrop.qty}`);
+    if(result.featherDrop) msg += tt(` + 🪶 羽光碎片 x${result.featherDrop}`, ` + 🪶 Feather Shard x${result.featherDrop}`);
     showToast(msg);
   }
   render();
@@ -5969,7 +6379,7 @@ async function harvestAllReady(){
   if(!p) return;
   const farm = ensureFarm(p);
   const now = Date.now();
-  let coinTotal = 0, harvestedCount = 0, witheredCount = 0, moonTotal = 0;
+  let coinTotal = 0, harvestedCount = 0, witheredCount = 0, moonTotal = 0, featherTotal = 0;
   const bonusCards = [];
   const materialTotals = {};
   for(let i=0;i<farm.length;i++){
@@ -5980,6 +6390,7 @@ async function harvestAllReady(){
     if(result.withered){ witheredCount++; }
     else{
       harvestedCount++; coinTotal += result.coinGain; moonTotal += (result.moonGain||0);
+      featherTotal += (result.featherDrop||0);
       if(result.bonusCard) bonusCards.push(result.bonusCard.name);
       if(result.materialDrop){
         const md = result.materialDrop;
@@ -5994,6 +6405,7 @@ async function harvestAllReady(){
   if(harvestedCount>0) msg += tt(`收成 ${harvestedCount} 塊地，獲得 ✦${coinTotal}`, `Harvested ${harvestedCount} plot(s) for ✦${coinTotal}`);
   if(moonTotal>0) msg += tt(` + 🌙 x${moonTotal}`, ` + 🌙 x${moonTotal}`);
   const materialParts = Object.values(materialTotals).map(m=>`${m.icon} ${m.label} x${m.qty}`);
+  if(featherTotal>0) materialParts.push(tt(`🪶 羽光碎片 x${featherTotal}`, `🪶 Feather Shard x${featherTotal}`));
   if(materialParts.length) msg += ` + ${materialParts.join('、')}`;
   if(bonusCards.length) msg += tt(`（額外獲得：${bonusCards.join('、')}）`, ` (bonus: ${bonusCards.join(', ')})`);
   if(witheredCount>0) msg += `${msg?tt('；', '; '):''}${tt(`${witheredCount} 塊地作物枯萎了`, `${witheredCount} plot(s) withered`)}`;
@@ -6343,7 +6755,8 @@ function newPlayer(nick, passwordHash){
     professionProgress:{alchemist:{level:1,exp:0}, blacksmith:{level:1,exp:0}, carpenter:{level:1,exp:0}},
     professionMaterials:{herb:0, ore:0, lumber:0},
     professionItems:{potion_small:0, weapon_common:0, accessory_common:0, furniture_common:0},
-    stamina:PROFESSION_STAMINA_MAX, staminaMax:PROFESSION_STAMINA_MAX, lastStaminaRegenAt:Date.now()};
+    stamina:PROFESSION_STAMINA_MAX, staminaMax:PROFESSION_STAMINA_MAX, lastStaminaRegenAt:Date.now(),
+    pets:{}, activePetId:null, lastPetHatchAt:0};
 }
 function ensureStats(p){
   if(!p.stats) p.stats = {totalHarvests:0, totalAuctionTrades:0, maxBossHitDamage:0};
@@ -6421,7 +6834,7 @@ const T = {
   tabCollection: {zh:'我的收藏', en:'My Collection'},
   tabFriends: {zh:'好友', en:'Friends'},
   tabAuction: {zh:'拍賣行', en:'Auction House'},
-  tabFarm: {zh:'🌱 占卜花園', en:'🌱 Tarot Garden'},
+  tabFarm: {zh:'🌱 花園和寵物', en:'🌱 Garden & Pets'},
   tabExpedition: {zh:'🧭 遠征', en:'🧭 Expedition'},
   tabProfession: {zh:'🛠️ 職業', en:'🛠️ Profession'},
   tabLeaderboard: {zh:'🏆 排行榜', en:'🏆 Leaderboard'},
@@ -6455,7 +6868,7 @@ const T = {
   createWtbHeader: {zh:'建立求購', en:'Create Buy Order'},
   myWtbHeader: {zh:'我的求購', en:'My Buy Orders'},
   publicWtbHeader: {zh:'公開求購', en:'Public Buy Orders'},
-  gardenHeader: {zh:'🌱 占卜花園', en:'🌱 Tarot Garden'},
+  gardenHeader: {zh:'🌱 花園和寵物', en:'🌱 Garden & Pets'},
   friendGardenHeader: {zh:'🌿 好友花園', en:"🌿 Friends' Gardens"},
   leaderCollectionHeader: {zh:'🏆 收藏排行榜', en:'🏆 Collection Leaderboard'},
   leaderWealthHeader: {zh:'💰 財富排行榜', en:'💰 Wealth Leaderboard'},
@@ -6932,6 +7345,7 @@ async function boot(){
   initCardModal();
   initAchievementModal();
   initPlayerProfileModal();
+  initPetFeedModal();
   render();
   loadDrawWeights().catch(()=>{});
   loadSlotConfig().catch(()=>{});
@@ -9227,6 +9641,7 @@ async function renderFarm(body){
   const myRenderToken = renderToken; // 記住這次呼叫當下的序號，稍後寫入 DOM 前用來判斷自己是否已經過期
   const p = state.player;
   const farm = ensureFarm(p);
+  ensureMaterials(p);
   const now = Date.now();
   const total = playerTotalCards(p);
   const uniqueTotal = playerUniqueCards(p);
@@ -9241,6 +9656,7 @@ async function renderFarm(body){
     <div class="farm-banner-inner">
       <h2>${t('gardenHeader')}</h2>
       <p class="sub">${tt(`用金幣種下元素種子，靜待時間發芽 · 花色種子對應塔羅四元素 · 別忘了到下方看看好友的花園，互相澆水偷菜 🌿`, `Spend coins to plant elemental seeds and wait for them to grow · Suit seeds match the four tarot elements · Don't forget to check your friends' gardens below to water or take from each other 🌿`)}</p>
+      <p class="sub">🪶 ${tt('羽光碎片','Feather Shards')}：<b style="color:var(--gold-bright);">${(p.materials&&p.materials.featherShard)||0}</b>　${tt('（收成時隨機取得，可到「寵物」分頁召喚寵物）','(dropped randomly when harvesting - use it to summon pets in the Pets tab)')}</p>
       <button class="btn small" id="farm-harvest-all-btn" ${anyReady?'':'disabled'}>${tt('收成全部','Harvest All')}</button>
     </div>
   </div>`;
@@ -9315,6 +9731,23 @@ async function renderFarm(body){
       state.farmSeedGroup = 'all';
     }
     const activeGroup = state.farmSeedGroup;
+    // 一鍵種植：只有在選了「單一花色」分類（剛好只有一種可種的種子）時才顯示，
+    // 「全部」或同時有多顆候選種子(例如賽季分類)時不顯示，避免種到玩家沒選到的種子
+    let oneClickBtnHtml = '';
+    if(activeGroup !== 'all'){
+      const groupSeeds = allSeeds.filter(s=>seedGroupKey(s)===activeGroup);
+      if(groupSeeds.length === 1){
+        const seed = groupSeeds[0];
+        const levelLocked = (seed.tierLevel||0) > farmLevel;
+        const collectionCheck = seed.uniqueUnlock ? uniqueTotal : total;
+        const collectionLocked = seed.unlockTotal && collectionCheck < seed.unlockTotal;
+        const locked = levelLocked || (seed.seasonOnly && !SEASON_ACTIVE) || collectionLocked;
+        const emptyCount = farm.filter(pl=>plotStatus(pl, now)==='empty').length;
+        const affordableCount = locked ? 0 : Math.min(emptyCount, Math.floor((p.coins||0)/seed.cost));
+        const disabled = locked || emptyCount===0 || affordableCount===0;
+        oneClickBtnHtml = `<button class="btn small" id="farm-plant-all-btn" data-plant-all-seed="${seed.key}" ${disabled?'disabled':''}>${tt(`⚡一鍵種植${seedName(seed)}`,`⚡Plant All: ${seedName(seed)}`)}（${emptyCount} ${tt('塊空地','plots')} · ✦${seed.cost}${tt('/顆','/ea')}）</button>`;
+      }
+    }
     html += `<div class="farm-seed-tabs">
       <button class="farm-seed-tab ${activeGroup==='all'?'active':''}" data-seedtab="all">${tt('全部','All')}</button>
       ${availableGroups.map(g=>{
@@ -9322,6 +9755,7 @@ async function renderFarm(body){
         const label = appLang==='zh' ? meta.zh : meta.en;
         return `<button class="farm-seed-tab ${activeGroup===g?'active':''}" data-seedtab="${g}">${meta.icon} ${label}</button>`;
       }).join('')}
+      ${oneClickBtnHtml}
     </div>`;
   }
 
@@ -9475,6 +9909,10 @@ async function renderFarm(body){
     html += `</div></div>`;
   }
 
+  // 🐾 寵物玩法：孵蛋跟花園收成連動（羽光碎片），直接接在花園內容最後方一起顯示。
+  html += `<div class="panel" style="margin-top:4px;"><h2>🐾 ${tt('寵物','Pets')}</h2><p class="sub">${tt('用花園收成拿到的羽光碎片孵化寵物，出戰寵物會加成 Boss 戰傷害。','Hatch pets with Feather Shards from the garden - your active companion boosts Boss battle damage.')}</p></div>`;
+  html += petSectionHtml(p);
+
   // 這段 await 期間如果又有更新一次的 renderTab() 被觸發（例如玩家澆完水後自己觸發的重繪，
   // 或下一次 farmTickInterval），代表這次拿到的資料已經過期，放棄寫入 DOM，避免用舊資料
   // （例如「還沒澆過水」）蓋掉剛畫出來的新狀態。
@@ -9515,6 +9953,8 @@ async function renderFarm(body){
   document.querySelectorAll('[data-plant]').forEach(btn=>{
     btn.onclick = ()=>plantSeed(parseInt(btn.dataset.plant,10), btn.dataset.seed);
   });
+  const plantAllBtn = document.getElementById('farm-plant-all-btn');
+  if(plantAllBtn) plantAllBtn.onclick = ()=>plantSeedToAllEmpty(plantAllBtn.dataset.plantAllSeed);
   document.querySelectorAll('[data-suit-upgrade]').forEach(btn=>{
     btn.onclick = ()=>confirmSuitUpgrade(btn.dataset.suitUpgrade);
   });
@@ -9546,6 +9986,7 @@ async function renderFarm(body){
   document.querySelectorAll('[data-steal-plot]').forEach(btn=>{
     btn.onclick = ()=>stealFriendPlot(btn.dataset.stealFriend, parseInt(btn.dataset.stealPlot,10));
   });
+  bindPetSectionEvents();
 }
 
 // 排行榜快取：直接抓全站玩家完整資料（含卡牌、材料、道具等大型物件）再挑幾個數字欄位，
