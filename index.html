@@ -1294,6 +1294,7 @@ PET_CATALOG.forEach(pt=>{ PET_BY_ID[pt.id] = pt; });
 const PET_RARITY_WEIGHT = {common:58, uncommon:30, rare:10, epic:2};
 const PET_RARITY_LABEL = {common:{zh:'普通',en:'Common'}, uncommon:{zh:'罕見',en:'Uncommon'}, rare:{zh:'稀有',en:'Rare'}, epic:{zh:'史詩',en:'Epic'}};
 const PET_HATCH_COST_FEATHER = 5; // 🪶 召喚寵物所需羽光碎片（花園收成隨機取得）
+const FEATHER_SHARD_IMAGE = 'https://lekcusong.github.io/tcg/assets/material-feather-shard.jpg';
 const PET_HATCH_COOLDOWN_MS = 3*60*60*1000; // 每 3 小時可孵一次蛋
 function petHatchReadyAt(p){ return (p.lastPetHatchAt||0) + PET_HATCH_COOLDOWN_MS; }
 function rollPetFromEgg(){
@@ -1363,6 +1364,7 @@ function petSectionHtml(p){
   let html = `<div class="panel">
     <h2>🥚 ${tt('孵蛋','Hatch an Egg')}</h2>
     <p class="sub">${tt(`花費 🪶${PET_HATCH_COST_FEATHER} 羽光碎片孵化一顆神秘蛋，隨機獲得一隻寵物。羽光碎片可以在上面收成時隨機取得。孵化後需等待一段時間才能再孵下一顆。`, `Spend 🪶${PET_HATCH_COST_FEATHER} Feather Shards to hatch a mystery egg for a random pet. Feather Shards drop randomly when harvesting above. Wait a while before hatching another.`)}</p>
+    <div style="text-align:center;margin-bottom:10px;"><img src="${FEATHER_SHARD_IMAGE}" alt="${tt('羽光碎片','Feather Shard')}" style="width:88px;height:88px;object-fit:contain;border-radius:10px;" /></div>
     <div class="countdown" style="margin-bottom:10px;">🪶 ${tt('羽光碎片','Feather Shards')}：<b style="color:var(--gold-bright);">${p.materials.featherShard||0}</b></div>
     <button class="btn" id="pet-hatch-btn" ${(ready && canAfford)?'':'disabled'}>${tt('孵化蛋 🥚','Hatch Egg 🥚')}</button>
     ${!ready ? `<div class="countdown">${tt(`蛋還在孵化中，約 ${remainMin} 分鐘後可再孵`, `Egg is still incubating - about ${remainMin} min left`)}</div>` : (!canAfford ? `<div class="countdown">${tt('羽光碎片不足，收成看看吧','Not enough Feather Shards - try harvesting above')}</div>` : '')}
@@ -4191,6 +4193,168 @@ async function syncSlotJackpot(){
   return SLOT_JACKPOT;
 }
 
+// ---------- 每日星運之星（塔羅樂透） ----------
+// 玩法：GMT+8 每天固定時間鎖定，系統從 78 張塔羅牌中「均勻隨機」抽出 1 張幸運卡；
+// 凡是在鎖定前已完成「今日塔羅指引」抽卡、且三張牌其中含有幸運卡的玩家都算中獎。
+// 鎖定當下把「三牌共鳴」目前的獎池整包搬進本輪獎池、共鳴獎池歸零重置回保底金額；
+// 公布時平分給所有中獎者。跟其餘「排程」行為一樣，這個 app 沒有後端 cron，所有時間判定
+// 都是靠「剛好有玩家在那個時間點之後打開/操作 app」時順便觸發並寫回共用 storage
+// （沒有玩家在線時會延遲到下一個有人上線的時刻才補觸發）。
+const DEFAULT_FORTUNE_STAR_SETTINGS = {
+  enabled: true,
+  lockHour: 20, lockMinute: 0,     // GMT+8 鎖定時間（預設 8:00pm）
+  revealHour: 22, revealMinute: 0, // GMT+8 公布時間（預設 10:00pm）
+};
+let FORTUNE_STAR_SETTINGS = {...DEFAULT_FORTUNE_STAR_SETTINGS};
+async function loadFortuneStarConfig(){
+  try{
+    const r = await storage.get('config:fortunestar_settings');
+    if(r){
+      const s = JSON.parse(r.value);
+      Object.keys(DEFAULT_FORTUNE_STAR_SETTINGS).forEach(k=>{
+        if(typeof s[k] === 'boolean') FORTUNE_STAR_SETTINGS[k] = s[k];
+        else if(typeof s[k] === 'number' && s[k] >= 0) FORTUNE_STAR_SETTINGS[k] = s[k];
+      });
+    }
+  }catch(e){ /* keep defaults */ }
+}
+async function saveFortuneStarSettings(newSettings){
+  FORTUNE_STAR_SETTINGS = {...newSettings};
+  await storage.set('config:fortunestar_settings', JSON.stringify(FORTUNE_STAR_SETTINGS));
+}
+// 用「絕對 UTC 毫秒數 + 8 小時」再取 getUTC* 的方式換算 GMT+8 的年月日/時分，
+// 不受玩家瀏覽器所在時區影響，確保全服玩家看到的鎖定/公布時間點一致。
+function gmt8Parts(ts){
+  const d = new Date((typeof ts === 'number' ? ts : Date.now()) + 8*3600*1000);
+  return {y:d.getUTCFullYear(), m:d.getUTCMonth()+1, day:d.getUTCDate(), hour:d.getUTCHours(), minute:d.getUTCMinutes()};
+}
+function gmt8DateStr(ts){
+  const p = gmt8Parts(ts);
+  return `${p.y}-${p.m}-${p.day}`;
+}
+function gmt8MinutesOfDay(ts){
+  const p = gmt8Parts(ts);
+  return p.hour*60 + p.minute;
+}
+function fortuneStarRoundKey(dateStr){ return `config:fortunestar_round:${dateStr}`; }
+function fortuneStarEntryKey(dateStr, nick){ return `fortunestar_entry:${dateStr}:${(nick||'').toLowerCase()}`; }
+async function loadFortuneStarRound(dateStr){
+  try{
+    const r = await storage.get(fortuneStarRoundKey(dateStr));
+    if(!r) return null;
+    return JSON.parse(r.value);
+  }catch(e){ return null; }
+}
+async function saveFortuneStarRound(dateStr, round){
+  await storage.set(fortuneStarRoundKey(dateStr), JSON.stringify(round));
+  return round;
+}
+// 玩家抽今日塔羅時呼叫：把當下 GMT+8 日期的參賽紀錄（三張牌 id）寫入專屬 key，
+// 之後鎖定/公布只需要 storage.list 這個日期的前綴，不用整包掃描所有玩家資料。
+async function recordFortuneStarEntry(nickname, cardIds){
+  if(!FORTUNE_STAR_SETTINGS.enabled) return;
+  const dateStr = gmt8DateStr();
+  // 鎖定時間之後才抽的人不算這次參賽者（維持跟現有存檔一致的「最後寫入生效」邏輯，
+  // 這裡用寫入前的即時時間判斷即可，不需要額外鎖）。
+  if(gmt8MinutesOfDay() >= FORTUNE_STAR_SETTINGS.lockHour*60 + FORTUNE_STAR_SETTINGS.lockMinute) return;
+  try{
+    await storage.set(fortuneStarEntryKey(dateStr, nickname), JSON.stringify({nickname, cardIds, enteredAt: Date.now()}));
+  }catch(e){ /* best effort：頂多這次沒被記錄到參賽名單，不影響其餘抽卡流程 */ }
+}
+async function listFortuneStarEntries(dateStr){
+  try{
+    const list = await storage.list(`fortunestar_entry:${dateStr}:`);
+    if(!list || !list.keys) return [];
+    const items = await Promise.all(list.keys.map(async k=>{
+      try{ const r = await storage.get(k); return r ? JSON.parse(r.value) : null; }
+      catch(e){ return null; }
+    }));
+    return items.filter(Boolean);
+  }catch(e){ return []; }
+}
+async function lockFortuneStarRound(dateStr){
+  try{
+    await syncSlotJackpot();
+    const entries = await listFortuneStarEntries(dateStr);
+    const lucky = DECK[Math.floor(Math.random()*DECK.length)]; // 均勻隨機，不套用稀有度加權
+    const pool = SLOT_JACKPOT;
+    const round = {date: dateStr, phase:'locked', pool, luckyCardId: lucky.id, participantCount: entries.length, lockedAt: Date.now()};
+    await saveFortuneStarRound(dateStr, round);
+    await saveSlotJackpot(SLOT_SETTINGS.jackpotBase);
+    return round;
+  }catch(e){ return null; }
+}
+async function revealFortuneStarRound(dateStr, round){
+  try{
+    const entries = await listFortuneStarEntries(dateStr);
+    const winners = entries.filter(e=>e.cardIds && e.cardIds.includes(round.luckyCardId));
+    let winnerPayload = [];
+    if(winners.length > 0){
+      const share = Math.floor(round.pool / winners.length);
+      const remainder = round.pool - share*winners.length;
+      if(share > 0){
+        await Promise.all(winners.map(async w=>{
+          await createPendingReward(w.nickname, 'coins', {amount: share, source:'fortunestar'});
+          await createNotification(w.nickname, 'system', 'fortunestar_win', {amount: share, date: dateStr});
+        }));
+      }
+      // 徽章解鎖統計獨立於分潤金額，即使獎池被瓜分到每人 0 元，中獎紀錄仍然算數
+      await Promise.all(winners.map(w=>createPendingReward(w.nickname, 'stat_bump', {statKey:'totalFortuneStarWins', amount:1})));
+      winnerPayload = winners.map(w=>({nickname: w.nickname, amount: share}));
+      if(remainder > 0){ await syncSlotJackpot(); await saveSlotJackpot(SLOT_JACKPOT + remainder); }
+    } else if(round.pool > 0){
+      // 無人中獎：獎池退回共鳴獎池，不會憑空消失
+      await syncSlotJackpot();
+      await saveSlotJackpot(SLOT_JACKPOT + round.pool);
+    }
+    const newRound = {...round, phase:'revealed', winners: winnerPayload, revealedAt: Date.now()};
+    await saveFortuneStarRound(dateStr, newRound);
+    return newRound;
+  }catch(e){ return round; }
+}
+// 依序檢查「昨天」與「今天」兩個 GMT+8 日期的星運之星狀態，該鎖定/該公布就補做，
+// 讓即使整段時間完全沒人在線、隔天才有人打開 app 的情況也能補上（僅限跨一天，
+// 超過一天以上沒人上線這種極端情況本來就是這個無後端排程架構的既有限制）。
+let fortuneStarChecking = false;
+async function checkFortuneStarSchedule(){
+  if(fortuneStarChecking) return;
+  fortuneStarChecking = true;
+  try{
+    if(!FORTUNE_STAR_SETTINGS.enabled) return;
+    const lockMin = FORTUNE_STAR_SETTINGS.lockHour*60 + FORTUNE_STAR_SETTINGS.lockMinute;
+    const revealMin = FORTUNE_STAR_SETTINGS.revealHour*60 + FORTUNE_STAR_SETTINGS.revealMinute;
+    const todayDate = gmt8DateStr();
+    const yesterdayDate = gmt8DateStr(Date.now() - 24*3600*1000);
+    for(const dateStr of [yesterdayDate, todayDate]){
+      const isToday = dateStr === todayDate;
+      const nowMin = isToday ? gmt8MinutesOfDay() : 24*60; // 非今天：視為當天已經完全過完，該做的都要補做
+      let round = await loadFortuneStarRound(dateStr);
+      if(!round && nowMin >= lockMin){
+        round = await lockFortuneStarRound(dateStr);
+      }
+      if(round && round.phase === 'open' && nowMin >= lockMin){
+        round = await lockFortuneStarRound(dateStr);
+      }
+      if(round && round.phase === 'locked' && nowMin >= revealMin){
+        round = await revealFortuneStarRound(dateStr, round);
+      }
+      if(isToday) FORTUNE_STAR_ROUND_TODAY = round; // null 代表今天還沒鎖定（仍是開放參賽狀態）
+    }
+  }catch(e){ /* best effort，下次輪詢/開啟 app 再重試 */ }
+  finally{ fortuneStarChecking = false; }
+}
+function initFortuneStarPoll(){
+  const poll = ()=>{
+    if(document.visibilityState !== 'visible') return; // 背景分頁不輪詢
+    if(!state.nickname) return;
+    checkFortuneStarSchedule().then(()=>{
+      if(state.tab === 'home' || (state.tab === 'gm' && isGM())) renderTab();
+    });
+  };
+  setInterval(poll, 30000);
+  registerVisiblePoll(poll);
+}
+
 // ---------- 每日任務 ----------
 // 任務池共 10 項：checkin 每天固定出現，其餘 9 項用「暱稱+日期」做確定性洗牌，
 // 每天固定抽 6 項出來（同一天重整頁面不會換批），加上固定的 checkin 共 7 項。
@@ -4404,6 +4568,7 @@ const ACHIEVEMENT_IMAGES = {
   expedition_lv6: 'https://lekcusong.github.io/tcg/assets/expedition_lv6.jpg',
   jackpot_champion: 'https://lekcusong.github.io/tcg/assets/jackpot_champion.jpg',
   expedition_streak5: 'https://lekcusong.github.io/tcg/assets/expedition_streak5.jpg',
+  fortune_star_winner: 'https://lekcusong.github.io/tcg/assets/fortune_star_winner.jpg',
 };
 const ACHIEVEMENTS = [
   {
@@ -4547,6 +4712,15 @@ const ACHIEVEMENTS = [
     glow: 'rainbow',
     check(p){ return ((p.stats && p.stats.totalMegaJackpotWins) || 0) >= 1; },
     progress(p){ return `${Math.min(1, (p.stats && p.stats.totalMegaJackpotWins) || 0)}/1`; },
+  },
+  {
+    key: 'fortune_star_winner',
+    nameZh: '幸運之星', nameEn: 'Star of Fortune',
+    descZh: '今日塔羅指引命中每日星運之星的幸運卡，贏得獎池分潤', descEn: 'Match the lucky card in Daily Fortune Star with your daily tarot draw and win a share of the pool',
+    image: ACHIEVEMENT_IMAGES.fortune_star_winner,
+    glow: 'purple',
+    check(p){ return ((p.stats && p.stats.totalFortuneStarWins) || 0) >= 1; },
+    progress(p){ return `${Math.min(1, (p.stats && p.stats.totalFortuneStarWins) || 0)}/1`; },
   },
 ];
 const ACHIEVEMENT_BY_KEY = Object.fromEntries(ACHIEVEMENTS.map(a=>[a.key,a]));
@@ -7363,6 +7537,7 @@ async function boot(){
   loadProfessionConfig().catch(()=>{});
   loadAuctionConfig().catch(()=>{});
   loadTitleHolders().catch(()=>{});
+  loadFortuneStarConfig().then(()=>checkFortuneStarSchedule().then(()=>{ if(state.tab==='home') renderTab(); })).catch(()=>{});
   initWinBroadcastPoll();
   initSlotJackpotPoll();
   initTitleHolderPoll();
@@ -7370,6 +7545,7 @@ async function boot(){
   initChatPoll();
   initChatUnreadPoll();
   initPresenceHeartbeat();
+  initFortuneStarPoll();
 }
 
 async function doLogin(nick, password, confirmPassword){
@@ -7478,6 +7654,7 @@ async function claimDaily(){
   state.player.lastDrawCards = drawn.map(c=>c.id);
   bumpQuest(state.player, 'checkin', 1);
   await savePlayer(state.player);
+  recordFortuneStarEntry(state.nickname, drawn.map(c=>c.id)).catch(()=>{});
   render();
   setTimeout(()=>{ flipCard(0); }, 300);
   if(bonus > 0){
@@ -7693,6 +7870,42 @@ function initSlotJackpotPoll(){
   setInterval(poll, 10000);
   registerVisiblePoll(poll);
 }
+// 首頁「每日星運之星」區塊要顯示的資料快取（今天這個 GMT+8 日期的輪次），
+// 由 checkFortuneStarSchedule() 每次檢查完順便寫入，避免 renderHome 這種同步
+// render 函式裡還要另外發一次非同步請求。
+let FORTUNE_STAR_ROUND_TODAY = null;
+function fortuneStarPanelHtml(p){
+  if(!FORTUNE_STAR_SETTINGS.enabled) return '';
+  const lockLabel = `${String(FORTUNE_STAR_SETTINGS.lockHour).padStart(2,'0')}:${String(FORTUNE_STAR_SETTINGS.lockMinute).padStart(2,'0')}`;
+  const revealLabel = `${String(FORTUNE_STAR_SETTINGS.revealHour).padStart(2,'0')}:${String(FORTUNE_STAR_SETTINGS.revealMinute).padStart(2,'0')}`;
+  const round = FORTUNE_STAR_ROUND_TODAY;
+  const enteredToday = p.lastClaim === todayStr(); // 近似值：以本地「今日已抽塔羅」判斷是否已列入本輪參賽名單
+  let body = '';
+  if(!round || round.phase === 'open'){
+    body = `<p class="sub" style="margin:0 0 6px;">${tt(`每天 GMT+8 ${lockLabel} 鎖定名單並將「三牌共鳴」目前獎池整包搬入本輪獎池，${revealLabel} 公布幸運卡與得獎名單。`, `Locks the entry list at ${lockLabel} GMT+8 daily, moving the entire Resonance jackpot into this round's pool - the lucky card and winners are revealed at ${revealLabel} GMT+8.`)}</p>
+      <p class="sub" style="margin:0;">${enteredToday
+        ? tt('✓ 你今天已抽取塔羅指引，已列入本輪參賽名單','✓ You\'ve drawn today\'s tarot and are entered in this round')
+        : tt(`尚未抽取今日塔羅 — 鎖定前完成抽卡才能參賽`, `You haven't drawn today's tarot yet - draw before the lock time to enter`)}</p>`;
+  } else if(round.phase === 'locked'){
+    const revealMinOfDay = FORTUNE_STAR_SETTINGS.revealHour*60 + FORTUNE_STAR_SETTINGS.revealMinute;
+    const timeReached = gmt8MinutesOfDay() >= revealMinOfDay;
+    body = `<p class="sub" style="margin:0 0 6px;">${tt(`🔒 名單已鎖定，共 <b style="color:var(--gold-bright);">${round.participantCount}</b> 位參賽者`, `🔒 Entries locked - <b style="color:var(--gold-bright);">${round.participantCount}</b> participant(s)`)}</p>
+      <p class="sub" style="margin:0 0 10px;">${tt(`本輪獎池：<b style="color:var(--gold-bright);">✦ ${round.pool}</b> · ${timeReached ? '幸運卡已可公布' : `幸運卡將於 ${revealLabel} GMT+8 公布`}`, `This round's pool: <b style="color:var(--gold-bright);">✦ ${round.pool}</b> · ${timeReached ? 'The lucky card can now be revealed' : `Revealed at ${revealLabel} GMT+8`}`)}</p>
+      ${timeReached ? `<button class="btn small" id="fs-reveal-btn">⭐ ${tt('公布幸運卡與得獎名單','Reveal Lucky Card & Winners')}</button>` : ''}`;
+  } else if(round.phase === 'revealed'){
+    const luckyCard = DECK_BY_ID[round.luckyCardId];
+    const won = round.winners && round.winners.find(w=>(w.nickname||'').toLowerCase() === (state.nickname||'').toLowerCase());
+    body = `<p class="sub" style="margin:0 0 6px;">${tt(`⭐ 幸運卡：<b style="color:var(--gold-bright);">${luckyCard ? luckyCard.name : '？'}</b>`, `⭐ Lucky card: <b style="color:var(--gold-bright);">${luckyCard ? luckyCard.name : '?'}</b>`)}</p>
+      <p class="sub" style="margin:0 0 6px;">${round.winners && round.winners.length > 0
+        ? tt(`🎉 本輪 ${round.winners.length} 位中獎者，每人獲得 ✦${round.winners[0].amount}`, `🎉 ${round.winners.length} winner(s) this round, each receiving ✦${round.winners[0].amount}`)
+        : tt('本輪無人中獎，獎池已退回三牌共鳴獎池','No winners this round - the pool returned to the Resonance jackpot')}</p>
+      ${won ? `<p class="sub" style="margin:0;color:var(--gold-bright);">${tt(`✨ 恭喜你中獎了！✦${won.amount} 已送入信箱`, `✨ Congratulations, you won! ✦${won.amount} has been sent to your mailbox`)}</p>` : ''}`;
+  }
+  return `<div class="panel">
+    <h2>⭐ ${tt('每日星運之星','Daily Fortune Star')}</h2>
+    ${body}
+  </div>`;
+}
 // 定期輪詢目前的稱號持有者（唯讀），讓所有玩家即使沒有自己打開排行榜，也能看到
 // 別人身上稱號的即時變化（例如聊天室、個人檔案顯示的稱號）
 function initTitleHolderPoll(){
@@ -7855,6 +8068,11 @@ async function applyPendingRewards(player){
     } else if(data.grantKind === 'auction_trade_stat'){
       ensureStats(player).totalAuctionTrades += 1;
       changed = true;
+    } else if(data.grantKind === 'stat_bump'){
+      // 通用統計數字累加（例如每日星運之星中獎次數），供成就徽章的 check() 判斷用
+      const stats = ensureStats(player);
+      stats[data.statKey] = (stats[data.statKey] || 0) + (data.amount || 1);
+      changed = true;
     }
     await storage.delete(key).catch(()=>{});
   }
@@ -7880,6 +8098,7 @@ const NOTIF_CATEGORY_MAP = {
   boss_reward: 'boss',
   gm_grant: 'gm',
   jackpot_win: 'resonance',
+  fortunestar_win: 'resonance',
 };
 function notifCategory(type){
   return NOTIF_CATEGORY_MAP[type] || 'friends';
@@ -7898,6 +8117,7 @@ function notifText(n){
   if(n.type==='auction_won') return tt(`恭喜！你以 ✦${n.price} 枚金幣贏得了『${n.cardName}』的拍賣`, `Congratulations! You won the auction for "${n.cardName}" for ✦${n.price}`);
   if(n.type==='boss_reward') return tt(`你擊敗了 Boss！獲得了 ✦${n.coins} 枚金幣${n.essence?`、💠${n.essence} 骰子精華`:''}`, `You defeated the Boss! You received ✦${n.coins} coins${n.essence?` and 💠${n.essence} Dice Essence`:''}`);
   if(n.type==='jackpot_win') return tt(`✨💫 ${n.from} 觸發了命運共鳴，獨得整包 ✦${n.amount} 獎池！`, `✨💫 ${n.from} triggered a Fated Resonance and won the entire ✦${n.amount} jackpot pool!`);
+  if(n.type==='fortunestar_win') return tt(`⭐ 恭喜！你的今日塔羅指引命中幸運卡，獲得每日星運之星獎金 ✦${n.amount}！`, `⭐ Congratulations! Your daily tarot matched the lucky card and won ✦${n.amount} from Daily Fortune Star!`);
   if(n.type==='gm_grant'){
     if(n.grantKind==='coins') return tt(`GM 發放了 ✦${n.amount} 枚金幣給你`, `GM granted you ✦${n.amount} coins`);
     return tt(`GM 發放了 ${n.label} x${n.qty} 給你`, `GM granted you ${n.label} x${n.qty}`);
@@ -8002,17 +8222,41 @@ function initChatPoll(){
       const fingerprint = messages.map(m=>m.id).join(',');
       if(fingerprint === lastChatFingerprint) return;
       lastChatFingerprint = fingerprint;
-      const inputEl = document.getElementById('chat-input');
-      const draft = inputEl ? inputEl.value : '';
-      const hadFocus = document.activeElement === inputEl;
-      await renderTab();
-      const newInput = document.getElementById('chat-input');
-      if(newInput && draft){ newInput.value = draft; if(hadFocus) newInput.focus(); }
+      // 只更新訊息列表本身，完全不動輸入框（不 touch DOM、不重設 value），
+      // 這樣打字打到一半時視窗/游標都不會被打斷或跳動。
+      updateChatMessagesDom(messages);
       markChatAsRead();
     }catch(e){ /* ignore */ }
   };
   setInterval(poll, 4000);
   registerVisiblePoll(poll);
+}
+// 只重繪 #chat-scroll 裡面的訊息，不動輸入框、不整包 renderTab()。
+// 只有玩家原本就已經捲到（或接近）最底部時，才在更新後自動捲到底；
+// 如果玩家往上捲在看歷史訊息，更新時會保留原本的捲動位置，不會被強制跳走。
+function updateChatMessagesDom(messages){
+  const scrollBox = document.getElementById('chat-scroll');
+  if(!scrollBox) return; // 不在聊天分頁上，什麼都不用做
+  const wasNearBottom = (scrollBox.scrollTop + scrollBox.clientHeight) >= (scrollBox.scrollHeight - 40);
+  const recent = messages.slice(-CHAT_MAX_MESSAGES);
+  scrollBox.innerHTML = recent.length === 0 ? `<div class="empty-note">${tt('目前還沒有訊息，說點什麼吧！','No messages yet - say something!')}</div>` : recent.map(m=>`
+        <div class="chat-msg${m.nickname.toLowerCase()===state.nickname.toLowerCase()?' mine':''}">
+          <div class="chat-msg-head">
+            <div class="chat-avatar" data-view-profile="${escapeHtml(m.nickname)}">${avatarBoxHtml(m.avatarId)}</div>
+            <span class="chat-msg-name" data-view-profile="${escapeHtml(m.nickname)}" style="${m.isGM?'color:var(--gold);':''}">${escapeHtml(m.nickname)}${m.isGM?' ⚡':''}</span>
+            ${(m.titles||[]).length ? `<span class="title-row" style="display:inline-flex;gap:3px;">${(m.titles||[]).map(k=>titleInlineHtml(k,11)).join('')}</span>` : ''}
+            ${(m.badges||[]).length ? `<span class="badge-row" style="display:inline-flex;gap:2px;">${(m.badges||[]).map(k=>badgeInlineHtml(k,15)).join('')}</span>` : ''}
+            <span class="chat-msg-time">${timeAgo(m.createdAt)}</span>
+            ${isGM() ? `<button class="chat-msg-del" data-chat-del="${m.id}" title="${tt('刪除訊息','Delete message')}">✕</button>` : ''}
+          </div>
+          <div class="chat-msg-text">${escapeHtml(m.text)}</div>
+        </div>
+      `).join('');
+  bindProfileClickTargets(scrollBox);
+  scrollBox.querySelectorAll('[data-chat-del]').forEach(btn=>{
+    btn.onclick = ()=>deleteChatMessage(btn.dataset.chatDel);
+  });
+  if(wasNearBottom) scrollBox.scrollTop = scrollBox.scrollHeight;
 }
 function updateChatBadgeDom(){
   const badge = document.getElementById('chat-tab-badge');
@@ -9038,6 +9282,8 @@ function renderHome(body){
   html += `<div class="countdown">${tt(`連續簽到 <b style="color:var(--gold-bright);">${streak}</b> 天${nextMilestone ? ` · 再簽到 ${nextMilestone - streak} 天可額外獲得 ${STREAK_BONUS[nextMilestone]} 枚金幣 🔥` : ''}`, `<b style="color:var(--gold-bright);">${streak}</b>-day streak${nextMilestone ? ` · ${nextMilestone - streak} more day(s) for a bonus ${STREAK_BONUS[nextMilestone]} coins 🔥` : ''}`)}</div>`;
   html += `</div>`;
 
+  html += fortuneStarPanelHtml(p);
+
   ensureMaterials(p);
   const makeupCandidates = getMakeupCandidateDates(p);
   const makeupUsedToday = p.lastMakeupDate === todayStr();
@@ -9094,6 +9340,18 @@ function renderHome(body){
   document.querySelectorAll('[data-claim-quest]').forEach(b=>{
     b.onclick = ()=>claimQuest(b.dataset.claimQuest);
   });
+  const fsRevealBtn = document.getElementById('fs-reveal-btn');
+  if(fsRevealBtn) fsRevealBtn.onclick = async ()=>{
+    fsRevealBtn.disabled = true;
+    fsRevealBtn.textContent = tt('公布中…','Revealing…');
+    const dateStr = gmt8DateStr();
+    const round = FORTUNE_STAR_ROUND_TODAY || await loadFortuneStarRound(dateStr);
+    if(!round || round.phase !== 'locked'){ showToast(tt('目前無法公布，請稍後再試','Cannot reveal right now, please try again later')); renderTab(); return; }
+    const revealed = await revealFortuneStarRound(dateStr, round);
+    FORTUNE_STAR_ROUND_TODAY = revealed;
+    showToast(tt('⭐ 幸運卡已公布！','⭐ The lucky card has been revealed!'));
+    renderTab();
+  };
 
   if(showDrawResults){
     COLLECTION_MODAL_LIST = state.drawResults.map(c=>c.id);
@@ -9849,12 +10107,13 @@ async function renderFarm(body){
       <button class="btn small" id="farm-water-all-btn">${tt('🚿 一鍵幫好友澆水','🚿 Water all friends')}</button>
       <button class="btn small secondary" id="farm-steal-all-btn">${tt('🌾 一鍵偷好友菜','🌾 Take from all friends')}</button>
     </div>` : ''}
-    ${friends.length===0 ? `<div class="empty-note">${tt('尚未加入任何好友，先到「好友」分頁加人吧 ✦','No friends yet - add some on the Friends tab first ✦')}</div>` : friends.map(f=>`
+    ${friends.length===0 ? `<div class="empty-note">${tt('尚未加入任何好友，先到「好友」分頁加人吧 ✦','No friends yet - add some on the Friends tab first ✦')}</div>` : friends.slice(0,5).map(f=>`
       <div class="listing">
         <div class="left"><div class="icon-box">✦</div><div class="meta"><div>${escapeHtml(f)}</div></div></div>
         <div class="right"><button class="btn small" data-visit-farm="${escapeHtml(f)}">${state.farmVisiting===f ? tt('收合','Collapse') : tt('查看花園','View Garden')}</button></div>
       </div>
     `).join('')}
+    ${friends.length>5 ? `<div class="empty-note" style="margin-top:6px;">${tt(`還有 ${friends.length-5} 位好友未顯示`, `${friends.length-5} more friend(s) not shown`)}</div>` : ''}
   </div>`;
 
   let visitingFarm = null, visitingPlayer = null;
@@ -10495,6 +10754,34 @@ async function renderGM(body){
     </div>
   </div>`;
 
+  {
+    const fsRound = FORTUNE_STAR_ROUND_TODAY;
+    const fsPhaseLabel = !fsRound ? tt('尚未鎖定','Not locked yet') : fsRound.phase === 'locked' ? tt('已鎖定，等待公布','Locked, awaiting reveal') : tt('已公布','Revealed');
+    const fsLucky = fsRound && fsRound.luckyCardId ? (DECK_BY_ID[fsRound.luckyCardId] ? DECK_BY_ID[fsRound.luckyCardId].name : fsRound.luckyCardId) : '—';
+    html += `<div class="panel">
+    <h2>⭐ ${tt('每日星運之星設定','Daily Fortune Star Settings')}</h2>
+    <p class="sub">${tt('每天 GMT+8 鎖定時間，系統從 78 張塔羅牌均勻隨機抽 1 張幸運卡；鎖定前已抽今日塔羅、且三張牌中含幸運卡的玩家平分本輪獎池（獎池來自鎖定當下的三牌共鳴獎池）。','Each day at the GMT+8 lock time, the system draws 1 lucky card uniformly at random from all 78 tarot cards. Players who drew today\'s tarot before the lock and have the lucky card among their 3 cards split the round\'s pool (funded from the Resonance jackpot at lock time).')}</p>
+    <div class="form-row">
+      <div><label>${tt('啟用','Enabled')}</label><select id="gm-fs-enabled"><option value="true" ${FORTUNE_STAR_SETTINGS.enabled?'selected':''}>${tt('開啟','On')}</option><option value="false" ${!FORTUNE_STAR_SETTINGS.enabled?'selected':''}>${tt('關閉','Off')}</option></select></div>
+      <div><label>${tt('鎖定時間（GMT+8 時）','Lock hour (GMT+8)')}</label><input type="number" id="gm-fs-lock-hour" value="${FORTUNE_STAR_SETTINGS.lockHour}" min="0" max="23" style="width:70px;" /></div>
+      <div><label>${tt('鎖定時間（分）','Lock minute')}</label><input type="number" id="gm-fs-lock-minute" value="${FORTUNE_STAR_SETTINGS.lockMinute}" min="0" max="59" style="width:70px;" /></div>
+    </div>
+    <div class="form-row">
+      <div><label>${tt('公布時間（GMT+8 時）','Reveal hour (GMT+8)')}</label><input type="number" id="gm-fs-reveal-hour" value="${FORTUNE_STAR_SETTINGS.revealHour}" min="0" max="23" style="width:70px;" /></div>
+      <div><label>${tt('公布時間（分）','Reveal minute')}</label><input type="number" id="gm-fs-reveal-minute" value="${FORTUNE_STAR_SETTINGS.revealMinute}" min="0" max="59" style="width:70px;" /></div>
+    </div>
+    <div class="form-row">
+      <button class="btn small" id="gm-fs-save-btn">${tt('儲存星運之星設定','Save Fortune Star Settings')}</button>
+      <button class="btn small secondary" id="gm-fs-reset-btn">${tt('還原預設值','Reset to Default')}</button>
+    </div>
+    <p class="sub" style="margin-top:14px;">${tt(`今日狀態：<b style="color:var(--gold-bright);">${fsPhaseLabel}</b> · 參賽人數 ${fsRound ? fsRound.participantCount : '—'} · 本輪獎池 ✦${fsRound ? fsRound.pool : SLOT_JACKPOT}${fsRound && fsRound.phase==='revealed' ? ` · 幸運卡：${fsLucky} · 中獎 ${fsRound.winners.length} 人` : ''}`, `Today's status: <b style="color:var(--gold-bright);">${fsPhaseLabel}</b> · ${fsRound ? fsRound.participantCount : '—'} participant(s) · Pool ✦${fsRound ? fsRound.pool : SLOT_JACKPOT}${fsRound && fsRound.phase==='revealed' ? ` · Lucky card: ${fsLucky} · ${fsRound.winners.length} winner(s)` : ''}`)}</p>
+    <div class="form-row" style="margin-top:6px;">
+      <button class="btn small secondary" id="gm-fs-force-lock-btn">${tt('測試：強制鎖定今日','Test: Force Lock Today')}</button>
+      <button class="btn small secondary" id="gm-fs-force-reveal-btn">${tt('測試：強制公布今日','Test: Force Reveal Today')}</button>
+    </div>
+  </div>`;
+  }
+
   html += `<div class="panel">
     <h2>${tt('每日任務獎勵設定','Daily Quest Rewards')}</h2>
     <p class="sub">${tt('調整每個每日任務的金幣獎勵，以及全部完成時的額外獎勵','Adjust the coin reward for each daily quest, and the bonus for completing all of them')}</p>
@@ -11048,6 +11335,51 @@ async function renderGM(body){
     if(isNaN(v) || v < 0){ showToast(tt('請輸入有效的非負數字','Please enter a valid non-negative number')); return; }
     await saveSlotJackpot(v);
     showToast(tt(`獎池已設定為 ✦${v}`, `Jackpot pool set to ✦${v}`));
+    renderTab();
+  };
+  const fsSaveBtn = document.getElementById('gm-fs-save-btn');
+  if(fsSaveBtn) fsSaveBtn.onclick = async ()=>{
+    const s = {
+      enabled: document.getElementById('gm-fs-enabled').value === 'true',
+      lockHour: parseInt(document.getElementById('gm-fs-lock-hour').value, 10),
+      lockMinute: parseInt(document.getElementById('gm-fs-lock-minute').value, 10),
+      revealHour: parseInt(document.getElementById('gm-fs-reveal-hour').value, 10),
+      revealMinute: parseInt(document.getElementById('gm-fs-reveal-minute').value, 10),
+    };
+    const nums = [s.lockHour, s.lockMinute, s.revealHour, s.revealMinute];
+    if(nums.some(v=>isNaN(v) || v < 0) || s.lockHour > 23 || s.revealHour > 23 || s.lockMinute > 59 || s.revealMinute > 59){
+      showToast(tt('請輸入有效的時間數字','Please enter valid time values')); return;
+    }
+    if(s.revealHour*60+s.revealMinute <= s.lockHour*60+s.lockMinute){
+      showToast(tt('公布時間必須晚於鎖定時間','Reveal time must be after lock time')); return;
+    }
+    await saveFortuneStarSettings(s);
+    showToast(tt('每日星運之星設定已更新','Daily Fortune Star settings updated'));
+    renderTab();
+  };
+  const fsResetBtn = document.getElementById('gm-fs-reset-btn');
+  if(fsResetBtn) fsResetBtn.onclick = async ()=>{
+    await saveFortuneStarSettings({...DEFAULT_FORTUNE_STAR_SETTINGS});
+    showToast(tt('已還原為預設星運之星設定','Reverted to default Fortune Star settings'));
+    renderTab();
+  };
+  const fsForceLockBtn = document.getElementById('gm-fs-force-lock-btn');
+  if(fsForceLockBtn) fsForceLockBtn.onclick = async ()=>{
+    const dateStr = gmt8DateStr();
+    const round = await lockFortuneStarRound(dateStr);
+    if(round){ FORTUNE_STAR_ROUND_TODAY = round; showToast(tt('已強制鎖定今日名單','Today\'s entries have been force-locked')); }
+    else showToast(tt('鎖定失敗，請稍後再試','Lock failed, please try again later'));
+    renderTab();
+  };
+  const fsForceRevealBtn = document.getElementById('gm-fs-force-reveal-btn');
+  if(fsForceRevealBtn) fsForceRevealBtn.onclick = async ()=>{
+    const dateStr = gmt8DateStr();
+    let round = FORTUNE_STAR_ROUND_TODAY || await loadFortuneStarRound(dateStr);
+    if(!round || round.phase === 'open'){ showToast(tt('尚未鎖定，請先鎖定再公布','Not locked yet - lock first before revealing')); return; }
+    if(round.phase === 'revealed'){ showToast(tt('今日已經公布過了','Already revealed for today')); return; }
+    round = await revealFortuneStarRound(dateStr, round);
+    FORTUNE_STAR_ROUND_TODAY = round;
+    showToast(tt('已強制公布今日結果','Today\'s results have been force-revealed'));
     renderTab();
   };
   const questSaveBtn = document.getElementById('gm-quest-save-btn');
