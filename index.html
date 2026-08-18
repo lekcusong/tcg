@@ -3235,9 +3235,12 @@ function diceFaceLabel(face){
 
 function renderDiceCard(dice, opts){
   opts = opts || {};
-  const meta = DICE_QUALITY_META[dice.quality];
+  const meta = DICE_QUALITY_META[dice.quality] || DICE_QUALITY_META.common;
   const epicGlow = dice.quality === 'epic' ? 'animation:legendary-pulse 2.6s ease-in-out infinite;' : '';
-  const facesHtml = dice.faces.map(f=>`<span style="display:inline-block;min-width:26px;padding:3px 5px;margin:2px;border-radius:6px;border:1px solid ${f.effect ? meta.color : 'var(--line)'};font-family:'Space Mono',monospace;font-size:11px;${f.effect ? `color:${meta.color};` : 'color:var(--muted);'}" title="${f.effect ? tt(f.effect.desc||f.effect.label, f.effect.descEn||f.effect.labelEn) : ''}">${diceFaceLabel(f)}</span>`).join('');
+  // 舊資料或損毀的骰子快照可能沒有 faces 陣列，這裡防呆避免整頁因為
+  // .map() 撞到 undefined 而整個 render() 掛掉（例如拍賣行自動結算過期拍賣時）。
+  const faces = Array.isArray(dice.faces) ? dice.faces : [];
+  const facesHtml = faces.map(f=>`<span style="display:inline-block;min-width:26px;padding:3px 5px;margin:2px;border-radius:6px;border:1px solid ${f.effect ? meta.color : 'var(--line)'};font-family:'Space Mono',monospace;font-size:11px;${f.effect ? `color:${meta.color};` : 'color:var(--muted);'}" title="${f.effect ? tt(f.effect.desc||f.effect.label, f.effect.descEn||f.effect.labelEn) : ''}">${diceFaceLabel(f)}</span>`).join('');
   return `<div style="border:1px solid ${meta.color};border-radius:10px;padding:10px 12px;margin-bottom:8px;background:rgba(255,255,255,0.03);${epicGlow}">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
       <span style="display:flex;align-items:center;gap:6px;font-family:'Cinzel',serif;color:${meta.color};font-weight:600;">
@@ -3901,26 +3904,71 @@ async function saveFortuneStarRound(dateStr, round){
 }
 // 玩家抽今日塔羅時呼叫：把當下 GMT+8 日期的參賽紀錄（三張牌 id）寫入專屬 key，
 // 之後鎖定/公布只需要 storage.list 這個日期的前綴，不用整包掃描所有玩家資料。
+// 回傳明確狀態字串，讓呼叫端（claimDaily）可以把「這次抽卡到底有沒有真的被列入
+// 本輪參賽名單」如實記錄下來，而不是事後用本地日期去近似猜測：
+//   'disabled' - 星運之星功能未開啟，本來就不需要記錄
+//   'locked'   - 已過今日 GMT+8 鎖定時間，本次抽卡不算入本輪參賽名單（靜默放棄寫入）
+//   'error'    - 該寫入時發生錯誤（best effort，不影響其餘抽卡流程，但玩家資格不確定）
+//   'ok'       - 已成功寫入本輪參賽名單
 async function recordFortuneStarEntry(nickname, cardIds){
-  if(!FORTUNE_STAR_SETTINGS.enabled) return;
+  if(!FORTUNE_STAR_SETTINGS.enabled) return 'disabled';
   const dateStr = gmt8DateStr();
   // 鎖定時間之後才抽的人不算這次參賽者（維持跟現有存檔一致的「最後寫入生效」邏輯，
   // 這裡用寫入前的即時時間判斷即可，不需要額外鎖）。
-  if(gmt8MinutesOfDay() >= FORTUNE_STAR_SETTINGS.lockHour*60 + FORTUNE_STAR_SETTINGS.lockMinute) return;
+  if(gmt8MinutesOfDay() >= FORTUNE_STAR_SETTINGS.lockHour*60 + FORTUNE_STAR_SETTINGS.lockMinute) return 'locked';
   try{
     await storage.set(fortuneStarEntryKey(dateStr, nickname), JSON.stringify({nickname, cardIds, enteredAt: Date.now()}));
-  }catch(e){ /* best effort：頂多這次沒被記錄到參賽名單，不影響其餘抽卡流程 */ }
+    return 'ok';
+  }catch(e){ /* best effort：頂多這次沒被記錄到參賽名單，不影響其餘抽卡流程 */ return 'error'; }
+}
+// 依 key 陣列批次讀取多筆資料，取代「一次對每個 key 各自平行發送一支 fetch」的寫法。
+// 好友、玩家、拍賣等清單一多，Promise.all(keys.map(storage.get)) 會瞬間對 Supabase
+// 開出幾十甚至上百條平行連線，容易被中斷（Console 會看到一整排 net::ERR_CONNECTION_CLOSED），
+// 也是 GM 後台每次重繪都要重新抓好友關係/玩家清單時最容易觸發的地方。
+// 這裡限制同時間最多 CONCURRENCY 支請求在飛，其餘排隊，大幅降低瞬間連線數。
+async function fetchKeysBatch(keys, mapFn){
+  mapFn = mapFn || (v=>v);
+  const results = new Array(keys.length);
+  const CONCURRENCY = 6;
+  let idx = 0;
+  async function worker(){
+    while(idx < keys.length){
+      const i = idx++;
+      const k = keys[i];
+      try{
+        const r = await storage.get(k);
+        results[i] = r ? mapFn(JSON.parse(r.value), k) : null;
+      }catch(e){ results[i] = null; }
+    }
+  }
+  const workerCount = Math.min(CONCURRENCY, keys.length);
+  await Promise.all(Array.from({length: workerCount}, worker));
+  return results.filter(Boolean);
 }
 async function listFortuneStarEntries(dateStr){
   try{
     const list = await storage.list(`fortunestar_entry:${dateStr}:`);
     if(!list || !list.keys) return [];
-    const items = await Promise.all(list.keys.map(async k=>{
-      try{ const r = await storage.get(k); return r ? JSON.parse(r.value) : null; }
-      catch(e){ return null; }
-    }));
-    return items.filter(Boolean);
+    return await fetchKeysBatch(list.keys);
   }catch(e){ return []; }
+}
+// 名單鎖定前（round 還是 open / 尚未建立）目前已經有多少人參加的即時人數快取，
+// 給首頁面板顯示用。鎖定後改用 round.participantCount（正式定案的人數），這裡就不再更新。
+let FORTUNE_STAR_LIVE_COUNT_TODAY = null;
+// 「我今天是否已經在參賽名單裡」的即時查核結果：true/false 代表已經查到明確答案，
+// null 代表還沒查過。之所以獨立於 state.player.lastFortuneStarEntry 這個快取欄位，
+// 是因為抽卡時「寫入參賽名單」跟「把狀態存回玩家資料」是兩次分開的存檔，遇到網路
+// 不穩時可能前者成功、後者沒寫入，導致玩家資料顯示「尚未抽取」但其實已經算進名單、
+// 也分得到獎池。這裡直接拿當下的參賽名單核對是否有自己，作為更準確的判斷依據。
+let FORTUNE_STAR_ENTERED_TODAY = null;
+async function refreshFortuneStarLiveCount(){
+  if(!FORTUNE_STAR_SETTINGS.enabled) return;
+  try{
+    const entries = await listFortuneStarEntries(gmt8DateStr());
+    FORTUNE_STAR_LIVE_COUNT_TODAY = entries.length;
+    const myLower = (state.nickname||'').toLowerCase();
+    FORTUNE_STAR_ENTERED_TODAY = entries.some(e=>(e.nickname||'').toLowerCase() === myLower);
+  }catch(e){ /* keep previous value */ }
 }
 async function lockFortuneStarRound(dateStr){
   try{
@@ -4003,7 +4051,12 @@ async function checkFortuneStarSchedule(){
       if(round && round.phase === 'locked' && nowMin >= revealMin){
         round = await revealFortuneStarRound(dateStr, round);
       }
-      if(isToday) FORTUNE_STAR_ROUND_TODAY = round; // null 代表今天還沒鎖定（仍是開放參賽狀態）
+      if(isToday){
+        FORTUNE_STAR_ROUND_TODAY = round; // null 代表今天還沒鎖定（仍是開放參賽狀態）
+        // 名單還沒鎖定時，順便刷新即時參賽人數快取，給首頁面板顯示用；
+        // 一旦鎖定，round.participantCount 就是正式人數，不用再查即時的。
+        if(!round || round.phase === 'open') await refreshFortuneStarLiveCount();
+      }
     }
   }catch(e){ /* best effort，下次輪詢/開啟 app 再重試 */ }
   finally{ fortuneStarChecking = false; }
@@ -4013,20 +4066,12 @@ function initFortuneStarPoll(){
     if(document.visibilityState !== 'visible') return; // 背景分頁不輪詢
     if(!state.nickname) return;
     checkFortuneStarSchedule().then(()=>{
+      // 只有首頁需要星運之星的即時倒數/狀態，才值得每 30 秒重繪。
+      // GM 後台跟這個排程無關，卻曾經被一起附帶整包重繪：GM 頁面內容多、
+      // 每次重繪都要重新抓玩家清單/好友關係/拍賣資料，不但沒必要地
+      // 增加後端負擔，畫面也會每 30 秒閃一下、捲動位置跳動。GM 若要看到
+      // 最新資料，切出去再切回來就會重新載入，不需要背景自動刷新。
       if(state.tab === 'home'){ renderTab(); return; }
-      if(state.tab === 'gm' && isGM()){
-        // GM 分頁不無條件整包重繪：如果 GM 正在表單欄位裡輸入/選取，這次先跳過，
-        // 避免每 30 秒把輸入內容、游標、捲動位置打斷、造成畫面一直跳動；
-        // 就算真的要重繪，也記住捲動位置重繪後還原。
-        const body = document.getElementById('tab-body');
-        const active = document.activeElement;
-        const isEditing = active && body && body.contains(active) &&
-          ['INPUT','SELECT','TEXTAREA'].includes(active.tagName);
-        if(isEditing) return;
-        const gmScrollY = window.scrollY;
-        renderTab();
-        window.scrollTo(0, gmScrollY);
-      }
     });
   };
   setInterval(poll, 30000);
@@ -7321,12 +7366,25 @@ async function claimDaily(){
   state.player.lastDrawCards = drawn.map(c=>c.id);
   bumpQuest(state.player, 'checkin', 1);
   await savePlayer(state.player);
-  recordFortuneStarEntry(state.nickname, drawn.map(c=>c.id)).catch(()=>{});
   render();
   setTimeout(()=>{ flipCard(0); }, 300);
   if(bonus > 0){
     setTimeout(()=>showToast(tt(`連續簽到 ${newStreak} 天！額外獲得 ${bonus} 枚金幣 🔥`, `${newStreak}-day streak! Bonus ${bonus} coins 🔥`)), 1700);
   }
+  // 不擋抽卡流程本身：非同步記錄「這次抽卡有沒有真的被列入星運之星本輪參賽名單」，
+  // 並把明確結果（而非本地日期近似值）存回玩家資料，讓首頁面板能顯示真實資格
+  // （見 fortuneStarPanelHtml 的 enteredToday）。若因為已過鎖定時間而沒被計入，
+  // 額外跳出提示告知玩家，不再靜默放棄。
+  recordFortuneStarEntry(state.nickname, drawn.map(c=>c.id)).then(async status=>{
+    if(status === 'disabled') return;
+    state.player.lastFortuneStarEntry = {dateStr: gmt8DateStr(), status};
+    try{ await savePlayer(state.player); }catch(e){}
+    if(status === 'ok') await refreshFortuneStarLiveCount(); // 立刻反映「我這次也算進去了」的最新人數，不等下一次 30 秒輪詢
+    if(state.tab === 'home') renderTab();
+    if(status === 'locked'){
+      showToast(tt('你抽卡的時間已超過今日星運之星鎖定時間，本次抽卡未列入抽獎', 'Your draw came after today\'s Fortune Star lock time - this draw was not entered into the drawing'));
+    }
+  }).catch(()=>{});
 }
 function flipCard(i, onComplete){
   const el = document.querySelectorAll('.flip-card')[i];
@@ -7575,13 +7633,45 @@ function fortuneStarPanelHtml(p){
   const lockLabel = `${String(FORTUNE_STAR_SETTINGS.lockHour).padStart(2,'0')}:${String(FORTUNE_STAR_SETTINGS.lockMinute).padStart(2,'0')}`;
   const revealLabel = `${String(FORTUNE_STAR_SETTINGS.revealHour).padStart(2,'0')}:${String(FORTUNE_STAR_SETTINGS.revealMinute).padStart(2,'0')}`;
   const round = FORTUNE_STAR_ROUND_TODAY;
-  const enteredToday = p.lastClaim === todayStr(); // 近似值：以本地「今日已抽塔羅」判斷是否已列入本輪參賽名單
+  // 用 claimDaily 實際回傳並存下來的結果判斷資格，而不是拿本地 lastClaim 跟本地
+  // 今天比對去近似猜測——玩家時區跟 GMT+8 差距大時，本地「今天」跟參賽紀錄真正
+  // 採用的 GMT+8「今天」可能是不同一天，近似值會誤判成已參賽。
+  const fsEntry = p.lastFortuneStarEntry;
+  const fsEntryIsToday = fsEntry && fsEntry.dateStr === gmt8DateStr();
+  let enteredToday = fsEntryIsToday && fsEntry.status === 'ok';
+  const lockedOutToday = fsEntryIsToday && fsEntry.status === 'locked';
+  // 名單還沒鎖定時，用即時查到的參賽名單覆蓋上面這個玩家資料快取欄位：
+  // 抽卡時「寫入參賽名單」跟「把狀態存回玩家資料」是分開兩次存檔，網路不穩時
+  // 可能前者成功但後者沒寫進去，導致這裡的 fsEntry 顯示「尚未抽取」，但其實
+  // 已經在名單裡、也分得到獎池——直接信任即時名單比較準。
+  if((!round || round.phase === 'open') && FORTUNE_STAR_ENTERED_TODAY === true){
+    enteredToday = true;
+  }
   let body = '';
   if(!round || round.phase === 'open'){
+    const countLabel = FORTUNE_STAR_LIVE_COUNT_TODAY === null ? null : `<b style="color:var(--gold-bright);">${FORTUNE_STAR_LIVE_COUNT_TODAY}</b>`;
+    // 把「目前人數」跟「你自己在不在裡面」合併成同一句，不然人數跟個人狀態分開兩行，
+    // 玩家得自己對照才知道那個人數有沒有算到自己，容易看不出來。
+    const statusLine = enteredToday
+      ? (countLabel
+          ? tt(`✓ 目前已有 ${countLabel} 人參加本輪，你今天已抽取塔羅指引，已列入其中`, `✓ ${countLabel} participant(s) so far this round, including you — you've drawn today's tarot and are entered`)
+          : tt('✓ 你今天已抽取塔羅指引，已列入本輪參賽名單','✓ You\'ve drawn today\'s tarot and are entered in this round'))
+      : lockedOutToday
+        ? (countLabel
+            ? tt(`⚠️ 目前已有 ${countLabel} 人參加本輪（不含你）— 你今天抽取塔羅指引的時間已超過鎖定時間，本次未列入`, `⚠️ ${countLabel} participant(s) so far this round (not including you) — your draw today came after the lock time, so it wasn't entered`)
+            : tt('⚠️ 你今天抽取塔羅指引的時間已超過鎖定時間，本次未列入本輪參賽名單', '⚠️ Your tarot draw today came after the lock time, so it wasn\'t entered into this round'))
+        : (countLabel
+            ? tt(`目前已有 ${countLabel} 人參加本輪（不含你）— 尚未抽取今日塔羅，鎖定前完成抽卡才能參賽`, `${countLabel} participant(s) so far this round (not including you) — you haven't drawn today's tarot yet, draw before the lock time to enter`)
+            : tt(`尚未抽取今日塔羅 — 鎖定前完成抽卡才能參賽`, `You haven't drawn today's tarot yet - draw before the lock time to enter`));
+    // 除了盡量讓自動判斷（即時名單核對）準確之外，額外提供一個手動按鈕：
+    // 玩家自己點下去時，直接用「這次點擊當下」重新核對／重新寫入一次今天的參賽紀錄，
+    // 不必等 30 秒排程輪詢，也不依賴容易漏寫的玩家資料快取欄位。對已經確實在名單裡
+    // 的人來說，這顆按鈕頂多是多寫一次同樣的資料（key 相同、後寫覆蓋前寫，無副作用）；
+    // 對顯示異常但其實還沒被記錄到的人來說，等於補一次正式寫入。
+    const showConfirmBtn = !enteredToday && !lockedOutToday;
     body = `<p class="sub" style="margin:0 0 6px;">${tt(`每天 GMT+8 ${lockLabel} 鎖定名單並將「三牌共鳴」目前獎池整包搬入本輪獎池，${revealLabel} 公布幸運卡與得獎名單。`, `Locks the entry list at ${lockLabel} GMT+8 daily, moving the entire Resonance jackpot into this round's pool - the lucky card and winners are revealed at ${revealLabel} GMT+8.`)}</p>
-      <p class="sub" style="margin:0;">${enteredToday
-        ? tt('✓ 你今天已抽取塔羅指引，已列入本輪參賽名單','✓ You\'ve drawn today\'s tarot and are entered in this round')
-        : tt(`尚未抽取今日塔羅 — 鎖定前完成抽卡才能參賽`, `You haven't drawn today's tarot yet - draw before the lock time to enter`)}</p>`;
+      <p class="sub" style="margin:0 0 ${showConfirmBtn ? '10px' : '0'};">${statusLine}</p>
+      ${showConfirmBtn ? `<button class="btn small" id="fs-confirm-btn">✋ ${tt('確認參與本輪','Confirm My Entry')}</button>` : ''}`;
   } else if(round.phase === 'locked'){
     const revealMinOfDay = FORTUNE_STAR_SETTINGS.revealHour*60 + FORTUNE_STAR_SETTINGS.revealMinute;
     const timeReached = gmt8MinutesOfDay() >= revealMinOfDay;
@@ -7658,11 +7748,8 @@ async function fetchNotifications(){
     const myNick = (state.nickname||'').toLowerCase();
     const list = await storage.list(`notif:${myNick}:`);
     if(!list || !list.keys) return [];
-    const items = await Promise.all(list.keys.map(async k=>{
-      try{ const r = await storage.get(k); return r ? JSON.parse(r.value) : null; }
-      catch(e){ return null; }
-    }));
-    return items.filter(Boolean).sort((a,b)=>b.createdAt-a.createdAt);
+    const items = await fetchKeysBatch(list.keys);
+    return items.sort((a,b)=>b.createdAt-a.createdAt);
   }catch(e){ return []; }
 }
 const NOTIF_MAX_STORED = 200; // 每位玩家保留的通知上限，避免單一玩家的 notif: 前綴無限長大
@@ -7721,11 +7808,7 @@ async function fetchPendingRewardsFor(nick){
     const myLower = (nick||'').toLowerCase();
     const list = await storage.list(`pendingreward:${myLower}:`);
     if(!list || !list.keys) return [];
-    const items = await Promise.all(list.keys.map(async k=>{
-      try{ const r = await storage.get(k); return r ? {key:k, data: JSON.parse(r.value)} : null; }
-      catch(e){ return null; }
-    }));
-    return items.filter(Boolean);
+    return await fetchKeysBatch(list.keys, (data, k)=>({key:k, data}));
   }catch(e){ return []; }
 }
 // Applies any pending rewards for this player directly onto the freshly-loaded
@@ -7996,11 +8079,7 @@ async function fetchFriendRequests(){
   try{
     const list = await storage.list('freq:');
     if(!list || !list.keys) return [];
-    const items = await Promise.all(list.keys.map(async k=>{
-      try{ const r = await storage.get(k); return r ? JSON.parse(r.value) : null; }
-      catch(e){ return null; }
-    }));
-    return items.filter(Boolean);
+    return await fetchKeysBatch(list.keys);
   }catch(e){ return []; }
 }
 
@@ -8062,11 +8141,7 @@ async function fetchAllPlayers(){
   try{
     const list = await storage.list('player:');
     if(!list || !list.keys) return [];
-    const items = await Promise.all(list.keys.map(async k=>{
-      try{ const r = await storage.get(k); return r ? JSON.parse(r.value) : null; }
-      catch(e){ return null; }
-    }));
-    return items.filter(Boolean);
+    return await fetchKeysBatch(list.keys);
   }catch(e){ return []; }
 }
 function playerTotalCards(p){ return Object.values(p.cards||{}).reduce((a,b)=>a+b,0); }
@@ -8082,11 +8157,7 @@ async function fetchAllFriendships(){
   try{
     const list = await storage.list('friendship:');
     if(!list || !list.keys) return [];
-    const items = await Promise.all(list.keys.map(async k=>{
-      try{ const r = await storage.get(k); const v = r ? JSON.parse(r.value) : null; return v ? {...v, _key:k} : null; }
-      catch(e){ return null; }
-    }));
-    return items.filter(Boolean);
+    return await fetchKeysBatch(list.keys, (v, k)=>({...v, _key:k}));
   }catch(e){ return []; }
 }
 async function fetchMyFriends(nickname){
@@ -8203,7 +8274,7 @@ function auctionDisplayInfo(a){
     const label = tt(`${meta.label} 骰子 Lv.${d.level||1}（基礎 ${d.baseAttack}）`, `${meta.labelEn} Die Lv.${d.level||1} (Base ${d.baseAttack})`);
     // 拍賣快照存的 face.effect 可能是完整物件（近期資料）或純 id（極舊資料），統一透過
     // resolveDiceFaceEffect 換回標準物件，才能餵給 renderDiceCard 顯示完整面效果說明。
-    const normalizedDice = {...d, faces: Array.isArray(d.faces) ? d.faces.map(f=>({...f, effect: resolveDiceFaceEffect(f.effect)})) : d.faces};
+    const normalizedDice = {...d, faces: Array.isArray(d.faces) ? d.faces.map(f=>({...f, effect: resolveDiceFaceEffect(f.effect)})) : []};
     return {
       iconHtml: `<div class="icon-box" style="display:flex;align-items:center;justify-content:center;font-size:24px;border-color:${meta.color};">🎲</div>`,
       name: `<span style="color:${meta.color};font-weight:600;">${escapeHtml(label)}</span>`,
@@ -8374,11 +8445,8 @@ async function fetchAuctions(){
   try{
     const list = await storage.list('auction:');
     if(!list || !list.keys) return [];
-    const items = await Promise.all(list.keys.map(async k=>{
-      try{ const r = await storage.get(k); return r ? JSON.parse(r.value) : null; }
-      catch(e){ return null; }
-    }));
-    return items.filter(Boolean).map(normalizeAuction);
+    const items = await fetchKeysBatch(list.keys);
+    return items.map(normalizeAuction);
   }catch(e){ return []; }
 }
 async function placeBid(auctionId, amount){
@@ -8524,11 +8592,7 @@ async function fetchWantToBuys(){
   try{
     const list = await storage.list('wtb:');
     if(!list || !list.keys) return [];
-    const items = await Promise.all(list.keys.map(async k=>{
-      try{ const r = await storage.get(k); return r ? JSON.parse(r.value) : null; }
-      catch(e){ return null; }
-    }));
-    return items.filter(Boolean);
+    return await fetchKeysBatch(list.keys);
   }catch(e){ return []; }
 }
 async function fulfillWantToBuy(orderId, sellQty){
@@ -9048,6 +9112,32 @@ function renderHome(body){
   document.querySelectorAll('[data-claim-quest]').forEach(b=>{
     b.onclick = ()=>claimQuest(b.dataset.claimQuest);
   });
+  const fsConfirmBtn = document.getElementById('fs-confirm-btn');
+  if(fsConfirmBtn) fsConfirmBtn.onclick = async ()=>{
+    if(canClaimToday()){
+      showToast(tt('你今天還沒抽塔羅指引，請先抽卡再確認參與','You haven\'t drawn today\'s tarot yet — draw first, then confirm entry'));
+      return;
+    }
+    fsConfirmBtn.disabled = true;
+    fsConfirmBtn.textContent = tt('確認中…','Confirming…');
+    try{
+      const cardIds = state.player.lastDrawCards || [];
+      const status = await recordFortuneStarEntry(state.nickname, cardIds);
+      if(status === 'ok'){
+        state.player.lastFortuneStarEntry = {dateStr: gmt8DateStr(), status};
+        try{ await savePlayer(state.player); }catch(e){}
+        await refreshFortuneStarLiveCount();
+        showToast(tt('✓ 已確認列入本輪參賽名單','✓ Confirmed — you\'re entered in this round'));
+      }else if(status === 'locked'){
+        showToast(tt('已超過今日鎖定時間，本次未能列入','Past today\'s lock time — could not be entered'));
+      }else{
+        showToast(tt('確認失敗，請稍後再試一次','Could not confirm, please try again shortly'));
+      }
+    }catch(e){
+      showToast(tt('確認失敗，請稍後再試一次','Could not confirm, please try again shortly'));
+    }
+    renderTab();
+  };
   const fsRevealBtn = document.getElementById('fs-reveal-btn');
   if(fsRevealBtn) fsRevealBtn.onclick = async ()=>{
     fsRevealBtn.disabled = true;
@@ -9360,14 +9450,21 @@ async function renderMailbox(body){
 
 async function renderAuction(body){
   let auctions = await fetchAuctions();
-  // resolve expired
+  // resolve expired — 個別拍賣結算失敗（例如資料損毀）不應該讓整個拍賣行頁面打不開，
+  // 所以每筆都各自 try/catch，單筆失敗只記錄錯誤、其餘照常結算。
   const expired = auctions.filter(a=>a.status==='active' && Date.now() > a.endsAt);
-  for(const a of expired){ await resolveAuction(a); }
+  for(const a of expired){
+    try{ await resolveAuction(a); }
+    catch(e){ console.error('[resolveAuction] failed for auction', a.id, e); }
+  }
   if(expired.length) auctions = await fetchAuctions();
 
   let wtbOrders = await fetchWantToBuys();
   const expiredWtb = wtbOrders.filter(o=>o.status==='active' && Date.now() > o.endsAt);
-  for(const o of expiredWtb){ await resolveWantToBuy(o); }
+  for(const o of expiredWtb){
+    try{ await resolveWantToBuy(o); }
+    catch(e){ console.error('[resolveWantToBuy] failed for order', o.id, e); }
+  }
   if(expiredWtb.length) wtbOrders = await fetchWantToBuys();
 
   const active = auctions.filter(a=>a.status==='active');
