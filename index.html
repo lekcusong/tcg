@@ -7661,7 +7661,7 @@ async function claimDaily(){
     setTimeout(()=>showToast(tt(`連續簽到 ${newStreak} 天！額外獲得 ${bonus} 枚金幣 🔥`, `${newStreak}-day streak! Bonus ${bonus} coins 🔥`)), 1700);
   }
 }
-function flipCard(i){
+function flipCard(i, onComplete){
   const el = document.querySelectorAll('.flip-card')[i];
   if(el) el.classList.add('flipped');
   state.flipped[i] = true;
@@ -7676,11 +7676,12 @@ function flipCard(i){
   }
 
   if(i < 2){
-    setTimeout(()=>flipCard(i+1), drawn && drawn.rarity === 'epic' ? 750 : 450);
+    setTimeout(()=>flipCard(i+1, onComplete), drawn && drawn.rarity === 'epic' ? 750 : 450);
   } else {
     setTimeout(()=>{
       const fortuneEl = document.getElementById('fortune-panel');
       if(fortuneEl) fortuneEl.classList.add('show');
+      if(onComplete) onComplete();
     }, drawn && drawn.rarity === 'epic' ? 800 : 500);
   }
 }
@@ -7699,9 +7700,27 @@ async function broadcastJackpotWin(winnerNick, amount){
     return createNotification(nick, winnerNick, 'jackpot_win', {amount});
   }));
 }
+let slotPulling = false;
+function unlockSlotButtons(){
+  slotPulling = false;
+  // render() 通常會依照最新金幣重新決定按鈕的 disabled 狀態；
+  // 這裡再保險地手動解鎖一次，避免例外流程中 render 沒被呼叫到導致按鈕卡死。
+  const slotBtnEl = document.getElementById('slot-btn');
+  const megaSlotBtnEl = document.getElementById('mega-slot-btn');
+  if(slotBtnEl) slotBtnEl.disabled = state.player.coins < SLOT_SETTINGS.cost;
+  if(megaSlotBtnEl) megaSlotBtnEl.disabled = state.player.coins < SLOT_SETTINGS.megaCost;
+}
 async function pullSlot(isMega){
+  if(slotPulling) return;
   const cost = isMega ? SLOT_SETTINGS.megaCost : SLOT_SETTINGS.cost;
   if(state.player.coins < cost){ showToast(tt('金幣不足，無法共鳴','Not enough coins to resonate')); return; }
+
+  slotPulling = true;
+  const slotBtn = document.getElementById('slot-btn');
+  const megaSlotBtn = document.getElementById('mega-slot-btn');
+  if(slotBtn) slotBtn.disabled = true;
+  if(megaSlotBtn) megaSlotBtn.disabled = true;
+
   const drawn = [weightedDraw(), weightedDraw(), weightedDraw()];
 
   // 先在區域變數裡試算這次的結果，成功存檔後才套用到 state.player。
@@ -7729,6 +7748,7 @@ async function pullSlot(isMega){
     await syncSlotJackpot();
   }catch(e){
     showToast(tt('連線異常，請稍後再試','Connection issue, please try again later'));
+    unlockSlotButtons();
     return;
   }
 
@@ -7797,11 +7817,15 @@ async function pullSlot(isMega){
     state.drawSource = null;
     showToast(tt('存檔失敗，本次共鳴未生效，請檢查網路後重試','Save failed, this pull did not take effect, please check your connection and retry'));
     render();
+    unlockSlotButtons();
     return;
   }
 
   render();
-  setTimeout(()=>{ flipCard(0); }, 300);
+  // 按鈕在整段翻牌動畫（含史詩特效）跑完之前持續保持鎖定，
+  // 直到 flipCard 翻完第三張牌並呼叫 unlockSlotButtons() 才解鎖，
+  // 這樣玩家沒辦法在動畫還在跑的時候就搶點下一次。
+  setTimeout(()=>{ flipCard(0, unlockSlotButtons); }, 300);
 
   if(winMsg){
     setTimeout(()=>showToast(winMsg), 1700);
@@ -9392,8 +9416,8 @@ function renderResonance(body){
 
   html += `<div class="countdown" style="margin-bottom:10px;">${tt(`目前獎池：<b style="color:var(--gold-bright);">✦ ${SLOT_JACKPOT}</b>`, `Current jackpot: <b style="color:var(--gold-bright);">✦ ${SLOT_JACKPOT}</b>`)}</div>
     <div style="display:flex;align-items:center;justify-content:center;gap:14px;flex-wrap:wrap;">
-      <button class="btn" id="slot-btn" ${p.coins < SLOT_SETTINGS.cost ? 'disabled' : ''}>${tt(`共鳴一次（✦ ${SLOT_SETTINGS.cost}）`, `Resonate once (✦ ${SLOT_SETTINGS.cost})`)}</button>
-      <button class="btn" id="mega-slot-btn" style="border-color:var(--legendary-b);background:linear-gradient(180deg, rgba(139,63,214,0.28), rgba(139,63,214,0.08));color:var(--legendary-a);" ${p.coins < SLOT_SETTINGS.megaCost ? 'disabled' : ''}>${tt(`🔥 超級共鳴（✦ ${SLOT_SETTINGS.megaCost}，大獎 x${SLOT_SETTINGS.megaJackpotMult}）`, `🔥 Mega Resonance (✦ ${SLOT_SETTINGS.megaCost}, jackpot x${SLOT_SETTINGS.megaJackpotMult})`)}</button>
+      <button class="btn" id="slot-btn" ${(slotPulling || p.coins < SLOT_SETTINGS.cost) ? 'disabled' : ''}>${tt(`共鳴一次（✦ ${SLOT_SETTINGS.cost}）`, `Resonate once (✦ ${SLOT_SETTINGS.cost})`)}</button>
+      <button class="btn" id="mega-slot-btn" style="border-color:var(--legendary-b);background:linear-gradient(180deg, rgba(139,63,214,0.28), rgba(139,63,214,0.08));color:var(--legendary-a);" ${(slotPulling || p.coins < SLOT_SETTINGS.megaCost) ? 'disabled' : ''}>${tt(`🔥 超級共鳴（✦ ${SLOT_SETTINGS.megaCost}，大獎 x${SLOT_SETTINGS.megaJackpotMult}）`, `🔥 Mega Resonance (✦ ${SLOT_SETTINGS.megaCost}, jackpot x${SLOT_SETTINGS.megaJackpotMult})`)}</button>
       <span style="font-family:'Space Mono',monospace;font-size:13px;color:var(--gold-bright);">${tt(`目前金幣：✦ ${p.coins}`, `Your coins: ✦ ${p.coins}`)}</span>
     </div>
     <p class="sub" style="margin:10px 0 0;font-size:12px;">${tt(`超級共鳴花費較高，其餘規則相同，但三張史詩會直接卷走獎池的 ${SLOT_SETTINGS.megaJackpotMult} 倍！`, `Mega Resonance costs more with the same rules otherwise, but three Epics take ${SLOT_SETTINGS.megaJackpotMult}x the jackpot pool!`)}</p>
