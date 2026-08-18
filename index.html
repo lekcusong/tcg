@@ -578,6 +578,11 @@
   .dice-roll-badge.triple{background:rgba(232,196,104,0.16);color:var(--gold-bright);border:1px solid var(--gold-bright);animation:dice-badge-pop .4s ease-out, dice-combo-glow-gold 1.1s ease-in-out .4s infinite;}
   .dice-roll-badge.pair{background:rgba(139,107,209,0.16);color:var(--violet);border:1px solid var(--violet);animation:dice-badge-pop .4s ease-out, dice-combo-glow-violet 1.1s ease-in-out .4s infinite;}
   .dice-roll-badge.crit{background:rgba(193,91,91,0.18);color:#ff8080;border:1px solid var(--danger);animation:dice-badge-pop .4s ease-out, dice-combo-glow-red 1.1s ease-in-out .4s infinite;}
+  .dice-roll-badge.quality{background:rgba(74,144,226,0.16);color:var(--rare);border:1px solid var(--rare);animation:dice-badge-pop .4s ease-out, dice-combo-glow-blue 1.1s ease-in-out .4s infinite;}
+  @keyframes dice-combo-glow-blue{
+    0%,100%{ box-shadow:0 0 6px 1px rgba(74,144,226,0.5), 0 2px 8px rgba(0,0,0,0.4); text-shadow:0 0 6px rgba(74,144,226,0.6); }
+    50%{ box-shadow:0 0 22px 8px rgba(74,144,226,0.95), 0 2px 8px rgba(0,0,0,0.4); text-shadow:0 0 14px rgba(74,144,226,0.95); }
+  }
   @keyframes dice-combo-glow-gold{
     0%,100%{ box-shadow:0 0 6px 1px rgba(232,196,104,0.5), 0 2px 8px rgba(0,0,0,0.4); text-shadow:0 0 6px rgba(232,196,104,0.6); }
     50%{ box-shadow:0 0 22px 8px rgba(232,196,104,0.95), 0 2px 8px rgba(0,0,0,0.4); text-shadow:0 0 14px rgba(232,196,104,0.95); }
@@ -2290,6 +2295,10 @@ function rollDiceAttack(p, activeEvent, comboStreak){
   // 就有機會觸發，不再要求一定要裝滿 3 顆才算數。萬能面（wild）視為與任何數字相同。
   const combo = computeNumberCombo(rolls);
   if(combo.mult > 1) totalDamage *= (combo.mult + comboBoostBonus);
+  // 🔷 品質組合加成：跟上面的數字對子/豹子各自獨立判定，找到的話直接疊乘上去
+  // （不吃 comboBoostBonus，那個效果面文案明確寫「觸發對子/豹子」指的是數字組合）。
+  const qualityCombo = computeQualityCombo(rolls);
+  if(qualityCombo.mult > 1) totalDamage *= qualityCombo.mult;
   // 🔥 連擊加成：依「這次攻擊之前」已經累積的連續組合命中次數（comboStreak）
   // 疊加額外傷害倍率，每級 +BOSS_COMBO_STREAK_BONUS_PER_HIT，封頂於 BOSS_COMBO_STREAK_CAP。
   // 這次攻擊本身是否觸發組合（進而讓下次攻擊的 streak +1）交給 resolveBossAttack 更新，
@@ -2321,6 +2330,7 @@ function rollDiceAttack(p, activeEvent, comboStreak){
     rolls, atkBonus, critRateBonus, critDmgBonus, isCrit,
     flatDmgBonus, comboBoostBonus, contribBonusPct, coinRefunded,
     comboTier: combo.tier, sameNumber: combo.tier === 'triple', // sameNumber 保留給舊程式相容，等同「豹子」
+    qualityComboTier: qualityCombo.tier, // 🔷 品質對子/豹子（跟 comboTier 各自獨立），供 UI 顯示徽章用
     comboStreakUsed: comboStreak||0, comboStreakBonus,
     eventApplied,
   };
@@ -2342,6 +2352,20 @@ function computeNumberCombo(rolls){
   maxCount = Math.min(maxCount, rolls.length);
   if(maxCount >= 3) return {tier:'triple', mult: DICE_COMBO_MULT.triple};
   if(maxCount === 2) return {tier:'pair', mult: DICE_COMBO_MULT.pair};
+  return {tier:null, mult:1};
+}
+
+// 🔷 計算「N 顆骰子品質相同」的套裝加成：只看最大重複次數，2 顆同品質=品質對子、
+// 3 顆同品質=品質豹子；跟 computeNumberCombo 的數字判定完全獨立、不互相影響，
+// 沒有萬能面這種例外（品質是固定屬性，不像數字面每次擲骰才決定）。只裝備
+// 1 顆（或 0 顆）骰子時沒有比較基準，不會觸發。
+function computeQualityCombo(rolls){
+  if(rolls.length < 2) return {tier:null, mult:1};
+  const counts = {};
+  rolls.forEach(r => { counts[r.quality] = (counts[r.quality]||0) + 1; });
+  const maxCount = Math.max(...Object.values(counts));
+  if(maxCount >= 3) return {tier:'triple', mult: DICE_QUALITY_COMBO_MULT.triple};
+  if(maxCount === 2) return {tier:'pair', mult: DICE_QUALITY_COMBO_MULT.pair};
   return {tier:null, mult:1};
 }
 
@@ -2441,7 +2465,8 @@ async function grantBossMinionReward(nickname, minionTypeId){
     if(rewardEssence > 0) player.materials.diceEssence = (player.materials.diceEssence||0) + rewardEssence;
   });
   if(!applied) return null; // 玩家不存在（理論上不會發生，保底）
-  return {coins: rewardCoins, essence: rewardEssence};
+  return {coins: rewardCoins, essence: rewardEssence, player: applied}; // 把 CAS 寫入成功後的完整玩家物件一起回傳，
+  // 呼叫端可以直接拿來更新 state.player，不用再多打一次可能失敗的 loadPlayer
 }
 // 💠 每破一階（非全破）發放的骰子精華，跟小怪/寶箱獨立，走自己的 CAS 更新。
 async function grantBossStageEssence(nickname, cycle){
@@ -2452,7 +2477,7 @@ async function grantBossStageEssence(nickname, cycle){
     player.materials.diceEssence = (player.materials.diceEssence||0) + essence;
   });
   if(!applied) return null;
-  return {essence};
+  return {essence, player: applied};
 }
 
 // ✨ 隨機事件（寶箱／詛咒）獎勵發放：金額已經在 maybeTriggerBossEvent 觸發當下
@@ -2467,7 +2492,7 @@ async function grantBossEventReward(nickname, eventTriggered){
     player.coins = (player.coins||0) + rewardCoins;
   });
   if(!applied) return null; // 玩家不存在（理論上不會發生，保底）
-  return {coins: rewardCoins};
+  return {coins: rewardCoins, player: applied};
 }
 
 // 單人模式破台獎勵：不用再等全服結算、不跟別人分獎池，直接全額發給自己
@@ -2490,7 +2515,7 @@ async function settleBossReward(nickname, cycle){
   // 只有在確定獎勵真的寫進玩家資料後才發通知，避免「恭喜獲得獎勵」的通知
   // 先到，但錢包/背包其實沒真的加到的情況。
   await createNotification(nickname, 'system', 'boss_reward', {coins: rewardCoins, essence: rewardEssence});
-  return {coins: rewardCoins, essence: rewardEssence};
+  return {coins: rewardCoins, essence: rewardEssence, player: applied};
 }
 // 🎁 寶箱選擇（階段C）：先把 boss 狀態的 pendingChest 標記清掉（CAS，避免跟同一時間
 // 的攻擊/其他寶箱請求互相覆蓋），成功後才真正發放玩家選的那份獎勵。
@@ -2533,7 +2558,7 @@ async function resolveBossChestChoice(nickname, choice){
       player.coins = (player.coins||0) + coins;
     });
     if(!applied) return null;
-    return {choice, coins};
+    return {choice, coins, player: applied};
   }
   if(choice === 'essence'){
     const essence = Math.round(BOSS_CHEST_ESSENCE.min + Math.random() * (BOSS_CHEST_ESSENCE.max - BOSS_CHEST_ESSENCE.min));
@@ -2542,7 +2567,7 @@ async function resolveBossChestChoice(nickname, choice){
       player.materials.diceEssence = (player.materials.diceEssence||0) + essence;
     });
     if(!applied) return null;
-    return {choice, essence};
+    return {choice, essence, player: applied};
   }
   if(choice === 'material'){
     const qty = Math.round(BOSS_CHEST_MATERIAL_QTY.min + Math.random() * (BOSS_CHEST_MATERIAL_QTY.max - BOSS_CHEST_MATERIAL_QTY.min));
@@ -2554,7 +2579,7 @@ async function resolveBossChestChoice(nickname, choice){
       player.professionMaterials[materialId] = (player.professionMaterials[materialId]||0) + qty;
     });
     if(!applied) return null;
-    return {choice, materialId, qty};
+    return {choice, materialId, qty, player: applied};
   }
   return null;
 }
@@ -2602,6 +2627,10 @@ function playDiceRollAnimation(diceObjs, burst){
       const badges = [];
       if(burst.comboTier === 'triple') badges.push(`<span class="dice-roll-badge triple">${tt('🎯 豹子 ×2！','🎯 Triple ×2!')}</span>`);
       else if(burst.comboTier === 'pair') badges.push(`<span class="dice-roll-badge pair">${tt(`✌️ 對子 ×${DICE_COMBO_MULT.pair}！`, `✌️ Pair ×${DICE_COMBO_MULT.pair}!`)}</span>`);
+      // 🔷 品質對子/豹子跟上面數字對子/豹子各自獨立判定，兩者可能同時出現（例如
+      // 3 顆 epic 骰同時開出同一個數字），所以用獨立的 if（不是 else if）接在後面。
+      if(burst.qualityComboTier === 'triple') badges.push(`<span class="dice-roll-badge quality">${tt(`🔷 品質豹子 ×${DICE_QUALITY_COMBO_MULT.triple}！`, `🔷 Quality Triple ×${DICE_QUALITY_COMBO_MULT.triple}!`)}</span>`);
+      else if(burst.qualityComboTier === 'pair') badges.push(`<span class="dice-roll-badge quality">${tt(`🔷 品質對子 ×${DICE_QUALITY_COMBO_MULT.pair}！`, `🔷 Quality Pair ×${DICE_QUALITY_COMBO_MULT.pair}!`)}</span>`);
       if(burst.isCrit) badges.push(`<span class="dice-roll-badge crit">${tt('💥 暴擊！','💥 Critical!')}</span>`);
       if(badges.length){
         const wrap = document.createElement('div');
@@ -2657,6 +2686,7 @@ async function performBossAttack(){
   p.materials.contrib += contribGain; // 賽季總貢獻點（可花費，賽季結束才歸零）
   const bossStats = ensureStats(p);
   bossStats.maxBossHitDamage = Math.max(bossStats.maxBossHitDamage||0, burst.damage); // 單擊最高傷害（永久紀錄最高值，用於排行榜／稱號，不隨賽季重置）
+  bumpQuest(p, 'boss_attack', 1);
   await savePlayer(p);
 
   let result;
@@ -2671,11 +2701,12 @@ async function performBossAttack(){
   const { prevBoss, newBoss, cycleCompleteFor, minionResult, minionSpawned, eventTriggered } = result;
 
   // 👹 小怪擊殺獎勵：獨立於 Boss 破台獎勵，用自己的 CAS 更新玩家資料，不影響
-  // 上面已經寫入的 state.player（擊殺當下先算好，稍後跟 Boss 破台一樣重讀玩家最新資料）。
+  // 上面已經寫入的 state.player（擊殺當下先算好）；CAS 回傳的物件本身就是寫入
+  // 成功後的最新玩家資料，直接沿用即可，不用再多打一次可能失敗的 loadPlayer。
   let minionReward = null;
   if(minionResult && minionResult.killed){
     minionReward = await grantBossMinionReward(p.nickname, minionResult.typeId);
-    state.player = await loadPlayer(p.nickname);
+    if(minionReward && minionReward.player) state.player = minionReward.player;
   }
 
   // ✨ 事件卡獎勵：詛咒的補償金幣走 CAS 獨立發放，不影響已寫入的 state.player；
@@ -2685,22 +2716,22 @@ async function performBossAttack(){
   let eventReward = null;
   if(eventTriggered && eventTriggered.id === 'curse'){
     eventReward = await grantBossEventReward(p.nickname, eventTriggered);
-    state.player = await loadPlayer(p.nickname);
+    if(eventReward && eventReward.player) state.player = eventReward.player;
   }
 
   let defeatMsg = '';
   if(cycleCompleteFor){
     const reward = await settleBossReward(p.nickname, cycleCompleteFor);
     defeatMsg = tt(`🎉 你擊敗了「終焉蛇神」！獲得 ✦${reward?reward.coins:0} 金幣、💠${reward?reward.essence:0} 骰子精華，Boss 已被擊退，明天再來挑戰新一輪（更難）！`, `🎉 You defeated the Doomsday Serpent God! Gained ✦${reward?reward.coins:0} coins and 💠${reward?reward.essence:0} Dice Essence - come back tomorrow for a new (harder) cycle!`);
-    state.player = await loadPlayer(p.nickname);
+    if(reward && reward.player) state.player = reward.player;
   } else if(newBoss.stage > prevBoss.stage){
     // 💠 每破一階（非全破）額外發放骰子精華，跟金幣/事件獎勵各自獨立走 CAS
     const stageEssenceReward = await grantBossStageEssence(p.nickname, newBoss.cycle);
-    if(stageEssenceReward) state.player = await loadPlayer(p.nickname);
+    if(stageEssenceReward && stageEssenceReward.player) state.player = stageEssenceReward.player;
     defeatMsg = tt(`⚔️ 「${BOSS_STAGE_META[newBoss.stage-2].label}」被擊破！Boss 進入「${BOSS_STAGE_META[newBoss.stage-1].label}」！${stageEssenceReward?`　💠精華 +${stageEssenceReward.essence}`:''}`, `⚔️ "${BOSS_STAGE_META[newBoss.stage-2].labelEn}" defeated! The Boss enters "${BOSS_STAGE_META[newBoss.stage-1].labelEn}"!${stageEssenceReward?`  💠Essence +${stageEssenceReward.essence}`:''}`);
   }
 
-  state.bossLastAttack = {damage: burst.damage, contrib: contribGain, rolls: burst.rolls, comboTier: burst.comboTier, sameNumber: burst.sameNumber, isCrit: burst.isCrit, eventApplied: burst.eventApplied, comboStreakUsed: burst.comboStreakUsed, comboStreakBonus: burst.comboStreakBonus, comboStreakAfter: newBoss.comboStreak};
+  state.bossLastAttack = {damage: burst.damage, contrib: contribGain, rolls: burst.rolls, comboTier: burst.comboTier, sameNumber: burst.sameNumber, qualityComboTier: burst.qualityComboTier, isCrit: burst.isCrit, eventApplied: burst.eventApplied, comboStreakUsed: burst.comboStreakUsed, comboStreakBonus: burst.comboStreakBonus, comboStreakAfter: newBoss.comboStreak};
   checkAchievementUnlocks(state.player);
   renderTab();
   updateHeaderCoins();
@@ -2746,6 +2777,8 @@ async function performBossAttack(){
     const bonusTags = [];
     if(burst.comboTier === 'triple') bonusTags.push(tt('🎯豹子×2','🎯Triple×2'));
     else if(burst.comboTier === 'pair') bonusTags.push(tt(`✌️對子×${DICE_COMBO_MULT.pair}`, `✌️Pair×${DICE_COMBO_MULT.pair}`));
+    if(burst.qualityComboTier === 'triple') bonusTags.push(tt(`🔷品質豹子×${DICE_QUALITY_COMBO_MULT.triple}`, `🔷Quality Triple×${DICE_QUALITY_COMBO_MULT.triple}`));
+    else if(burst.qualityComboTier === 'pair') bonusTags.push(tt(`🔷品質對子×${DICE_QUALITY_COMBO_MULT.pair}`, `🔷Quality Pair×${DICE_QUALITY_COMBO_MULT.pair}`));
     if(burst.comboStreakBonus > 0) bonusTags.push(tt(`🔥連擊+${Math.round(burst.comboStreakBonus*100)}%`, `🔥Streak+${Math.round(burst.comboStreakBonus*100)}%`));
     if(burst.isCrit) bonusTags.push(tt('💥暴擊','💥Crit'));
     if(burst.coinRefunded) bonusTags.push(tt('♻️金幣未消耗','♻️Coin refunded'));
@@ -2814,6 +2847,15 @@ const DICE_FACE_EFFECT_POOL = [
 // 給不同倍率，只要裝備 ≥2 顆骰子就有機會觸發，不再要求一定要裝滿 3 顆。
 const DEFAULT_DICE_COMBO_MULT = {pair:1.3, triple:2.0};
 let DICE_COMBO_MULT = {...DEFAULT_DICE_COMBO_MULT};
+
+// 🔷 品質對子套裝加成：跟上面「數字」對子/豹子是完全獨立的判定維度，改看裝備的
+// 骰子「品質」是否相同——2 顆同品質（品質對子）/ 3 顆同品質（品質豹子）。用意是
+// 讓玩家有「湊一套同品質骰子」的誘因，不會被「只練一顆數值最高的主力骰」取代
+// （因為單顆骰子不管多強都湊不出品質對子）。倍率刻意設得比數字對子/豹子溫和，
+// 純粹當作額外的「配裝」加分，不喧賓奪主；兩者可以同時觸發、疊乘計算（見
+// rollDiceAttack：totalDamage 先吃數字組合倍率，再吃品質組合倍率）。
+const DEFAULT_DICE_QUALITY_COMBO_MULT = {pair:1.10, triple:1.25};
+let DICE_QUALITY_COMBO_MULT = {...DEFAULT_DICE_QUALITY_COMBO_MULT};
 
 // ---------- 骰子強化系統 ----------
 // 玩家可花費「骰子精華」提升已擁有骰子的基礎攻擊力，每滿一定等級數會嘗試把一面
@@ -2980,7 +3022,10 @@ async function doDiceGacha(){
     return;
   }
   if(!applied || !resultDice) return;
-  state.player = await loadPlayer(p.nickname);
+  state.player = applied; // ✅ 直接沿用 CAS 寫入成功後回傳的物件，不再額外重讀——
+  // 原本這裡是 `await loadPlayer(...)`，多打一次網路請求；那次讀取一旦失敗（吞例外回傳 null），
+  // state.player 會被打成 null，但下面沒有檢查就照樣顯示「獲得骰子」成功訊息，導致玩家看到
+  // 文字卻覺得畫面上沒拿到（其實伺服器端資料是正確的，只是這次多餘的重讀把本地畫面弄壞了）。
   const meta = DICE_QUALITY_META[resultDice.quality];
   showToast(tt(`🎲 獲得一顆「${meta.label}」骰子！`, `🎲 Obtained a ${meta.labelEn} die!`));
   renderTab();
@@ -3056,13 +3101,14 @@ async function doEnhanceDice(diceId){
         }
       }
       leveledUp = {level: d.level, gotNewEffectFace};
+      bumpQuest(player, 'dice_enhance', 1);
     });
   }catch(e){
     showToast(tt('強化失敗，材料不足或資料忙碌中，請重新整理後再試','Enhancement failed — not enough materials or data busy, refresh and try again'));
     return;
   }
   if(!applied) return;
-  state.player = await loadPlayer(p.nickname);
+  state.player = applied; // ✅ 沿用 CAS 寫入成功後的物件，不再多打一次可能失敗的 loadPlayer
   const msg = leveledUp && leveledUp.gotNewEffectFace
     ? tt(`✨ 骰子強化至 Lv.${leveledUp.level}，並新增一面效果面！`, `✨ Die enhanced to Lv.${leveledUp.level} and gained a new effect face!`)
     : tt(`✨ 骰子強化至 Lv.${leveledUp ? leveledUp.level : '?'}！`, `✨ Die enhanced to Lv.${leveledUp ? leveledUp.level : '?'}!`);
@@ -3117,7 +3163,7 @@ async function doDismantleDice(diceId){
       return;
     }
     if(!applied) return;
-    state.player = await loadPlayer(p.nickname);
+    state.player = applied; // ✅ 沿用 CAS 寫入成功後的物件，不再多打一次可能失敗的 loadPlayer
     showToast(tt(`♻️ 拆解完成，獲得 ${refund} 骰子精華`, `♻️ Dismantled — gained ${refund} Dice Essence`));
     renderTab();
     updateHeaderCoins();
@@ -3168,7 +3214,7 @@ async function doDismantleAllDice(){
       return;
     }
     if(!applied) return;
-    state.player = await loadPlayer(p.nickname);
+    state.player = applied; // ✅ 沿用 CAS 寫入成功後的物件，不再多打一次可能失敗的 loadPlayer
     showToast(tt(`♻️ 一鍵拆解完成，共拆解 ${count} 顆骰子，獲得 ${refund} 骰子精華`, `♻️ Dismantled ${count} dice — gained ${refund} Dice Essence`));
     renderTab();
     updateHeaderCoins();
@@ -3229,7 +3275,7 @@ function renderDiceShop(body){
   </div>
   <div class="panel">
     <h2>${tt('裝備欄','Equipped')}</h2>
-    <p class="sub">${tt('同時裝備最多 3 顆骰子，出戰 Boss 時會依此欄位擲骰；2 顆同號觸發「對子」、3 顆同號觸發「豹子」加成。','Equip up to 3 dice — Boss attacks roll whatever is equipped here; 2 matching numbers trigger a Pair bonus, 3 matching trigger a Triple bonus.')}</p>
+    <p class="sub">${tt('同時裝備最多 3 顆骰子，出戰 Boss 時會依此欄位擲骰；2 顆同號觸發「對子」、3 顆同號觸發「豹子」加成。另外，裝備的骰子「品質」相同也能疊加額外的品質對子／豹子加成，兩種組合可以同時觸發！','Equip up to 3 dice — Boss attacks roll whatever is equipped here; 2 matching numbers trigger a Pair bonus, 3 matching trigger a Triple bonus. Equipping dice of the same quality also stacks an extra Quality Pair/Triple bonus, and both kinds of combos can trigger together!')}</p>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px;">
       ${p.diceSlots.map((diceId, i)=>{
         const dice = diceId ? p.dice[diceId] : null;
@@ -3396,7 +3442,7 @@ function renderBoss(body){
         try{
           const result = await resolveBossChestChoice(p.nickname, choice);
           if(result){
-            state.player = await loadPlayer(p.nickname);
+            if(result.player) state.player = result.player; // ✅ 沿用 CAS 寫入成功後的物件，不再多打一次可能失敗的 loadPlayer
             let msg = '';
             if(result.choice === 'coins') msg = tt(`🎁 開啟金幣寶箱，獲得 ✦${result.coins}！`, `🎁 Opened the coin chest, gained ✦${result.coins}!`);
             else if(result.choice === 'essence') msg = tt(`🎁 開啟精華寶箱，獲得 💠${result.essence} 骰子精華！`, `🎁 Opened the essence chest, gained 💠${result.essence} Dice Essence!`);
@@ -3481,12 +3527,14 @@ function renderBoss(body){
         const lastRoll = state.bossLastAttack;
         const lastRollComboHtml = lastRoll && lastRoll.comboTier === 'triple' ? tt('　🎯豹子×2','　🎯Triple×2')
           : lastRoll && lastRoll.comboTier === 'pair' ? tt(`　✌️對子×${DICE_COMBO_MULT.pair}`, `　✌️Pair×${DICE_COMBO_MULT.pair}`) : '';
+        const lastRollQualityComboHtml = lastRoll && lastRoll.qualityComboTier === 'triple' ? tt(`　🔷品質豹子×${DICE_QUALITY_COMBO_MULT.triple}`, `　🔷Quality Triple×${DICE_QUALITY_COMBO_MULT.triple}`)
+          : lastRoll && lastRoll.qualityComboTier === 'pair' ? tt(`　🔷品質對子×${DICE_QUALITY_COMBO_MULT.pair}`, `　🔷Quality Pair×${DICE_QUALITY_COMBO_MULT.pair}`) : '';
         const lastRollStreakHtml = lastRoll && lastRoll.comboStreakBonus > 0 ? tt(`　🔥連擊+${Math.round(lastRoll.comboStreakBonus*100)}%`, `　🔥Streak+${Math.round(lastRoll.comboStreakBonus*100)}%`) : '';
         const lastRollEventHtml = lastRoll && lastRoll.eventApplied ? (()=>{
           const eMeta = BOSS_EVENT_TYPES.find(e => e.id === lastRoll.eventApplied.id);
           return eMeta ? `　${eMeta.icon}${tt(eMeta.labelZh, eMeta.labelEn)}` : '';
         })() : '';
-        const lastRollHtml = (lastRoll && lastRoll.rolls) ? `<div class="countdown" style="margin-top:6px;">${tt('上次擲骰','Last roll')}：${lastRoll.rolls.map(r=>r.face.num).join(' · ')}${lastRollComboHtml}${lastRollStreakHtml}${lastRoll.isCrit ? tt('　💥暴擊','　💥Crit') : ''}${lastRollEventHtml}</div>` : '';
+        const lastRollHtml = (lastRoll && lastRoll.rolls) ? `<div class="countdown" style="margin-top:6px;">${tt('上次擲骰','Last roll')}：${lastRoll.rolls.map(r=>r.face.num).join(' · ')}${lastRollComboHtml}${lastRollQualityComboHtml}${lastRollStreakHtml}${lastRoll.isCrit ? tt('　💥暴擊','　💥Crit') : ''}${lastRollEventHtml}</div>` : '';
         return `<div style="border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:10px;display:flex;flex-direction:column;gap:6px;">
           <div class="countdown">🎲 ${tt('已裝備骰子','Equipped dice')}：</div>
           <div>${slotsHtml}</div>
@@ -3792,19 +3840,25 @@ async function syncSlotJackpot(){
 }
 
 // ---------- 每日任務 ----------
+// 任務池共 10 項：checkin 每天固定出現，其餘 9 項用「暱稱+日期」做確定性洗牌，
+// 每天固定抽 6 項出來（同一天重整頁面不會換批），加上固定的 checkin 共 7 項。
 const QUEST_DEFS = [
-  {key:'checkin', nameZh:'完成每日簽到', nameEn:'Complete daily check-in', target:1, icon:'🔮'},
+  {key:'checkin', nameZh:'完成每日簽到', nameEn:'Complete daily check-in', target:1, icon:'🔮', fixed:true},
   {key:'slot', nameZh:'玩一次三牌共鳴', nameEn:'Play Resonance once', target:1, icon:'✨'},
   {key:'plant', nameZh:'種下一顆種子', nameEn:'Plant a seed', target:1, icon:'🌱'},
   {key:'harvest', nameZh:'收成一次花園', nameEn:'Harvest a plot', target:1, icon:'🌾'},
   {key:'water', nameZh:'幫好友澆水一次', nameEn:"Water a friend's plot", target:1, icon:'🚿'},
-  {key:'sell', nameZh:'出售一張卡片', nameEn:'Sell a card', target:1, icon:'💰'},
+  {key:'sell', nameZh:'出售我的收藏卡牌', nameEn:'Sell a card from my collection', target:1, icon:'💰'},
   {key:'auction', nameZh:'上架或出價一次拍賣', nameEn:'List or bid on an auction', target:1, icon:'🔨'},
+  {key:'boss_attack', nameZh:'對 Boss 攻擊一次', nameEn:'Attack the Boss once', target:1, icon:'⚔️'},
+  {key:'dice_enhance', nameZh:'強化一次骰子', nameEn:'Enhance a die once', target:1, icon:'🎲'},
+  {key:'expedition', nameZh:'派遣一次遠征', nameEn:'Dispatch an expedition once', target:1, icon:'🧭'},
 ];
 const QUEST_BY_KEY = Object.fromEntries(QUEST_DEFS.map(q=>[q.key,q]));
+const DAILY_QUEST_POOL_SIZE = 7; // 每天實際出現的任務數（含固定的 checkin）
 const DEFAULT_QUEST_SETTINGS = {
-  rewards: {checkin:10, slot:10, plant:10, harvest:10, water:5, sell:5, auction:10},
-  completionBonus: 20,
+  rewards: {checkin:12, slot:12, plant:12, harvest:12, water:8, sell:8, auction:12, boss_attack:12, dice_enhance:12, expedition:12},
+  completionBonus: 50,
 };
 let QUEST_SETTINGS = JSON.parse(JSON.stringify(DEFAULT_QUEST_SETTINGS));
 async function loadQuestSettings(){
@@ -3823,19 +3877,134 @@ async function saveQuestSettings(newSettings){
   QUEST_SETTINGS = JSON.parse(JSON.stringify(newSettings));
   await storage.set('config:quest_settings', JSON.stringify(QUEST_SETTINGS));
 }
+// 簡單的字串 hash，拿來當 seeded PRNG 的種子（不需要密碼學等級，只求同一天同一人結果穩定）。
+function hashStringToSeed(str){
+  let h = 1779033703 ^ str.length;
+  for(let i=0;i<str.length;i++){
+    h = Math.imul(h ^ str.charCodeAt(i), 3432918353);
+    h = (h << 13) | (h >>> 19);
+  }
+  return (h >>> 0);
+}
+// mulberry32：輕量 seeded PRNG，同種子每次呼叫序列都相同。
+function mulberry32(seed){
+  let a = seed;
+  return function(){
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+// 用「暱稱+日期」決定性洗牌，從非固定任務中抽出當天要出現的任務 key 清單（含固定的 checkin）。
+function pickDailyQuestKeys(nickname, dateStr){
+  const fixedKeys = QUEST_DEFS.filter(q=>q.fixed).map(q=>q.key);
+  const poolDefs = QUEST_DEFS.filter(q=>!q.fixed);
+  const need = Math.max(0, DAILY_QUEST_POOL_SIZE - fixedKeys.length);
+  const rand = mulberry32(hashStringToSeed(`${(nickname||'').trim().toLowerCase()}|${dateStr}`));
+  const pool = poolDefs.map(q=>q.key);
+  // Fisher-Yates，用 seeded rand 取代 Math.random，確保同一天同一人結果固定
+  for(let i=pool.length-1;i>0;i--){
+    const j = Math.floor(rand() * (i+1));
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+  return [...fixedKeys, ...pool.slice(0, need)];
+}
+// ---------- 簽到逐日紀錄 / 補簽 ----------
+// 舊制只存 lastClaim + streak 累加數字，改成逐日紀錄（checkinDates）才能支援
+// 「補簽任意過去某天」後把連續簽到鏈接起來。ensureCheckinDates 對舊資料做一次性回填：
+// 用既有的 lastClaim + streak 反推出一條連續鏈，避免升級當下既有連續簽到被歸零。
+function ensureCheckinDates(p){
+  if(p.checkinDates) return;
+  p.checkinDates = {};
+  if(p.lastClaim){
+    const streak = Math.max(1, p.streak||1);
+    let cur = p.lastClaim;
+    for(let i=0;i<streak;i++){
+      p.checkinDates[cur] = true;
+      cur = addDaysToDateStr(cur, -1);
+    }
+  }
+}
+// 算出「目前這條連續簽到鏈」：今天已簽就從今天往回數，今天還沒簽就從昨天往回數，
+// 中間缺一天就斷了；補簽把某天補上後，這裡會自動把鏈重新接起來。
+function computeCurrentStreak(p){
+  ensureCheckinDates(p);
+  const dates = p.checkinDates;
+  const today = todayStr();
+  const yest = yesterdayStr();
+  let anchor;
+  if(dates[today]) anchor = today;
+  else if(dates[yest]) anchor = yest;
+  else return 0;
+  let count = 0;
+  let cur = anchor;
+  while(dates[cur]){
+    count++;
+    cur = addDaysToDateStr(cur, -1);
+  }
+  return count;
+}
+const MAKEUP_CHECKIN_COST = 80; // 骰子精華直接扣，量級比照原本設想的兌換券
+const MAKEUP_CHECKIN_MAX_DAYS_BACK = 30; // 候選清單最多往前抓幾天，避免清單無限長
+// 列出可以補簽的日期（今天以前、加入日期以後、尚未簽到過），由近到遠排序。
+function getMakeupCandidateDates(p){
+  ensureCheckinDates(p);
+  const dates = p.checkinDates;
+  const joinDate = p.joinedAt ? new Date(p.joinedAt) : null;
+  if(joinDate) joinDate.setHours(0,0,0,0);
+  const list = [];
+  let cur = parseDateStr(yesterdayStr());
+  for(let i=0;i<MAKEUP_CHECKIN_MAX_DAYS_BACK;i++){
+    if(joinDate && cur < joinDate) break;
+    const ds = dateStrFromDate(cur);
+    if(!dates[ds]) list.push(ds);
+    cur.setDate(cur.getDate() - 1);
+  }
+  return list;
+}
+async function doMakeupCheckin(dateStr){
+  const p = state.player;
+  if(!p) return;
+  ensureMaterials(p);
+  ensureCheckinDates(p);
+  if(p.checkinDates[dateStr]){ showToast(tt('這天已經簽到過了','Already checked in that day')); return; }
+  const today = todayStr();
+  if(p.lastMakeupDate === today){
+    showToast(tt('今天已經使用過補簽了，明天再來','You already used a makeup check-in today - come back tomorrow'));
+    return;
+  }
+  if((p.materials.diceEssence||0) < MAKEUP_CHECKIN_COST){
+    showToast(tt(`骰子精華不足，補簽需要 💠${MAKEUP_CHECKIN_COST}`, `Not enough Dice Essence, makeup check-in needs 💠${MAKEUP_CHECKIN_COST}`));
+    return;
+  }
+  p.materials.diceEssence -= MAKEUP_CHECKIN_COST;
+  p.checkinDates[dateStr] = true;
+  p.lastMakeupDate = today;
+  p.streak = computeCurrentStreak(p);
+  await savePlayer(p);
+  showToast(tt(`✅ 已補簽 ${dateStr}，花費 💠${MAKEUP_CHECKIN_COST} 骰子精華，目前連續簽到 ${p.streak} 天`, `✅ Made up check-in for ${dateStr} for 💠${MAKEUP_CHECKIN_COST} Dice Essence - current streak: ${p.streak} day(s)`));
+  render();
+}
 function ensureDailyQuests(p){
   const today = todayStr();
   if(!p.daily || p.daily.date !== today){
-    p.daily = {date: today, progress:{}, claimed:[]};
+    p.daily = {date: today, progress:{}, claimed:[], quests: pickDailyQuestKeys(p.nickname, today)};
   }
   if(!p.daily.progress) p.daily.progress = {};
   if(!p.daily.claimed) p.daily.claimed = [];
+  if(!p.daily.quests || !p.daily.quests.length) p.daily.quests = pickDailyQuestKeys(p.nickname, today);
   return p.daily;
+}
+function todaysQuestDefs(p){
+  const daily = ensureDailyQuests(p);
+  return daily.quests.map(k=>QUEST_BY_KEY[k]).filter(Boolean);
 }
 function bumpQuest(p, key, amount){
   const daily = ensureDailyQuests(p);
   const def = QUEST_BY_KEY[key];
   if(!def) return;
+  if(!daily.quests.includes(key)) return; // 今天沒抽到這項任務，不列入進度
   const cur = daily.progress[key] || 0;
   daily.progress[key] = Math.min(def.target, cur + (amount||1));
 }
@@ -3843,7 +4012,7 @@ async function claimQuest(questKey){
   const p = state.player;
   const daily = ensureDailyQuests(p);
   const def = QUEST_BY_KEY[questKey];
-  if(!def) return;
+  if(!def || !daily.quests.includes(questKey)) return;
   if(daily.claimed.includes(questKey)) return;
   const progress = daily.progress[questKey] || 0;
   if(progress < def.target) return;
@@ -3851,7 +4020,7 @@ async function claimQuest(questKey){
   const reward = QUEST_SETTINGS.rewards[questKey] || 0;
   p.coins = (p.coins||0) + reward;
   let bonusAwarded = false;
-  if(QUEST_DEFS.every(q=>daily.claimed.includes(q.key)) && !daily.bonusClaimed){
+  if(daily.quests.every(k=>daily.claimed.includes(k)) && !daily.bonusClaimed){
     daily.bonusClaimed = true;
     p.coins += QUEST_SETTINGS.completionBonus;
     bonusAwarded = true;
@@ -4335,8 +4504,8 @@ const SEED_TYPES = {
   },
   swords: {
     key:'swords', nameZh:'風刃種子', nameEn:'Wind Blade Seed', suitLabel:'Swords · 風', icon:'⚔',
-    cost:20, growMs: 60*60*1000, witherMs: 2*60*60*1000, tierLevel:0,
-    coinMin:38, coinMax:54, wither:true,
+    cost:20, growMs: 60*60*1000, tierLevel:0,
+    coinMin:38, coinMax:54, wither:false,
     upgradesTo: 'swords_sprout',
   },
   pentacles: {
@@ -4367,8 +4536,8 @@ const SEED_TYPES = {
   },
   swords_sprout: {
     key:'swords_sprout', nameZh:'風刃新芽', nameEn:'Wind Blade Sprout', suitLabel:'Swords · 風', icon:'⚔',
-    cost:34, growMs: 60*60*1000, witherMs: 2*60*60*1000, tierLevel:3,
-    coinMin:65, coinMax:92, wither:true,
+    cost:34, growMs: 60*60*1000, tierLevel:3,
+    coinMin:65, coinMax:92, wither:false,
     upgradesTo: 'swords_bloom',
   },
   pentacles_sprout: {
@@ -4398,8 +4567,8 @@ const SEED_TYPES = {
   },
   swords_bloom: {
     key:'swords_bloom', nameZh:'風刃綻放', nameEn:'Wind Blade Bloom', suitLabel:'Swords · 風', icon:'⚔',
-    cost:58, growMs: 60*60*1000, witherMs: 2*60*60*1000, tierLevel:6,
-    coinMin:112, coinMax:158, wither:true,
+    cost:58, growMs: 60*60*1000, tierLevel:6,
+    coinMin:112, coinMax:158, wither:false,
     upgradesTo: 'swords_starlight',
   },
   pentacles_bloom: {
@@ -4429,8 +4598,8 @@ const SEED_TYPES = {
   },
   swords_starlight: {
     key:'swords_starlight', nameZh:'風刃星輝', nameEn:'Wind Blade Starlight', suitLabel:'Swords · 風', icon:'⚔',
-    cost:95, growMs: 60*60*1000, witherMs: 2*60*60*1000, tierLevel:8,
-    coinMin:185, coinMax:260, wither:true,
+    cost:95, growMs: 60*60*1000, tierLevel:8,
+    coinMin:185, coinMax:260, wither:false,
     upgradesTo: null,
   },
   pentacles_starlight: {
@@ -5108,6 +5277,7 @@ async function confirmStartExpedition(tierId, durationKey, itemUsage){
   // 這批卡牌已經帶出去了，重新替這個任務＋時長隨機指定下一批出征所需卡牌
   p.expeditionRolls[expeditionRollKey(tier.id, durationKey)] = rollExpeditionRequiredCards(variant, durationKey, tier);
   delete expeditionRogueDraft[`${tier.id}-${durationKey}`];
+  bumpQuest(p, 'expedition', 1);
   await savePlayer(p);
   const usedNotes = [];
   if(furnitureCount > 0) usedNotes.push(tt(`🪑家具×${furnitureCount}（成功率+${Math.round(furnitureBonus*100)}%）`, `🪑Furniture×${furnitureCount} (success +${Math.round(furnitureBonus*100)}%)`));
@@ -6052,6 +6222,18 @@ function yesterdayStr(){
   d.setDate(d.getDate() - 1);
   return `${d.getFullYear()}-${d.getMonth()+1}-${d.getDate()}`;
 }
+function dateStrFromDate(d){
+  return `${d.getFullYear()}-${d.getMonth()+1}-${d.getDate()}`;
+}
+function parseDateStr(str){
+  const [y,m,d] = str.split('-').map(Number);
+  return new Date(y, m-1, d);
+}
+function addDaysToDateStr(baseDateStr, offset){
+  const dt = parseDateStr(baseDateStr);
+  dt.setDate(dt.getDate() + offset);
+  return dateStrFromDate(dt);
+}
 function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,8); }
 function playerKey(nick){ return `player:${nick.trim().toLowerCase()}`; }
 
@@ -6868,8 +7050,9 @@ async function claimDaily(){
   state.drawSource = 'daily';
   state.flipped = [false,false,false];
 
-  const prevClaim = state.player.lastClaim;
-  const newStreak = prevClaim === yesterdayStr() ? (state.player.streak||0) + 1 : 1;
+  ensureCheckinDates(state.player);
+  state.player.checkinDates[todayStr()] = true;
+  const newStreak = computeCurrentStreak(state.player);
   state.player.streak = newStreak;
 
   const bonus = STREAK_BONUS[newStreak] || 0;
@@ -8382,7 +8565,8 @@ function renderHome(body){
   const p = state.player;
   const claimed = !canClaimToday();
   const totalOwned = Object.values(p.cards).reduce((a,b)=>a+b,0);
-  const uniqueOwned = Object.keys(p.cards).filter(k=>p.cards[k]>0).length;
+  // 只算「目前卡池裡還存在」的卡種，避免舊資料殘留已下架/改過 id 的卡把分子撐爆過分母（例如 79/78）
+  const uniqueOwned = Object.keys(p.cards).filter(k=>p.cards[k]>0 && DECK_BY_ID[k]).length;
   const streak = p.streak || 0;
   const milestones = Object.keys(STREAK_BONUS).map(Number).sort((a,b)=>a-b);
   const nextMilestone = milestones.find(m=>m > streak);
@@ -8440,12 +8624,30 @@ function renderHome(body){
   html += `<div class="countdown">${tt(`連續簽到 <b style="color:var(--gold-bright);">${streak}</b> 天${nextMilestone ? ` · 再簽到 ${nextMilestone - streak} 天可額外獲得 ${STREAK_BONUS[nextMilestone]} 枚金幣 🔥` : ''}`, `<b style="color:var(--gold-bright);">${streak}</b>-day streak${nextMilestone ? ` · ${nextMilestone - streak} more day(s) for a bonus ${STREAK_BONUS[nextMilestone]} coins 🔥` : ''}`)}</div>`;
   html += `</div>`;
 
+  ensureMaterials(p);
+  const makeupCandidates = getMakeupCandidateDates(p);
+  const makeupUsedToday = p.lastMakeupDate === todayStr();
+  const makeupAffordable = (p.materials.diceEssence||0) >= MAKEUP_CHECKIN_COST;
+  html += `<div class="panel">
+    <h2>${tt('補簽','Makeup Check-in')}</h2>
+    <p class="sub">${tt(`錯過的簽到可以花 💠${MAKEUP_CHECKIN_COST} 骰子精華補回來，補簽後連續簽到天數會照樣接上；每天最多補 1 次。`, `Missed a day? Spend 💠${MAKEUP_CHECKIN_COST} Dice Essence to make it up - your streak reconnects afterward. Limited to 1 makeup per day.`)}</p>
+    ${makeupCandidates.length === 0
+      ? `<p class="sub">${tt('目前沒有可以補簽的日子','No missed days available to make up right now')}</p>`
+      : `<div class="form-row">
+        <select id="makeup-checkin-date">${makeupCandidates.map(ds=>`<option value="${ds}">${ds}</option>`).join('')}</select>
+        <button class="btn small" id="makeup-checkin-btn" ${(makeupUsedToday || !makeupAffordable)?'disabled':''}>${tt('補簽','Make Up')}</button>
+      </div>
+      <p class="sub">${makeupUsedToday ? tt('今天已經用過補簽了，明天再來','Already used the makeup check-in today - come back tomorrow') : (!makeupAffordable ? tt(`骰子精華不足（目前 💠${p.materials.diceEssence}）`, `Not enough Dice Essence (currently 💠${p.materials.diceEssence})`) : tt(`目前擁有 💠${p.materials.diceEssence} 骰子精華`, `You currently have 💠${p.materials.diceEssence} Dice Essence`))}</p>`
+    }
+  </div>`;
+
   const daily = ensureDailyQuests(p);
-  const allDone = QUEST_DEFS.every(q=>daily.claimed.includes(q.key));
+  const todaysQuests = todaysQuestDefs(p);
+  const allDone = daily.quests.every(k=>daily.claimed.includes(k));
   html += `<div class="panel">
     <h2>${t('questHeader')}</h2>
     ${allDone ? `<p class="sub" style="color:var(--gold-bright);">🎉 ${t('questAllDone')}</p>` : ''}
-    ${QUEST_DEFS.map(q=>{
+    ${todaysQuests.map(q=>{
       const progress = daily.progress[q.key] || 0;
       const done = progress >= q.target;
       const claimedQ = daily.claimed.includes(q.key);
@@ -8470,6 +8672,11 @@ function renderHome(body){
   body.innerHTML = html;
   const btn = document.getElementById('draw-btn');
   if(btn) btn.onclick = claimDaily;
+  const makeupBtn = document.getElementById('makeup-checkin-btn');
+  if(makeupBtn) makeupBtn.onclick = ()=>{
+    const sel = document.getElementById('makeup-checkin-date');
+    if(sel && sel.value) doMakeupCheckin(sel.value);
+  };
   document.querySelectorAll('[data-claim-quest]').forEach(b=>{
     b.onclick = ()=>claimQuest(b.dataset.claimQuest);
   });
@@ -10235,7 +10442,7 @@ async function renderGM(body){
       gmLookupResult = {
         nickname: p.nickname, coins: p.coins,
         totalCards: Object.values(p.cards).reduce((a,b)=>a+b,0),
-        uniqueCards: Object.keys(p.cards).filter(k=>p.cards[k]>0).length
+        uniqueCards: Object.keys(p.cards).filter(k=>p.cards[k]>0 && DECK_BY_ID[k]).length
       };
     }
     renderTab();
