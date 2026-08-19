@@ -135,17 +135,45 @@
   .panel.profession-banner h2{text-shadow:0 2px 14px rgba(0,0,0,0.65);}
   .panel.profession-banner .sub{color:var(--cream);text-shadow:0 1px 8px rgba(0,0,0,0.65);}
   .panel.profession-banner .countdown{color:var(--cream);text-shadow:0 1px 8px rgba(0,0,0,0.65);}
-  .panel.pet-banner{
-    position:relative;border-radius:14px;overflow:hidden;
+  .profession-banner-group{
+    position:relative;border-radius:14px;overflow:hidden;padding:0;
     background:
-      linear-gradient(180deg, rgba(14,8,24,0.55) 0%, rgba(14,8,24,0.32) 45%, rgba(14,8,24,0.88) 100%),
-      url('https://lekcusong.github.io/tcg/assets/css-pet-banner.jpg') center 38%/cover no-repeat,
+      linear-gradient(180deg, rgba(14,8,24,0.55) 0%, rgba(14,8,24,0.3) 38%, rgba(14,8,24,0.88) 100%),
+      url('https://lekcusong.github.io/tcg/assets/css-profession-banner.jpg') center 38%/cover no-repeat,
       var(--bg-panel);
     border-color:rgba(201,162,74,0.4);
   }
-  .panel.pet-banner h2{text-shadow:0 2px 14px rgba(0,0,0,0.65);}
-  .panel.pet-banner .sub{color:var(--cream);text-shadow:0 1px 8px rgba(0,0,0,0.65);}
-  .panel.pet-banner .countdown{color:var(--cream);text-shadow:0 1px 8px rgba(0,0,0,0.65);}
+  .profession-banner-group .profession-banner-section{padding:20px;}
+  .profession-banner-group .profession-banner-section + .profession-banner-section{border-top:1px solid rgba(201,162,74,0.3);}
+  .profession-banner-group h2{text-shadow:0 2px 14px rgba(0,0,0,0.65);}
+  .profession-banner-group .sub{color:var(--cream);text-shadow:0 1px 8px rgba(0,0,0,0.65);}
+  .profession-banner-group .countdown{color:var(--cream);text-shadow:0 1px 8px rgba(0,0,0,0.65);}
+  .dice-banner-group{
+    position:relative;border-radius:14px;overflow:hidden;padding:0;
+    background:
+      linear-gradient(180deg, rgba(14,8,24,0.55) 0%, rgba(14,8,24,0.3) 38%, rgba(14,8,24,0.88) 100%),
+      url('https://lekcusong.github.io/tcg/assets/css-dice-banner.jpg') center 40%/cover no-repeat,
+      var(--bg-panel);
+    border-color:rgba(201,162,74,0.4);
+  }
+  .dice-banner-group .dice-banner-section{padding:20px;}
+  .dice-banner-group .dice-banner-section + .dice-banner-section{border-top:1px solid rgba(201,162,74,0.3);}
+  .dice-banner-group h2{text-shadow:0 2px 14px rgba(0,0,0,0.65);}
+  .dice-banner-group .sub{color:var(--cream);text-shadow:0 1px 8px rgba(0,0,0,0.65);}
+  .dice-banner-group .countdown{color:var(--cream);text-shadow:0 1px 8px rgba(0,0,0,0.65);}
+  .pet-banner-group{
+    position:relative;border-radius:14px;overflow:hidden;padding:0;
+    background:
+      linear-gradient(180deg, rgba(14,8,24,0.5) 0%, rgba(14,8,24,0.28) 30%, rgba(14,8,24,0.5) 55%, rgba(14,8,24,0.92) 100%),
+      url('https://lekcusong.github.io/tcg/assets/css-pet-banner.jpg') center 30%/cover no-repeat,
+      var(--bg-panel);
+    border-color:rgba(201,162,74,0.4);
+  }
+  .pet-banner-group .pet-banner-section{padding:20px;}
+  .pet-banner-group .pet-banner-section + .pet-banner-section{border-top:1px solid rgba(201,162,74,0.3);}
+  .pet-banner-group h2{text-shadow:0 2px 14px rgba(0,0,0,0.65);}
+  .pet-banner-group .sub{color:var(--cream);text-shadow:0 1px 8px rgba(0,0,0,0.65);}
+  .pet-banner-group .countdown{color:var(--cream);text-shadow:0 1px 8px rgba(0,0,0,0.65);}
   .fortune-panel{
     opacity:0;transform:translateY(6px);transition:opacity .5s ease, transform .5s ease;
     margin-top:16px;padding-top:14px;border-top:1px solid rgba(212,175,90,0.25);text-align:left;
@@ -1253,7 +1281,7 @@ const FURNITURE_MAX_STACK = DEFAULT_FURNITURE_SUCCESS_TIERS.length;
 
 // 小藥水：出征進行中可使用，每瓶縮短固定分鐘數；剩餘時間有緩衝下限，避免瞬間結算
 const DEFAULT_POTION_EXPEDITION_MINUTES = 10; // 每瓶 -10 分鐘（預設值，GM 可調）
-const DEFAULT_POTION_EXPEDITION_MIN_REMAIN_MINUTES = 1; // 剩餘時間不會被壓到 1 分鐘以下（預設值，GM 可調）
+const DEFAULT_POTION_EXPEDITION_MIN_REMAIN_MINUTES = 0; // 緩衝下限（預設值，GM 可調）；0 = 不緩衝，藥水縮短時間足夠即可直接完成遠征
 let POTION_EXPEDITION_MINUTES = DEFAULT_POTION_EXPEDITION_MINUTES;
 let POTION_EXPEDITION_MIN_REMAIN_MINUTES = DEFAULT_POTION_EXPEDITION_MIN_REMAIN_MINUTES;
 
@@ -1678,7 +1706,8 @@ async function renderProfession(body){
   if(p.stamina !== staminaBefore){ await savePlayer(p); }
 
   const staminaPct = Math.max(0, Math.min(100, (p.stamina/p.staminaMax)*100));
-  let html = `<div class="panel profession-banner">
+  let html = `<div class="panel profession-banner-group">
+  <div class="profession-banner-section">
     <h2>🛠️ ${tt('職業','Profession')}</h2>
     <p class="sub">${tt('選擇一項職業來採集材料、生產藥水、武器、飾品與家具。每人同時只能有一個生效中的職業，可以花費金幣轉職（原職業的等級與經驗會保留）。', 'Pick a profession to gather materials and craft potions, weapons, accessories, and furniture. Only one profession is active at a time, but you can pay coins to switch (your other profession keeps its level/exp).')}</p>
     <div class="farm-upgrade-line" style="color:var(--gold-bright);">⚡ ${tt('體力','Stamina')} ${p.stamina} / ${p.staminaMax}</div>
@@ -1688,13 +1717,13 @@ async function renderProfession(body){
     <div class="countdown" style="font-size:11px;">${tt('每 5 分鐘被動回復 1 點體力（離線也會累積）','Passively regenerates 1 stamina every 5 minutes, even while offline')}</div>
   </div>`;
 
-  html += `<div class="panel profession-banner"><h2>${tt('材料','Materials')}</h2><div style="display:flex;flex-wrap:wrap;gap:10px;">`;
+  html += `<div class="profession-banner-section"><h2>${tt('材料','Materials')}</h2><div style="display:flex;flex-wrap:wrap;gap:10px;">`;
   PROFESSION_DEFS.forEach(def=>{
     html += `<div style="background:var(--bg-panel-raised);border:1px solid var(--line);border-radius:8px;padding:6px 12px;font-size:13px;">
       ${def.materialIcon} ${professionMaterialLabel(def)} × ${p.professionMaterials[def.materialId]||0}
     </div>`;
   });
-  html += `</div></div>`;
+  html += `</div></div></div>`;
 
   if(!p.profession){
     html += `<div class="panel"><h2>${tt('選擇職業','Choose a Profession')}</h2>`;
@@ -2226,14 +2255,15 @@ function petSectionHtml(p){
   const now = Date.now();
   const activePet = getActivePet(p);
 
-  let html = `<div class="panel pet-banner">
+  let html = `<div class="panel pet-banner-group">
+  <div class="pet-banner-section">
     <h2>🐾 ${tt('寵物尋寶','Pet Treasure Hunt')}</h2>
     <p class="sub">${tt('花園孵蛋、養成寵物，派牠短時間出去尋寶。沒有翻牌選局，時間到直接領獎，一天可以派好幾次。', 'Hatch and raise a pet in your garden, then send it on short treasure hunts. No card-flip - just wait and claim, and you can dispatch as many times a day as you like.')}</p>
   </div>`;
 
   // ---------- 寵物巢 ----------
   const nest = p.petNest;
-  html += `<div class="panel pet-banner"><h2>${tt('🏡 寵物巢','🏡 Pet Nest')}</h2>`;
+  html += `<div class="pet-banner-section"><h2>${tt('🏡 寵物巢','🏡 Pet Nest')}</h2>`;
   if(!nest.plantedAt){
     html += `<p class="sub">${tt(`選擇要種下的蛋屬性（依對應材料決定），花費對應材料 × ${PET_EGG_MATERIAL_COST}，等待孵化。`, `Choose an egg element (matches its material), spend × ${PET_EGG_MATERIAL_COST} of that material, and wait for it to hatch.`)}</p>
     <div style="display:flex;flex-wrap:wrap;gap:8px;">`;
@@ -2258,7 +2288,7 @@ function petSectionHtml(p){
       }
     </div>`;
   }
-  html += `</div>`;
+  html += `</div></div>`;
 
   // ---------- 出戰寵物 ----------
   html += `<div class="panel"><h2>${tt('🧭 出戰寵物','🧭 Active Pet')}</h2>`;
@@ -3997,7 +4027,8 @@ function renderDiceShop(body){
     return (b.createdAt||'').localeCompare(a.createdAt||'');
   });
 
-  let html = `<div class="panel">
+  let html = `<div class="panel dice-banner-group">
+  <div class="dice-banner-section">
     <h2>🎲 ${tt('骰子商店','Dice Shop')}</h2>
     <p class="sub">${tt('用 3 張特定 epic 卡抽一顆骰子，沒有保底機制。', 'Spend 3 specific epic cards to draw one die. No pity system.')}</p>
     <div style="border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:12px;">
@@ -4010,7 +4041,7 @@ function renderDiceShop(body){
     </div>
     <button class="btn full" id="dice-gacha-btn" ${canDraw ? '' : 'disabled'}>${tt('✦ 抽一顆骰子','✦ Draw a Die')}</button>
   </div>
-  <div class="panel">
+  <div class="dice-banner-section">
     <h2>${tt('裝備欄','Equipped')}</h2>
     <p class="sub">${tt('同時裝備最多 3 顆骰子，出戰 Boss 時會依此欄位擲骰；2 顆同號觸發「對子」、3 顆同號觸發「豹子」加成。另外，裝備的骰子「品質」相同也能疊加額外的品質對子／豹子加成，兩種組合可以同時觸發！','Equip up to 3 dice — Boss attacks roll whatever is equipped here; 2 matching numbers trigger a Pair bonus, 3 matching trigger a Triple bonus. Equipping dice of the same quality also stacks an extra Quality Pair/Triple bonus, and both kinds of combos can trigger together!')}</p>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px;">
@@ -4026,6 +4057,7 @@ function renderDiceShop(body){
         </div>`;
       }).join('')}
     </div>
+  </div>
   </div>
   <div class="panel">
     <h2>${tt('骰子庫存','Dice Inventory')}（${diceList.length}）</h2>
@@ -8151,6 +8183,13 @@ async function doLogin(nick, password, confirmPassword){
 }
 
 function doLogout(){
+  // 【2026-08 修正】登出時把這個分頁自己起的所有背景計時器都停掉（尤其是無 visibility
+  // 防護、會整包覆蓋存檔的心跳），避免這個分頁之後在背景被喚醒時，還拿著登出前的舊
+  // state.player 寫回資料庫、覆蓋掉玩家在其他裝置上後來的進度。
+  if(presenceHeartbeatInterval){ clearInterval(presenceHeartbeatInterval); presenceHeartbeatInterval = null; }
+  if(farmTickInterval){ clearInterval(farmTickInterval); farmTickInterval = null; }
+  if(expeditionTickInterval){ clearInterval(expeditionTickInterval); expeditionTickInterval = null; }
+  if(professionTickInterval){ clearInterval(professionTickInterval); professionTickInterval = null; }
   state.nickname = null; state.player = null; state.tab='home';
   chatUnreadCount = 0;
   notifUnreadCount = 0;
@@ -8404,14 +8443,22 @@ document.addEventListener('visibilitychange', ()=>{
 });
 
 // ---------- Presence (online / last seen) heartbeat ----------
+// 【2026-08 修正】背景分頁（例如切到 iPhone 桌面、鎖螢幕）在 iOS Safari 上不會立刻被
+// 系統終止，JS 計時器可能還會再跑一陣子。這顆心跳寫的是 savePlayer（整包覆蓋、無版本
+// 檢查），如果背景分頁記憶體裡還停留著登出前/切換裝置前的舊 state.player，一旦心跳觸發
+// 就會用舊資料覆蓋掉其他裝置後來寫入的新進度，造成「存檔跳回過去」。加上 visibility 判斷，
+// 背景分頁完全不再寫資料庫，跟其他 poll（見 registerVisiblePoll 那些函式）做法一致。
+let presenceHeartbeatInterval = null;
 async function updatePresenceHeartbeat(){
+  if(document.visibilityState !== 'visible') return; // 背景分頁不寫入，避免用過期資料覆蓋
   if(!state.nickname || !state.player) return;
   state.player.lastActiveAt = Date.now();
   try{ await savePlayer(state.player); }catch(e){ /* best effort */ }
 }
 function initPresenceHeartbeat(){
   updatePresenceHeartbeat();
-  setInterval(()=>{ updatePresenceHeartbeat(); }, 60000);
+  if(presenceHeartbeatInterval){ clearInterval(presenceHeartbeatInterval); }
+  presenceHeartbeatInterval = setInterval(()=>{ updatePresenceHeartbeat(); }, 60000);
   document.addEventListener('visibilitychange', ()=>{
     if(document.visibilityState === 'visible') updatePresenceHeartbeat();
   });
