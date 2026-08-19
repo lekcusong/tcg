@@ -843,7 +843,34 @@ const storage = {
     const rows = await res.json();
     return { keys: rows.map(r=>r.key) };
   },
+  // 一次要「某前綴底下全部資料」時用這個，取代「list() 拿 key 清單、
+  // 再逐一 get() 每個 key」的寫法。原本的寫法就算靠 fetchKeysBatch 把
+  // 同時飛的請求數限制在 6 支，拍賣行、好友、玩家清單這種一多起來還是要
+  // 排隊發好幾輪 HTTP 請求，是「進拍賣很卡」的主因。這裡用 PostgREST
+  // 的 key=in.(...) 一次把 key 跟 value 都選出來，整個前綴只需要 1 支
+  // 請求（key 太多時仍分批用 in.() 查，但一批可以裝上百個 key，遠比
+  // 逐一 get() 快）。
+  async listValues(prefix){
+    const pattern = (prefix || '') + '*';
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/kv_store?key=like.${encodeURIComponent(pattern)}&select=key,value&order=key.desc`,
+      { headers: SB_HEADERS }
+    );
+    if(!res.ok) throw new Error('storage listValues failed: ' + res.status);
+    return await res.json(); // [{key, value}, ...]
+  },
 };
+// 搭配 storage.listValues() 使用：把 [{key,value}] 逐筆 JSON.parse，
+// 單筆壞資料（例如舊格式、資料損毀）只跳過那一筆，不會讓整份清單掛掉。
+function parseKvRows(rows, mapFn){
+  mapFn = mapFn || (v=>v);
+  const out = [];
+  for(const r of (rows||[])){
+    try{ out.push(mapFn(JSON.parse(r.value), r.key)); }
+    catch(e){ /* 單筆壞資料略過 */ }
+  }
+  return out;
+}
 
 // ---------- Deck definition ----------
 const SUITS = [
@@ -4688,35 +4715,11 @@ async function recordFortuneStarEntry(nickname, cardIds){
     return 'ok';
   }catch(e){ /* best effort：頂多這次沒被記錄到參賽名單，不影響其餘抽卡流程 */ return 'error'; }
 }
-// 依 key 陣列批次讀取多筆資料，取代「一次對每個 key 各自平行發送一支 fetch」的寫法。
-// 好友、玩家、拍賣等清單一多，Promise.all(keys.map(storage.get)) 會瞬間對 Supabase
-// 開出幾十甚至上百條平行連線，容易被中斷（Console 會看到一整排 net::ERR_CONNECTION_CLOSED），
-// 也是 GM 後台每次重繪都要重新抓好友關係/玩家清單時最容易觸發的地方。
-// 這裡限制同時間最多 CONCURRENCY 支請求在飛，其餘排隊，大幅降低瞬間連線數。
-async function fetchKeysBatch(keys, mapFn){
-  mapFn = mapFn || (v=>v);
-  const results = new Array(keys.length);
-  const CONCURRENCY = 6;
-  let idx = 0;
-  async function worker(){
-    while(idx < keys.length){
-      const i = idx++;
-      const k = keys[i];
-      try{
-        const r = await storage.get(k);
-        results[i] = r ? mapFn(JSON.parse(r.value), k) : null;
-      }catch(e){ results[i] = null; }
-    }
-  }
-  const workerCount = Math.min(CONCURRENCY, keys.length);
-  await Promise.all(Array.from({length: workerCount}, worker));
-  return results.filter(Boolean);
-}
+
 async function listFortuneStarEntries(dateStr){
   try{
-    const list = await storage.list(`fortunestar_entry:${dateStr}:`);
-    if(!list || !list.keys) return [];
-    return await fetchKeysBatch(list.keys);
+    const rows = await storage.listValues(`fortunestar_entry:${dateStr}:`);
+    return parseKvRows(rows);
   }catch(e){ return []; }
 }
 // 名單鎖定前（round 還是 open / 尚未建立）目前已經有多少人參加的即時人數快取，
@@ -8618,9 +8621,8 @@ async function fetchNotifications(){
     // 回瀏覽器端過濾——避免每個玩家每次輪詢都重複下載全站所有人
     // 的通知內容。
     const myNick = (state.nickname||'').toLowerCase();
-    const list = await storage.list(`notif:${myNick}:`);
-    if(!list || !list.keys) return [];
-    const items = await fetchKeysBatch(list.keys);
+    const rows = await storage.listValues(`notif:${myNick}:`);
+    const items = parseKvRows(rows);
     return items.sort((a,b)=>b.createdAt-a.createdAt);
   }catch(e){ return []; }
 }
@@ -8678,9 +8680,8 @@ async function fetchPendingRewardsFor(nick){
     // 不再撈全站 pendingreward: 資料再靠前端過濾，避免被全站資料量
     // 拖累而撞到 PostgREST 預設回傳筆數上限撈不到自己的獎勵。
     const myLower = (nick||'').toLowerCase();
-    const list = await storage.list(`pendingreward:${myLower}:`);
-    if(!list || !list.keys) return [];
-    return await fetchKeysBatch(list.keys, (data, k)=>({key:k, data}));
+    const rows = await storage.listValues(`pendingreward:${myLower}:`);
+    return parseKvRows(rows, (data, k)=>({key:k, data}));
   }catch(e){ return []; }
 }
 // Applies any pending rewards for this player directly onto the freshly-loaded
@@ -8950,9 +8951,8 @@ function initChatUnreadPoll(){
 
 async function fetchFriendRequests(){
   try{
-    const list = await storage.list('freq:');
-    if(!list || !list.keys) return [];
-    return await fetchKeysBatch(list.keys);
+    const rows = await storage.listValues('freq:');
+    return parseKvRows(rows);
   }catch(e){ return []; }
 }
 
@@ -9012,9 +9012,8 @@ async function syncPlayerIndexFromPlayers(players){
 }
 async function fetchAllPlayers(){
   try{
-    const list = await storage.list('player:');
-    if(!list || !list.keys) return [];
-    return await fetchKeysBatch(list.keys);
+    const rows = await storage.listValues('player:');
+    return parseKvRows(rows);
   }catch(e){ return []; }
 }
 function playerTotalCards(p){ return Object.values(p.cards||{}).reduce((a,b)=>a+b,0); }
@@ -9028,9 +9027,8 @@ function friendshipKey(nickA, nickB){
 }
 async function fetchAllFriendships(){
   try{
-    const list = await storage.list('friendship:');
-    if(!list || !list.keys) return [];
-    return await fetchKeysBatch(list.keys, (v, k)=>({...v, _key:k}));
+    const rows = await storage.listValues('friendship:');
+    return parseKvRows(rows, (v, k)=>({...v, _key:k}));
   }catch(e){ return []; }
 }
 async function fetchMyFriends(nickname){
@@ -9339,10 +9337,8 @@ async function listAuction(itemType, itemId, qty, startBid, buyoutPrice, durMs){
 }
 async function fetchAuctions(){
   try{
-    const list = await storage.list('auction:');
-    if(!list || !list.keys) return [];
-    const items = await fetchKeysBatch(list.keys);
-    return items.map(normalizeAuction);
+    const rows = await storage.listValues('auction:');
+    return parseKvRows(rows).map(normalizeAuction);
   }catch(e){ return []; }
 }
 async function placeBid(auctionId, amount){
@@ -9487,9 +9483,8 @@ async function createWantToBuy(cardId, pricePerCard, quantity, durMs){
 }
 async function fetchWantToBuys(){
   try{
-    const list = await storage.list('wtb:');
-    if(!list || !list.keys) return [];
-    return await fetchKeysBatch(list.keys);
+    const rows = await storage.listValues('wtb:');
+    return parseKvRows(rows);
   }catch(e){ return []; }
 }
 async function fulfillWantToBuy(orderId, sellQty){
@@ -9592,6 +9587,29 @@ async function gmGrantCard(targetNick, cardId, qty){
   await createPendingReward(target.nickname, 'card', {cardId, qty});
   await createNotification(target.nickname, GM_NICKNAME, 'gm_grant', {grantKind:'card', label:c.name, qty});
   showToast(tt(`已發放 ${c.name} x${qty} 給 ${target.nickname} ⚡`, `Granted ${c.name} x${qty} to ${target.nickname} ⚡`));
+  if(target.nickname.toLowerCase() === state.nickname.toLowerCase()){
+    await refreshPlayer();
+  }
+  render();
+}
+async function gmGrantCards(targetNick, items){
+  if(!isGM()) return;
+  targetNick = (targetNick||'').trim();
+  if(!targetNick){ showToast(tt('請輸入目標玩家暱稱','Please enter the target player nickname')); return; }
+  const cleaned = (items||[])
+    .map(it=>({cardId: it.cardId, qty: parseInt(it.qty) || 1}))
+    .filter(it=>it.cardId && DECK_BY_ID[it.cardId] && it.qty > 0);
+  if(cleaned.length === 0){ showToast(tt('請至少選擇一種卡片','Please select at least one card')); return; }
+  const target = await loadPlayer(targetNick);
+  if(!target){ showToast(tt('找不到此玩家','Player not found')); return; }
+  for(const it of cleaned){
+    const c = DECK_BY_ID[it.cardId];
+    await createPendingReward(target.nickname, 'card', {cardId: it.cardId, qty: it.qty});
+    await createNotification(target.nickname, GM_NICKNAME, 'gm_grant', {grantKind:'card', label:c.name, qty: it.qty});
+  }
+  const summary = cleaned.map(it=>`${DECK_BY_ID[it.cardId].name} x${it.qty}`).join('、');
+  const summaryEn = cleaned.map(it=>`${DECK_BY_ID[it.cardId].name} x${it.qty}`).join(', ');
+  showToast(tt(`已發放 ${summary} 給 ${target.nickname} ⚡`, `Granted ${summaryEn} to ${target.nickname} ⚡`));
   if(target.nickname.toLowerCase() === state.nickname.toLowerCase()){
     await refreshPlayer();
   }
@@ -11136,6 +11154,7 @@ async function renderGM(body){
   body.innerHTML = `<div class="loading-line">${tt('開啟 GM 控制台...','Opening GM console...')}</div>`;
 
   const cardOptions = DECK.map(c=>`<option value="${c.id}">${c.name}（${RARITY_LABEL[c.rarity]}）</option>`).join('');
+  const cardOptionsWithNone = `<option value="">${tt('— 不發放 —','— None —')}</option>` + cardOptions;
   const allPlayers = (await fetchAllPlayers()).sort((a,b)=>(b.coins||0)-(a.coins||0));
   syncPlayerIndexFromPlayers(allPlayers).catch(()=>{}); // 順便補齊暱稱索引，不額外發請求
   const allFriendships = await fetchAllFriendships();
@@ -11339,10 +11358,14 @@ async function renderGM(body){
 
   html += `<div class="panel">
     <h2>${t('grantCardsHeader')}</h2>
+    <p class="sub">${tt('可同時選擇最多 3 種卡片一次發放，未使用的欄位請保持「不發放」。','You can select up to 3 card types to grant at once. Leave unused slots as "None".')}</p>
+    ${[1,2,3].map(i=>`
     <div class="form-row">
-      <div style="flex:1;min-width:160px;"><label>${tt('卡片','Card')}</label><select id="gm-card-select">${cardOptions}</select></div>
-      <div><label>${tt('數量','Quantity')}</label><input type="number" id="gm-card-qty" value="1" min="1" style="width:70px;" /></div>
-      <button class="btn small" id="gm-card-btn">${tt('發放卡片','Grant Card')}</button>
+      <div style="flex:1;min-width:160px;"><label>${tt('卡片','Card')} ${i}</label><select id="gm-card-select-${i}">${i===1?cardOptions:cardOptionsWithNone}</select></div>
+      <div><label>${tt('數量','Quantity')}</label><input type="number" id="gm-card-qty-${i}" value="1" min="1" style="width:70px;" /></div>
+    </div>`).join('')}
+    <div class="form-row">
+      <button class="btn small" id="gm-card-btn">${tt('一次發放卡片','Grant Cards')}</button>
     </div>
   </div>`;
 
@@ -11961,9 +11984,11 @@ async function renderGM(body){
   const cardBtn = document.getElementById('gm-card-btn');
   if(cardBtn) cardBtn.onclick = ()=>{
     const nick = document.getElementById('gm-target-input').value;
-    const cardId = document.getElementById('gm-card-select').value;
-    const qty = document.getElementById('gm-card-qty').value;
-    gmGrantCard(nick, cardId, qty);
+    const items = [1,2,3].map(i=>({
+      cardId: document.getElementById(`gm-card-select-${i}`).value,
+      qty: document.getElementById(`gm-card-qty-${i}`).value,
+    })).filter(it=>it.cardId);
+    gmGrantCards(nick, items);
   };
   const materialBtn = document.getElementById('gm-material-btn');
   if(materialBtn) materialBtn.onclick = ()=>{
