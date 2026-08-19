@@ -124,6 +124,28 @@
   .draw-cta.resonance-banner h2{text-shadow:0 2px 14px rgba(0,0,0,0.65);}
   .draw-cta.resonance-banner .sub{color:var(--cream);text-shadow:0 1px 8px rgba(0,0,0,0.65);}
   .draw-cta.resonance-banner .countdown{color:var(--cream);text-shadow:0 1px 8px rgba(0,0,0,0.65);}
+  .panel.profession-banner{
+    position:relative;border-radius:14px;overflow:hidden;
+    background:
+      linear-gradient(180deg, rgba(14,8,24,0.55) 0%, rgba(14,8,24,0.32) 45%, rgba(14,8,24,0.88) 100%),
+      url('https://lekcusong.github.io/tcg/assets/css-profession-banner.jpg') center 38%/cover no-repeat,
+      var(--bg-panel);
+    border-color:rgba(201,162,74,0.4);
+  }
+  .panel.profession-banner h2{text-shadow:0 2px 14px rgba(0,0,0,0.65);}
+  .panel.profession-banner .sub{color:var(--cream);text-shadow:0 1px 8px rgba(0,0,0,0.65);}
+  .panel.profession-banner .countdown{color:var(--cream);text-shadow:0 1px 8px rgba(0,0,0,0.65);}
+  .panel.pet-banner{
+    position:relative;border-radius:14px;overflow:hidden;
+    background:
+      linear-gradient(180deg, rgba(14,8,24,0.55) 0%, rgba(14,8,24,0.32) 45%, rgba(14,8,24,0.88) 100%),
+      url('https://lekcusong.github.io/tcg/assets/css-pet-banner.jpg') center 38%/cover no-repeat,
+      var(--bg-panel);
+    border-color:rgba(201,162,74,0.4);
+  }
+  .panel.pet-banner h2{text-shadow:0 2px 14px rgba(0,0,0,0.65);}
+  .panel.pet-banner .sub{color:var(--cream);text-shadow:0 1px 8px rgba(0,0,0,0.65);}
+  .panel.pet-banner .countdown{color:var(--cream);text-shadow:0 1px 8px rgba(0,0,0,0.65);}
   .fortune-panel{
     opacity:0;transform:translateY(6px);transition:opacity .5s ease, transform .5s ease;
     margin-top:16px;padding-top:14px;border-top:1px solid rgba(212,175,90,0.25);text-align:left;
@@ -581,6 +603,7 @@
   .dice-roll-badge.pair{background:rgba(139,107,209,0.16);color:var(--violet);border:1px solid var(--violet);animation:dice-badge-pop .4s ease-out, dice-combo-glow-violet 1.1s ease-in-out .4s infinite;}
   .dice-roll-badge.crit{background:rgba(193,91,91,0.18);color:#ff8080;border:1px solid var(--danger);animation:dice-badge-pop .4s ease-out, dice-combo-glow-red 1.1s ease-in-out .4s infinite;}
   .dice-roll-badge.quality{background:rgba(74,144,226,0.16);color:var(--rare);border:1px solid var(--rare);animation:dice-badge-pop .4s ease-out, dice-combo-glow-blue 1.1s ease-in-out .4s infinite;}
+  .dice-roll-badge.allwild{background:rgba(232,196,104,0.22);color:#ffd76a;border:1px solid #ffd76a;animation:dice-badge-pop .4s ease-out, dice-combo-glow-gold 0.7s ease-in-out .4s infinite;}
   @keyframes dice-combo-glow-blue{
     0%,100%{ box-shadow:0 0 6px 1px rgba(74,144,226,0.5), 0 2px 8px rgba(0,0,0,0.4); text-shadow:0 0 6px rgba(74,144,226,0.6); }
     50%{ box-shadow:0 0 22px 8px rgba(74,144,226,0.95), 0 2px 8px rgba(0,0,0,0.4); text-shadow:0 0 14px rgba(74,144,226,0.95); }
@@ -1655,17 +1678,17 @@ async function renderProfession(body){
   if(p.stamina !== staminaBefore){ await savePlayer(p); }
 
   const staminaPct = Math.max(0, Math.min(100, (p.stamina/p.staminaMax)*100));
-  let html = `<div class="panel">
+  let html = `<div class="panel profession-banner">
     <h2>🛠️ ${tt('職業','Profession')}</h2>
     <p class="sub">${tt('選擇一項職業來採集材料、生產藥水、武器、飾品與家具。每人同時只能有一個生效中的職業，可以花費金幣轉職（原職業的等級與經驗會保留）。', 'Pick a profession to gather materials and craft potions, weapons, accessories, and furniture. Only one profession is active at a time, but you can pay coins to switch (your other profession keeps its level/exp).')}</p>
     <div class="farm-upgrade-line" style="color:var(--gold-bright);">⚡ ${tt('體力','Stamina')} ${p.stamina} / ${p.staminaMax}</div>
     <div style="background:var(--bg-panel-raised, rgba(255,255,255,0.06));border-radius:999px;height:10px;overflow:hidden;border:1px solid var(--line);margin:4px 0 6px;">
       <div style="height:100%;width:${staminaPct}%;background:linear-gradient(90deg, var(--violet), var(--gold));"></div>
     </div>
-    <div class="farm-upgrade-line" style="color:var(--muted);font-size:11px;">${tt('每 5 分鐘被動回復 1 點體力（離線也會累積）','Passively regenerates 1 stamina every 5 minutes, even while offline')}</div>
+    <div class="countdown" style="font-size:11px;">${tt('每 5 分鐘被動回復 1 點體力（離線也會累積）','Passively regenerates 1 stamina every 5 minutes, even while offline')}</div>
   </div>`;
 
-  html += `<div class="panel"><h2>${tt('材料','Materials')}</h2><div style="display:flex;flex-wrap:wrap;gap:10px;">`;
+  html += `<div class="panel profession-banner"><h2>${tt('材料','Materials')}</h2><div style="display:flex;flex-wrap:wrap;gap:10px;">`;
   PROFESSION_DEFS.forEach(def=>{
     html += `<div style="background:var(--bg-panel-raised);border:1px solid var(--line);border-radius:8px;padding:6px 12px;font-size:13px;">
       ${def.materialIcon} ${professionMaterialLabel(def)} × ${p.professionMaterials[def.materialId]||0}
@@ -1750,6 +1773,502 @@ async function renderProfession(body){
   const usePotionBtn = document.getElementById('use-potion-btn');
   if(usePotionBtn) usePotionBtn.onclick = useProfessionPotion;
 }
+
+// ---------- 寵物尋寶玩法 ----------
+// 定位：跟遠征系統做差異化——遠征長時間、高投入、翻牌選局；寵物尋寶短時效、低門檻、
+// 可一天派好幾次，補在遠征與每日塔羅簽到之間。詳見規格書《寵物尋寶玩法設計規格書》。
+const PET_ELEMENT_IDS = ['herb', 'ore', 'lumber']; // 沿用職業三種材料屬性
+const PET_ELEMENT_META = {
+  herb:   {icon:'🌿', labelZh:'夜語藥梟', labelEn:'Nightsage Owl'},
+  ore:    {icon:'⛏️', labelZh:'熔金隊長', labelEn:'Emberore Captain'},
+  lumber: {icon:'🌳', labelZh:'橡語精靈', labelEn:'Oakwhisper Sprite'},
+};
+const PET_RARITY_IDS = ['common', 'rare', 'epic'];
+const PET_RARITY_META = {
+  common: {labelZh:'普通', labelEn:'Common', baseValue:6, color:'var(--common)'},
+  rare:   {labelZh:'稀有', labelEn:'Rare', baseValue:10, color:'var(--rare)'},
+  epic:   {labelZh:'史詩', labelEn:'Epic', baseValue:16, color:'var(--legendary-b)'},
+};
+const PET_STAR_MAX = 5;
+// 合成升星：消耗「同名寵物」（同屬性＋同稀有度）將目標寵物升星。
+// 陣列 index 0~3 對應 ★1→★2、★2→★3、★3→★4、★4→★5 四段轉換。
+const PET_SYNTHESIS_REQUIRED = {
+  common: [2, 3, 4, 5],
+  rare:   [2, 3, 3, 4],
+  epic:   [2, 2, 2, 2],
+};
+const PET_SYNTHESIS_SUCCESS_RATE = {
+  common: [1.00, 0.90, 0.80, 0.65],
+  rare:   [0.95, 0.80, 0.60, 0.40],
+  epic:   [0.75, 0.45, 0.25, 0.10],
+};
+function petSynthesisRequired(rarity, star){
+  const table = PET_SYNTHESIS_REQUIRED[rarity] || PET_SYNTHESIS_REQUIRED.common;
+  const idx = Math.min(table.length - 1, Math.max(0, star - 1));
+  return table[idx];
+}
+function petSynthesisSuccessRate(rarity, star){
+  const table = PET_SYNTHESIS_SUCCESS_RATE[rarity] || PET_SYNTHESIS_SUCCESS_RATE.common;
+  const idx = Math.min(table.length - 1, Math.max(0, star - 1));
+  return table[idx];
+}
+const PET_DURATION_KEYS = ['15m', '1h', '3h', '6h', '12h'];
+const PET_DURATION_META = {
+  '15m': {ms:15*60*1000, labelZh:'15 分鐘', labelEn:'15 min'},
+  '1h':  {ms:60*60*1000, labelZh:'1 小時', labelEn:'1 hr'},
+  '3h':  {ms:3*60*60*1000, labelZh:'3 小時', labelEn:'3 hr'},
+  '6h':  {ms:6*60*60*1000, labelZh:'6 小時', labelEn:'6 hr'},
+  '12h': {ms:12*60*60*1000, labelZh:'12 小時', labelEn:'12 hr'},
+};
+
+// 以下數值皆為規格書「尚待拍板的數字」的草案值，全部開放 GM 後台即時調整。
+const DEFAULT_PET_EGG_GROW_MS = 4*60*60*1000; // 蛋孵化時間草案：4 小時
+const DEFAULT_PET_EGG_MATERIAL_COST = 20; // 種蛋消耗材料數量草案
+const DEFAULT_PET_SWAP_COST = 5000; // 更換出戰寵物花費（比照轉職手感：開放但收費、無冷卻）
+const DEFAULT_PET_BONUS_EGG_CHANCE = 0.03; // 花園收成掉落職業材料時，額外直接開出寵物的機率草案
+const DEFAULT_PET_RARITY_BASE_WEIGHT = {common:70, rare:25, epic:5}; // 孵化稀有度基礎權重
+const DEFAULT_PET_RARITY_LEVEL_BONUS = {rare:1.5, epic:0.6}; // 每花園等級 +多少百分點權重（從 common 扣除）
+const DEFAULT_PET_DURATION_REWARDS = {
+  '15m': {coin:[20,40],    essence:[1,2],   material:[2,4]},
+  '1h':  {coin:[80,150],   essence:[3,6],   material:[8,14]},
+  '3h':  {coin:[260,450],  essence:[10,18], material:[24,40]},
+  '6h':  {coin:[550,950],  essence:[22,38], material:[50,85]},
+  '12h': {coin:[1200,2000],essence:[48,80], material:[105,175]},
+};
+const DEFAULT_PET_RARE_LOOT_CHANCE = {'15m':0.03, '1h':0.05, '3h':0.08, '6h':0.12, '12h':0.18}; // 觸發時整批獎勵翻倍
+const PET_RARE_LOOT_MULT = 2; // 稀有掉落觸發時的獎勵倍率，固定值不開放調整
+
+let PET_EGG_GROW_MS = DEFAULT_PET_EGG_GROW_MS;
+let PET_EGG_MATERIAL_COST = DEFAULT_PET_EGG_MATERIAL_COST;
+let PET_SWAP_COST = DEFAULT_PET_SWAP_COST;
+let PET_BONUS_EGG_CHANCE = DEFAULT_PET_BONUS_EGG_CHANCE;
+let PET_RARITY_BASE_WEIGHT = {...DEFAULT_PET_RARITY_BASE_WEIGHT};
+let PET_RARITY_LEVEL_BONUS = {...DEFAULT_PET_RARITY_LEVEL_BONUS};
+let PET_DURATION_REWARDS = JSON.parse(JSON.stringify(DEFAULT_PET_DURATION_REWARDS));
+let PET_RARE_LOOT_CHANCE = {...DEFAULT_PET_RARE_LOOT_CHANCE};
+
+async function loadPetConfig(){
+  try{
+    const r = await storage.get('config:pet_hunt');
+    if(!r) return;
+    const s = JSON.parse(r.value);
+    const pick = (val, fallback, min=0)=> (typeof val==='number' && !isNaN(val) && val>=min) ? val : fallback;
+    PET_EGG_GROW_MS = pick(s.eggGrowMs, DEFAULT_PET_EGG_GROW_MS, 1000);
+    PET_EGG_MATERIAL_COST = pick(s.eggMaterialCost, DEFAULT_PET_EGG_MATERIAL_COST, 1);
+    PET_SWAP_COST = pick(s.swapCost, DEFAULT_PET_SWAP_COST, 0);
+    PET_BONUS_EGG_CHANCE = pick(s.bonusEggChance, DEFAULT_PET_BONUS_EGG_CHANCE, 0);
+    if(s.rarityBaseWeight && typeof s.rarityBaseWeight === 'object'){
+      PET_RARITY_IDS.forEach(id=>{ PET_RARITY_BASE_WEIGHT[id] = pick(s.rarityBaseWeight[id], DEFAULT_PET_RARITY_BASE_WEIGHT[id], 0); });
+    }
+    if(s.rarityLevelBonus && typeof s.rarityLevelBonus === 'object'){
+      ['rare','epic'].forEach(id=>{ PET_RARITY_LEVEL_BONUS[id] = pick(s.rarityLevelBonus[id], DEFAULT_PET_RARITY_LEVEL_BONUS[id], 0); });
+    }
+    if(s.durationRewards && typeof s.durationRewards === 'object'){
+      PET_DURATION_KEYS.forEach(key=>{
+        const dv = DEFAULT_PET_DURATION_REWARDS[key];
+        const sv = (s.durationRewards[key]) || {};
+        const range2 = (val, fallback)=> (Array.isArray(val) && val.length===2 && val.every(n=>typeof n==='number' && !isNaN(n) && n>=0)) ? [val[0], val[1]] : [...fallback];
+        PET_DURATION_REWARDS[key] = {
+          coin: range2(sv.coin, dv.coin),
+          essence: range2(sv.essence, dv.essence),
+          material: range2(sv.material, dv.material),
+        };
+      });
+    }
+    if(s.rareLootChance && typeof s.rareLootChance === 'object'){
+      PET_DURATION_KEYS.forEach(key=>{ PET_RARE_LOOT_CHANCE[key] = pick(s.rareLootChance[key], DEFAULT_PET_RARE_LOOT_CHANCE[key], 0); });
+    }
+  }catch(e){ /* keep defaults */ }
+}
+async function savePetConfig(){
+  await storage.set('config:pet_hunt', JSON.stringify({
+    eggGrowMs: PET_EGG_GROW_MS,
+    eggMaterialCost: PET_EGG_MATERIAL_COST,
+    swapCost: PET_SWAP_COST,
+    bonusEggChance: PET_BONUS_EGG_CHANCE,
+    rarityBaseWeight: PET_RARITY_BASE_WEIGHT,
+    rarityLevelBonus: PET_RARITY_LEVEL_BONUS,
+    durationRewards: PET_DURATION_REWARDS,
+    rareLootChance: PET_RARE_LOOT_CHANCE,
+  }));
+}
+
+function ensurePets(p){
+  if(!Array.isArray(p.pets)) p.pets = [];
+  p.pets.forEach(pet=>{
+    // 舊資料相容：原本是餵食材料升「等級」，改版後統一用合成升「星」。
+    if(typeof pet.star !== 'number' || pet.star < 1) pet.star = 1;
+    if(pet.star > PET_STAR_MAX) pet.star = PET_STAR_MAX;
+    if(!PET_ELEMENT_IDS.includes(pet.element)) pet.element = 'herb';
+    if(!PET_RARITY_IDS.includes(pet.rarity)) pet.rarity = 'common';
+  });
+  if(p.petActiveId === undefined) p.petActiveId = null;
+  if(p.petActiveId && !p.pets.some(pet=>pet.id===p.petActiveId)) p.petActiveId = null;
+  if(!p.petNest || typeof p.petNest !== 'object') p.petNest = {element:null, plantedAt:null, readyAt:null};
+  if(!p.petHunt || typeof p.petHunt !== 'object') p.petHunt = {active:false, durationKey:null, startAt:null, readyAt:null, petId:null};
+  return p;
+}
+function petElementLabel(id){ const m = PET_ELEMENT_META[id]; return m ? tt(m.labelZh, m.labelEn) : id; }
+function petRarityLabel(id){ const m = PET_RARITY_META[id]; return m ? tt(m.labelZh, m.labelEn) : id; }
+function petDurationLabel(key){ const m = PET_DURATION_META[key]; return m ? tt(m.labelZh, m.labelEn) : key; }
+function getActivePet(p){ ensurePets(p); return p.pets.find(pet=>pet.id===p.petActiveId) || null; }
+// 每星效果線性疊加，從 ★1（起始）算起，★5 封頂共疊加 4 星：
+// 尋寶時間縮短 -4.5%/星（封頂 -18%）、獎勵倍率 +11.25%/星（封頂 +45%）、稀有掉落機率 +3.375%/星（封頂 +13.5%）
+// （封頂數值與改版前的 Lv.10 系統一致，只是把 9 級的成長曲線換算成 4 星）
+function petEffects(pet){
+  if(!pet) return {durationReduction:0, rewardMult:1, rareChanceBonus:0};
+  const steps = Math.max(0, (pet.star||1) - 1);
+  return {
+    durationReduction: Math.min(0.18, steps*0.045),
+    rewardMult: 1 + Math.min(0.45, steps*0.1125),
+    rareChanceBonus: Math.min(0.135, steps*0.03375),
+  };
+}
+function createPet(elementId, rarity){
+  return {id: uid(), element: elementId, rarity, star: 1, createdAt: Date.now()};
+}
+function rollPetRarity(gardenLevel){
+  const lv = gardenLevel || 0;
+  const bonusRare = Math.min(60, lv * PET_RARITY_LEVEL_BONUS.rare);
+  const bonusEpic = Math.min(60, lv * PET_RARITY_LEVEL_BONUS.epic);
+  const weights = {
+    epic: PET_RARITY_BASE_WEIGHT.epic + bonusEpic,
+    rare: PET_RARITY_BASE_WEIGHT.rare + bonusRare,
+    common: Math.max(1, PET_RARITY_BASE_WEIGHT.common - bonusRare - bonusEpic),
+  };
+  const total = weights.common + weights.rare + weights.epic;
+  let r = Math.random()*total;
+  for(const id of ['epic','rare','common']){
+    if(r < weights[id]) return id;
+    r -= weights[id];
+  }
+  return 'common';
+}
+
+async function plantPetEgg(elementId){
+  const p = state.player;
+  if(!p) return;
+  ensurePets(p); ensureProfession(p);
+  if(!PET_ELEMENT_IDS.includes(elementId)) return;
+  if(p.petNest.plantedAt){ showToast(tt('巢裡已經有一顆蛋了','Your nest already has an egg')); return; }
+  if((p.professionMaterials[elementId]||0) < PET_EGG_MATERIAL_COST){
+    showToast(tt(`材料不足，種蛋需要 ${PET_ELEMENT_META[elementId].icon} × ${PET_EGG_MATERIAL_COST}`, `Not enough material - planting needs ${PET_ELEMENT_META[elementId].icon} × ${PET_EGG_MATERIAL_COST}`));
+    return;
+  }
+  p.professionMaterials[elementId] -= PET_EGG_MATERIAL_COST;
+  const now = Date.now();
+  p.petNest = {element: elementId, plantedAt: now, readyAt: now + PET_EGG_GROW_MS};
+  await savePlayer(p);
+  showToast(tt('🥚 已在寵物巢種下一顆蛋','🥚 Planted a pet egg in the nest'));
+  renderTab();
+}
+async function collectPetEgg(){
+  const p = state.player;
+  if(!p) return;
+  ensurePets(p);
+  const nest = p.petNest;
+  if(!nest.plantedAt){ showToast(tt('巢裡沒有蛋','No egg in the nest')); return; }
+  if(Date.now() < nest.readyAt){ showToast(tt('蛋還沒孵化好','The egg is not ready yet')); return; }
+  const rarity = rollPetRarity(p.farmLevel||0);
+  const pet = createPet(nest.element, rarity);
+  p.pets.push(pet);
+  if(!p.petActiveId) p.petActiveId = pet.id;
+  p.petNest = {element:null, plantedAt:null, readyAt:null};
+  await savePlayer(p);
+  showToast(tt(`🐣 孵化成功！獲得 ${PET_ELEMENT_META[pet.element].icon} ${petRarityLabel(rarity)}寵物`, `🐣 Hatched! Got a ${petRarityLabel(rarity)} ${PET_ELEMENT_META[pet.element].icon} pet`));
+  renderTab();
+}
+async function setActivePet(petId){
+  const p = state.player;
+  if(!p) return;
+  ensurePets(p);
+  if(p.petActiveId === petId) return;
+  const pet = p.pets.find(pt=>pt.id===petId);
+  if(!pet) return;
+  if(p.petHunt.active){ showToast(tt('寵物出戰尋寶中，暫時無法更換','Your pet is on a hunt - cannot switch right now')); return; }
+  if(p.petActiveId){
+    if((p.coins||0) < PET_SWAP_COST){
+      showToast(tt(`金幣不足，更換出戰寵物需要 ✦${PET_SWAP_COST}`, `Not enough coins - switching pets costs ✦${PET_SWAP_COST}`));
+      return;
+    }
+    if(!confirm(tt(`確定要花費 ✦${PET_SWAP_COST} 更換出戰寵物嗎？（換下場的寵物等級與經驗會保留）`, `Switch active pet for ✦${PET_SWAP_COST}? (The pet you swap out keeps its level/exp)`))) return;
+    p.coins -= PET_SWAP_COST;
+  }
+  p.petActiveId = petId;
+  await savePlayer(p);
+  showToast(tt('已更換出戰寵物','Active pet switched'));
+  renderTab();
+}
+// 合成升星面板狀態：目前展開中的目標寵物 id，以及已勾選的素材寵物 id 集合。
+// 素材＝與目標寵物「同名」（同屬性＋同稀有度）的其他寵物，出戰中／尋寶中的寵物不可被選為素材。
+let petSynthesisOpenId = null;
+let petSynthesisSelected = new Set();
+
+function petSynthesisEligibleMaterials(p, pet){
+  return p.pets.filter(pt=>
+    pt.id !== pet.id &&
+    pt.element === pet.element &&
+    pt.rarity === pet.rarity &&
+    pt.id !== p.petActiveId &&
+    !(p.petHunt.active && p.petHunt.petId === pt.id)
+  );
+}
+
+function togglePetSynthesisPanel(petId){
+  petSynthesisOpenId = (petSynthesisOpenId === petId) ? null : petId;
+  petSynthesisSelected = new Set();
+  renderTab();
+}
+
+function togglePetSynthesisMaterial(petId, materialId, required){
+  if(petSynthesisSelected.has(materialId)){
+    petSynthesisSelected.delete(materialId);
+  } else {
+    if(petSynthesisSelected.size >= required) return; // 已達所需數量，忽略多選
+    petSynthesisSelected.add(materialId);
+  }
+  renderTab();
+}
+
+async function synthesizePet(petId){
+  const p = state.player;
+  if(!p) return;
+  ensurePets(p);
+  const pet = p.pets.find(pt=>pt.id===petId);
+  if(!pet) return;
+  if(pet.star >= PET_STAR_MAX){ showToast(tt('寵物已經滿星了','This pet is already max star')); return; }
+  const required = petSynthesisRequired(pet.rarity, pet.star);
+  const eligible = petSynthesisEligibleMaterials(p, pet);
+  const eligibleIds = new Set(eligible.map(pt=>pt.id));
+  const chosenIds = Array.from(petSynthesisSelected).filter(id=>eligibleIds.has(id));
+  if(chosenIds.length < required){
+    showToast(tt(`素材不足，需要選擇 ${required} 隻同名寵物才能合成`, `Not enough material selected - need ${required} matching pets to synthesize`));
+    return;
+  }
+  const successRate = petSynthesisSuccessRate(pet.rarity, pet.star);
+  if(!confirm(tt(
+    `確定要用 ${required} 隻同名寵物合成升星嗎？成功率 ${Math.round(successRate*100)}%，無論成功或失敗，素材都會被消耗，此動作無法復原。`,
+    `Synthesize using ${required} matching pets? Success rate ${Math.round(successRate*100)}%. Materials are consumed either way - this cannot be undone.`
+  ))) return;
+  const useIds = new Set(chosenIds.slice(0, required));
+  p.pets = p.pets.filter(pt=>!useIds.has(pt.id));
+  const success = Math.random() < successRate;
+  if(success) pet.star += 1;
+  petSynthesisOpenId = null;
+  petSynthesisSelected = new Set();
+  await savePlayer(p);
+  showToast(success
+    ? tt(`✨ 合成成功！寵物升到 ★${pet.star}`, `✨ Synthesis succeeded! Pet is now ★${pet.star}`)
+    : tt('💔 合成失敗，素材已消耗，星級未變', '💔 Synthesis failed - materials were consumed, star unchanged'));
+  renderTab();
+}
+async function startPetHunt(durationKey){
+  const p = state.player;
+  if(!p) return;
+  ensurePets(p);
+  if(!PET_DURATION_KEYS.includes(durationKey)) return;
+  const pet = getActivePet(p);
+  if(!pet){ showToast(tt('請先設定出戰寵物','Set an active pet first')); return; }
+  if(p.petHunt.active){ showToast(tt('寵物已經在尋寶中了','Your pet is already out on a hunt')); return; }
+  const eff = petEffects(pet);
+  const baseMs = PET_DURATION_META[durationKey].ms;
+  const actualMs = Math.round(baseMs * (1 - eff.durationReduction));
+  const now = Date.now();
+  p.petHunt = {active:true, durationKey, startAt: now, readyAt: now + actualMs, petId: pet.id};
+  await savePlayer(p);
+  showToast(tt(`🧭 已派遣寵物尋寶（${petDurationLabel(durationKey)}）`, `🧭 Pet dispatched on a hunt (${petDurationLabel(durationKey)})`));
+  renderTab();
+}
+async function claimPetHunt(){
+  const p = state.player;
+  if(!p) return;
+  ensurePets(p); ensureProfession(p); ensureMaterials(p);
+  const hunt = p.petHunt;
+  if(!hunt.active) return;
+  if(Date.now() < hunt.readyAt){ showToast(tt('尋寶還沒結束','The hunt is not finished yet')); return; }
+  const pet = p.pets.find(pt=>pt.id===hunt.petId) || getActivePet(p);
+  const eff = petEffects(pet);
+  const cfg = PET_DURATION_REWARDS[hunt.durationKey] || DEFAULT_PET_DURATION_REWARDS['15m'];
+  const roll = (range)=> Math.floor(range[0] + Math.random()*(range[1]-range[0]+1));
+  let coin = roll(cfg.coin);
+  let essence = roll(cfg.essence);
+  let material = roll(cfg.material);
+  // 屬性決定掉落偏向：草系偏藥草、礦系偏金幣礦石、木系偏骰子精華木料
+  const element = pet ? pet.element : null;
+  if(element === 'herb'){ material = Math.round(material*1.6); coin = Math.round(coin*0.6); essence = Math.round(essence*0.5); }
+  else if(element === 'ore'){ coin = Math.round(coin*1.6); material = Math.round(material*0.8); essence = Math.round(essence*0.4); }
+  else if(element === 'lumber'){ essence = Math.round(essence*1.6); material = Math.round(material*0.8); coin = Math.round(coin*0.5); }
+  coin = Math.round(coin * eff.rewardMult);
+  essence = Math.round(essence * eff.rewardMult);
+  material = Math.round(material * eff.rewardMult);
+  const rareChance = (PET_RARE_LOOT_CHANCE[hunt.durationKey]||0) + eff.rareChanceBonus;
+  const rareHit = Math.random() < rareChance;
+  if(rareHit){ coin *= PET_RARE_LOOT_MULT; essence *= PET_RARE_LOOT_MULT; material *= PET_RARE_LOOT_MULT; }
+  p.coins = (p.coins||0) + coin;
+  p.materials.diceEssence = (p.materials.diceEssence||0) + essence;
+  const materialId = element || PROFESSION_MATERIAL_IDS[Math.floor(Math.random()*PROFESSION_MATERIAL_IDS.length)];
+  p.professionMaterials[materialId] = (p.professionMaterials[materialId]||0) + material;
+  p.petHunt = {active:false, durationKey:null, startAt:null, readyAt:null, petId:null};
+  await savePlayer(p);
+  const matMeta = PET_ELEMENT_META[materialId];
+  showToast(tt(
+    `🎉 尋寶完成${rareHit?'（✨稀有掉落 x2！）':''}：✦${coin}、精華 × ${essence}、${matMeta.icon} × ${material}`,
+    `🎉 Hunt complete${rareHit?' (✨Rare loot x2!)':''}: ✦${coin}, Essence × ${essence}, ${matMeta.icon} × ${material}`
+  ));
+  renderTab();
+}
+
+function petSectionHtml(p){
+  ensurePets(p); ensureProfession(p);
+  const now = Date.now();
+  const activePet = getActivePet(p);
+
+  let html = `<div class="panel pet-banner">
+    <h2>🐾 ${tt('寵物尋寶','Pet Treasure Hunt')}</h2>
+    <p class="sub">${tt('花園孵蛋、養成寵物，派牠短時間出去尋寶。沒有翻牌選局，時間到直接領獎，一天可以派好幾次。', 'Hatch and raise a pet in your garden, then send it on short treasure hunts. No card-flip - just wait and claim, and you can dispatch as many times a day as you like.')}</p>
+  </div>`;
+
+  // ---------- 寵物巢 ----------
+  const nest = p.petNest;
+  html += `<div class="panel pet-banner"><h2>${tt('🏡 寵物巢','🏡 Pet Nest')}</h2>`;
+  if(!nest.plantedAt){
+    html += `<p class="sub">${tt(`選擇要種下的蛋屬性（依對應材料決定），花費對應材料 × ${PET_EGG_MATERIAL_COST}，等待孵化。`, `Choose an egg element (matches its material), spend × ${PET_EGG_MATERIAL_COST} of that material, and wait for it to hatch.`)}</p>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;">`;
+    PET_ELEMENT_IDS.forEach(id=>{
+      const meta = PET_ELEMENT_META[id];
+      const have = (p.professionMaterials[id]||0);
+      const canPlant = have >= PET_EGG_MATERIAL_COST;
+      html += `<button class="btn small ${canPlant?'':'secondary'}" data-plant-egg="${id}" ${canPlant?'':'disabled'}>
+        ${meta.icon} ${petElementLabel(id)}（${have}/${PET_EGG_MATERIAL_COST}）
+      </button>`;
+    });
+    html += `</div>`;
+  } else {
+    const ready = now >= nest.readyAt;
+    const meta = PET_ELEMENT_META[nest.element];
+    html += `<div class="farm-upgrade-box">
+      <div class="farm-upgrade-title">${meta.icon} ${petElementLabel(nest.element)} ${tt('蛋','egg')}</div>
+      ${ready
+        ? `<div class="farm-upgrade-line" style="color:var(--gold-bright);">${tt('✨ 已經可以孵化了！','✨ Ready to hatch!')}</div>
+           <button class="btn small" id="pet-collect-btn">${tt('孵化','Hatch')}</button>`
+        : `<div class="countdown" id="pet-nest-countdown">${tt('孵化倒數：','Hatching in: ')}${formatDuration(nest.readyAt-now)}</div>`
+      }
+    </div>`;
+  }
+  html += `</div>`;
+
+  // ---------- 出戰寵物 / 尋寶派遣 ----------
+  html += `<div class="panel"><h2>${tt('🧭 出戰與尋寶','🧭 Active Pet & Hunt')}</h2>`;
+  if(!activePet){
+    html += `<p class="sub">${tt('目前沒有出戰中的寵物，請到下方庫存選一隻出戰。','No active pet yet - pick one from your inventory below.')}</p>`;
+  } else {
+    const eff = petEffects(activePet);
+    const meta = PET_ELEMENT_META[activePet.element];
+    html += `<div class="farm-upgrade-box">
+      <div class="farm-upgrade-title">${meta.icon} ${petRarityLabel(activePet.rarity)}${petElementLabel(activePet.element)} · ${'★'.repeat(activePet.star)}${'☆'.repeat(PET_STAR_MAX-activePet.star)}</div>
+      <div class="farm-upgrade-line" style="color:var(--muted);font-size:12px;">
+        ${tt('尋寶時間縮短','Duration cut')} -${Math.round(eff.durationReduction*100)}% · ${tt('獎勵倍率','Reward mult')} +${Math.round((eff.rewardMult-1)*100)}% · ${tt('稀有掉落加成','Rare bonus')} +${(eff.rareChanceBonus*100).toFixed(1)}%
+      </div>
+    </div>`;
+
+    const hunt = p.petHunt;
+    if(hunt.active){
+      const huntReady = now >= hunt.readyAt;
+      html += `<div class="farm-upgrade-box">
+        <div class="farm-upgrade-title">${tt('尋寶中','Out hunting')}：${petDurationLabel(hunt.durationKey)}</div>
+        ${huntReady
+          ? `<div class="farm-upgrade-line" style="color:var(--gold-bright);">${tt('✨ 尋寶完成，可以領取獎勵了！','✨ Hunt complete - claim your reward!')}</div>
+             <button class="btn small" id="pet-claim-btn">${tt('領取','Claim')}</button>`
+          : `<div class="countdown" id="pet-hunt-countdown">${tt('倒數：','Remaining: ')}${formatDuration(hunt.readyAt-now)}</div>`
+        }
+      </div>`;
+    } else {
+      html += `<p class="sub">${tt('選擇派遣時長，時間到即可回來領取獎勵（金幣／骰子精華／職業材料，依寵物屬性決定偏向）。','Pick a duration - when it finishes you can claim coins/essence/material, weighted by your pet\'s element.')}</p>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;">`;
+      PET_DURATION_KEYS.forEach(key=>{
+        html += `<button class="btn small" data-start-hunt="${key}">${petDurationLabel(key)}</button>`;
+      });
+      html += `</div>`;
+    }
+  }
+  html += `</div>`;
+
+  // ---------- 寵物庫存 / 養成 ----------
+  html += `<div class="panel"><h2>${tt('📦 寵物庫存','📦 Pet Inventory')}</h2>`;
+  if(!p.pets.length){
+    html += `<p class="sub">${tt('目前還沒有寵物，先去花園種蛋孵化一隻吧！','No pets yet - plant an egg in the garden to hatch one!')}</p>`;
+  } else {
+    html += `<div style="display:flex;flex-direction:column;gap:10px;">`;
+    p.pets.forEach(pet=>{
+      const meta = PET_ELEMENT_META[pet.element];
+      const isActive = pet.id === p.petActiveId;
+      const isMax = pet.star >= PET_STAR_MAX;
+      const starLabel = '★'.repeat(pet.star) + '☆'.repeat(PET_STAR_MAX-pet.star);
+      const isOpen = petSynthesisOpenId === pet.id;
+      html += `<div class="farm-upgrade-box" style="border-color:${isActive?'var(--gold)':'var(--line)'};">
+        <div class="farm-upgrade-title">${meta.icon} ${petRarityLabel(pet.rarity)}${petElementLabel(pet.element)} · ${starLabel}${isActive?tt(' （出戰中）',' (Active)'):''}</div>
+        <div class="farm-upgrade-line" style="color:var(--muted);font-size:12px;">${isMax ? tt('已滿星','Max star') : ''}</div>
+        <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap;">
+          ${isActive ? '' : `<button class="btn small secondary" data-set-active="${pet.id}">${tt('設為出戰','Set Active')}</button>`}
+          ${isMax ? '' : `<button class="btn small secondary" data-open-synth="${pet.id}">${isOpen ? tt('收起合成面板','Close Synthesis') : tt('合成升星','Synthesize')}</button>`}
+        </div>
+        ${(!isMax && isOpen) ? petSynthesisPanelHtml(p, pet) : ''}
+      </div>`;
+    });
+    html += `</div>`;
+  }
+  html += `</div>`;
+
+  return html;
+}
+function petSynthesisPanelHtml(p, pet){
+  const required = petSynthesisRequired(pet.rarity, pet.star);
+  const successRate = petSynthesisSuccessRate(pet.rarity, pet.star);
+  const eligible = petSynthesisEligibleMaterials(p, pet);
+  const selectedCount = Array.from(petSynthesisSelected).filter(id=>eligible.some(pt=>pt.id===id)).length;
+  const canConfirm = selectedCount >= required;
+  let html = `<div class="farm-upgrade-box" style="margin-top:8px;background:var(--bg-panel-raised);">
+    <div class="farm-upgrade-line" style="color:var(--cream);">${tt('合成素材：勾選同名寵物','Synthesis material: select matching pets')}（<span style="color:${canConfirm?'var(--gold-bright)':'var(--danger)'};">${selectedCount}/${required}</span>）</div>
+    <div class="farm-upgrade-line" style="color:var(--muted);font-size:12px;">${tt(`成功率 ${Math.round(successRate*100)}%，無論成敗素材皆會消耗`, `Success rate ${Math.round(successRate*100)}% - materials are consumed either way`)}</div>`;
+  if(!eligible.length){
+    html += `<p class="sub" style="margin:8px 0 0;">${tt('目前沒有可用的同名寵物（需同屬性＋同稀有度，且不在出戰／尋寶中）','No matching pets available (needs same element + rarity, and must not be active or on a hunt)')}</p>`;
+  } else {
+    html += `<div style="display:flex;flex-direction:column;gap:4px;margin-top:8px;">`;
+    eligible.forEach(mat=>{
+      const checked = petSynthesisSelected.has(mat.id);
+      const matStar = '★'.repeat(mat.star) + '☆'.repeat(PET_STAR_MAX-mat.star);
+      html += `<label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;">
+        <input type="checkbox" data-synth-toggle="${pet.id}|${mat.id}|${required}" ${checked?'checked':''} />
+        ${PET_ELEMENT_META[mat.element].icon} ${petRarityLabel(mat.rarity)}${petElementLabel(mat.element)} · ${matStar}
+      </label>`;
+    });
+    html += `</div>`;
+  }
+  html += `<div style="display:flex;gap:8px;margin-top:10px;">
+      <button class="btn small ${canConfirm?'':'secondary'}" data-synth-confirm="${pet.id}" ${canConfirm?'':'disabled'}>${tt('確認合成','Confirm Synthesis')}</button>
+      <button class="btn small secondary" data-open-synth="${pet.id}">${tt('取消','Cancel')}</button>
+    </div>
+  </div>`;
+  return html;
+}
+function wirePetEvents(){
+  document.querySelectorAll('[data-plant-egg]').forEach(btn=>{ btn.onclick = ()=>plantPetEgg(btn.dataset.plantEgg); });
+  const collectBtn = document.getElementById('pet-collect-btn');
+  if(collectBtn) collectBtn.onclick = collectPetEgg;
+  document.querySelectorAll('[data-start-hunt]').forEach(btn=>{ btn.onclick = ()=>startPetHunt(btn.dataset.startHunt); });
+  const claimBtn = document.getElementById('pet-claim-btn');
+  if(claimBtn) claimBtn.onclick = claimPetHunt;
+  document.querySelectorAll('[data-set-active]').forEach(btn=>{ btn.onclick = ()=>setActivePet(btn.dataset.setActive); });
+  document.querySelectorAll('[data-open-synth]').forEach(btn=>{ btn.onclick = ()=>togglePetSynthesisPanel(btn.dataset.openSynth); });
+  document.querySelectorAll('[data-synth-toggle]').forEach(input=>{
+    input.onchange = ()=>{
+      const [petId, materialId, required] = input.dataset.synthToggle.split('|');
+      togglePetSynthesisMaterial(petId, materialId, parseInt(required, 10));
+    };
+  });
+  document.querySelectorAll('[data-synth-confirm]').forEach(btn=>{ btn.onclick = ()=>synthesizePet(btn.dataset.synthConfirm); });
+}
+
 
 // ---------- 星盤解鎖樹（階段二）----------
 const STAR_CHART_ZODIAC = [
@@ -2278,6 +2797,13 @@ function rollDiceAttack(p, activeEvent, comboStreak){
   // 面效果：3 顆骰子若同時開出多個帶效果的面，同時生效、疊加套用，影響整次攻擊的總傷害
   let atkBonus = 0, critRateBonus = 0, critDmgBonus = 0, flatDmgBonus = 0, comboBoostBonus = 0, contribBonusPct = 0, coinRefundChance = 0;
   rolls.forEach(r => {
+    // 面數字固有加成（1~4 號的暴擊流路線）：擲到就保證觸發，跟下面隨機抽到的
+    // 面效果各自獨立疊加。
+    const numBonus = DICE_FACE_NUM_BONUS[r.face.num];
+    if(numBonus){
+      if(numBonus.critRate) critRateBonus += numBonus.critRate;
+      if(numBonus.critDmg) critDmgBonus += numBonus.critDmg;
+    }
     const eff = r.face.effect;
     if(!eff) return;
     if(eff.kind === 'atk') atkBonus += eff.value;
@@ -2289,10 +2815,16 @@ function rollDiceAttack(p, activeEvent, comboStreak){
     else if(eff.kind === 'combo_boost') comboBoostBonus += eff.value;
     // 'wild' 沒有數值型加成，只影響下面 computeNumberCombo 的對子/豹子判定
   });
+  // 🎉 萬能三連彩蛋：裝備的骰子這次「每一顆」都恰好擲出萬能面（機率很低，效果池權重
+  // 只有 2/100，三顆同時中的機率極小）——保底觸發暴擊，並額外疊加一段固定暴擊傷害
+  // 當作驚喜獎勵，跟其他來源的 critDmgBonus 用同一套機制累加，不是另開一條公式。
+  const allWild = rolls.length >= DICE_EQUIP_SLOTS && rolls.every(r => r.face.effect && r.face.effect.kind === 'wild');
+  if(allWild) critDmgBonus += TRIPLE_WILD_CRIT_DMG_BONUS;
   critRateBonus += starChartMoonCritRateBonus(p); // 🌙 星盤月亮節點：固定加成，不受骰子面效果封頂限制
   totalDamage += flatDmgBonus; // 固定傷害先加進基數，之後才吃百分比加成，這樣才「划算」
   if(atkBonus > 0) totalDamage *= (1 + atkBonus);
   let isCrit = critRateBonus > 0 && Math.random() < critRateBonus;
+  if(allWild) isCrit = true; // 🎉 三顆全萬能保底觸發暴擊，不用擲機率
   if(isCrit) totalDamage *= (1 + critDmgBonus);
   // 組合加成：改為分級——2 顆骰子開出同號碼（對子）與 3 顆骰子開出同號碼（豹子）
   // 給不同倍率，只取最大重複次數對應的最高一階（不會疊加），只要裝備 ≥2 顆骰子
@@ -2331,7 +2863,7 @@ function rollDiceAttack(p, activeEvent, comboStreak){
   }
   return {
     damage: Math.max(1, Math.round(totalDamage * starChartSunDamageMultiplier(p))), // ☀️ 星盤太陽節點：對最終傷害套倍率
-    rolls, atkBonus, critRateBonus, critDmgBonus, isCrit,
+    rolls, atkBonus, critRateBonus, critDmgBonus, isCrit, allWild,
     flatDmgBonus, comboBoostBonus, contribBonusPct, coinRefunded,
     comboTier: combo.tier, sameNumber: combo.tier === 'triple', // sameNumber 保留給舊程式相容，等同「豹子」
     qualityComboTier: qualityCombo.tier, // 🔷 品質對子/豹子（跟 comboTier 各自獨立），供 UI 顯示徽章用
@@ -2629,6 +3161,7 @@ function playDiceRollAnimation(diceObjs, burst){
         stage.insertBefore(flash, stage.firstChild);
       }
       const badges = [];
+      if(burst.allWild) badges.push(`<span class="dice-roll-badge allwild">${tt(`🎉 萬能三連！暴擊傷害+${Math.round(TRIPLE_WILD_CRIT_DMG_BONUS*100)}%`, `🎉 Triple Wild! Crit dmg +${Math.round(TRIPLE_WILD_CRIT_DMG_BONUS*100)}%`)}</span>`);
       if(burst.comboTier === 'triple') badges.push(`<span class="dice-roll-badge triple">${tt('🎯 豹子 ×2！','🎯 Triple ×2!')}</span>`);
       else if(burst.comboTier === 'pair') badges.push(`<span class="dice-roll-badge pair">${tt(`✌️ 對子 ×${DICE_COMBO_MULT.pair}！`, `✌️ Pair ×${DICE_COMBO_MULT.pair}!`)}</span>`);
       // 🔷 品質對子/豹子跟上面數字對子/豹子各自獨立判定，兩者可能同時出現（例如
@@ -2779,6 +3312,7 @@ async function performBossAttack(){
   } else {
     const diceTag = burst.rolls.map(r => r.face.num).join('·');
     const bonusTags = [];
+    if(burst.allWild) bonusTags.push(tt('🎉萬能三連','🎉Triple Wild'));
     if(burst.comboTier === 'triple') bonusTags.push(tt('🎯豹子×2','🎯Triple×2'));
     else if(burst.comboTier === 'pair') bonusTags.push(tt(`✌️對子×${DICE_COMBO_MULT.pair}`, `✌️Pair×${DICE_COMBO_MULT.pair}`));
     if(burst.qualityComboTier === 'triple') bonusTags.push(tt(`🔷品質豹子×${DICE_QUALITY_COMBO_MULT.triple}`, `🔷Quality Triple×${DICE_QUALITY_COMBO_MULT.triple}`));
@@ -2823,9 +3357,22 @@ const DEFAULT_DICE_BASE_ATTACK_RANGE = [80, 160];
 let DICE_BASE_ATTACK_RANGE = [...DEFAULT_DICE_BASE_ATTACK_RANGE];
 
 const DICE_EQUIP_SLOTS = 3; // 玩家同時裝備 3 顆不同骰子
+const TRIPLE_WILD_CRIT_DMG_BONUS = 0.50; // 🎉 萬能三連彩蛋：三顆全萬能面時額外疊加的固定暴擊傷害
 
-// 面數字對應傷害倍率（1號=1.1x … 6號=1.6x），供階段四攻擊邏輯使用。
+// 面數字對應傷害倍率。維持原始倍率（5、6 號不變，天花板不動），1~4 號額外疊加
+// 固定綁在數字上的暴擊率/暴擊傷害加成（見 DICE_FACE_NUM_BONUS）補強存在感，
+// 讓 1~4 號變成「暴擊流」路線，而不是單純比 5、6 號弱的面。
 const DICE_FACE_MULT = {1:1.1, 2:1.2, 3:1.3, 4:1.4, 5:1.5, 6:1.6};
+// 1~4 號在原倍率上額外疊加固定綁在數字上的暴擊率/暴擊傷害加成，讓 1~4 號
+// 變成「暴擊流」路線（1、3 衝暴擊率＝打得中，2、4 衝暴擊傷害＝打得痛），而不是單純
+// 比 5、6 號弱的面。這裡是「擲到就保證觸發」的固定加成，跟隨機抽的面效果
+// （DICE_FACE_EFFECT_POOL）各自獨立疊加，兩者不衝突。5、6 號維持原倍率、不吃這組加成。
+const DICE_FACE_NUM_BONUS = {
+  1: {critRate: 0.04},
+  2: {critDmg: 0.04},
+  3: {critRate: 0.03},
+  4: {critDmg: 0.03},
+};
 
 // 面效果池：效果綁在「物理面」而非數值，所以同一顆骰子的兩個「3」效果可以不同。
 // 抽卡時對每一個被選中的效果面各自獨立抽一次效果（可能抽到同一種效果，這是預期內的）。
@@ -3228,9 +3775,18 @@ async function doDismantleAllDice(){
   }
 }
 
+function diceFaceNumBonusLabel(num){
+  const b = DICE_FACE_NUM_BONUS[num];
+  if(!b) return '';
+  if(b.critRate) return tt(`暴擊率+${Math.round(b.critRate*100)}%`, `Crit rate +${Math.round(b.critRate*100)}%`);
+  if(b.critDmg) return tt(`暴擊傷害+${Math.round(b.critDmg*100)}%`, `Crit dmg +${Math.round(b.critDmg*100)}%`);
+  return '';
+}
 function diceFaceLabel(face){
-  if(!face.effect) return `${face.num}`;
-  return `${face.num}·${tt(face.effect.label, face.effect.labelEn)}`;
+  const numBonusLabel = diceFaceNumBonusLabel(face.num);
+  if(!face.effect) return numBonusLabel ? `${face.num}·${numBonusLabel}` : `${face.num}`;
+  const effLabel = tt(face.effect.label, face.effect.labelEn);
+  return numBonusLabel ? `${face.num}·${numBonusLabel}·${effLabel}` : `${face.num}·${effLabel}`;
 }
 
 function renderDiceCard(dice, opts){
@@ -3240,7 +3796,13 @@ function renderDiceCard(dice, opts){
   // 舊資料或損毀的骰子快照可能沒有 faces 陣列，這裡防呆避免整頁因為
   // .map() 撞到 undefined 而整個 render() 掛掉（例如拍賣行自動結算過期拍賣時）。
   const faces = Array.isArray(dice.faces) ? dice.faces : [];
-  const facesHtml = faces.map(f=>`<span style="display:inline-block;min-width:26px;padding:3px 5px;margin:2px;border-radius:6px;border:1px solid ${f.effect ? meta.color : 'var(--line)'};font-family:'Space Mono',monospace;font-size:11px;${f.effect ? `color:${meta.color};` : 'color:var(--muted);'}" title="${f.effect ? tt(f.effect.desc||f.effect.label, f.effect.descEn||f.effect.labelEn) : ''}">${diceFaceLabel(f)}</span>`).join('');
+  const facesHtml = faces.map(f=>{
+    const numBonusLabel = diceFaceNumBonusLabel(f.num);
+    const titleParts = [];
+    if(numBonusLabel) titleParts.push(numBonusLabel);
+    if(f.effect) titleParts.push(tt(f.effect.desc||f.effect.label, f.effect.descEn||f.effect.labelEn));
+    return `<span style="display:inline-block;min-width:26px;padding:3px 5px;margin:2px;border-radius:6px;border:1px solid ${f.effect ? meta.color : 'var(--line)'};font-family:'Space Mono',monospace;font-size:11px;${f.effect ? `color:${meta.color};` : 'color:var(--muted);'}" title="${titleParts.join(' · ')}">${diceFaceLabel(f)}</span>`;
+  }).join('');
   return `<div style="border:1px solid ${meta.color};border-radius:10px;padding:10px 12px;margin-bottom:8px;background:rgba(255,255,255,0.03);${epicGlow}">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
       <span style="display:flex;align-items:center;gap:6px;font-family:'Cinzel',serif;color:${meta.color};font-weight:600;">
@@ -3628,7 +4190,7 @@ function renderSeason(body){
   const p = state.player;
   ensureMaterials(p);
   if(!SEASON_ACTIVE){
-    body.innerHTML = `<div class="panel"><h2>${tt(SEASON_LABEL_ZH, SEASON_LABEL_EN)}</h2><p class="sub">${tt('目前沒有進行中的賽季，敬請期待。','No season is currently active. Stay tuned.')}</p></div>`;
+    body.innerHTML = `<div class="panel"><h2>${tt('星象幻境和星盤','Astral Reverie & Star Chart')}</h2><p class="sub">${tt('目前沒有進行中的賽季，敬請期待。','No season is currently active. Stay tuned.')}</p></div>`;
     return;
   }
   let html = '';
@@ -3690,6 +4252,10 @@ function renderSeason(body){
     ${seasonCardsGridMarkup(p)}
   </div>
   </div>`;
+
+  // ---------- 星盤解鎖樹（併入星象幻境同一頁）----------
+  html += renderStarChartHtml(p);
+
   body.innerHTML = html;
   const cardBtn = document.getElementById('season-card-draw-btn');
   if(cardBtn) cardBtn.onclick = doSeasonCardDraw;
@@ -3698,14 +4264,12 @@ function renderSeason(body){
   const exMoonBtn = document.getElementById('season-exchange-moon-btn');
   if(exMoonBtn) exMoonBtn.onclick = ()=>doExchangeContrib('moon');
   bindSeasonCardClicks(body);
+  wireStarChart(body);
 }
 
-function renderStarChart(body){
-  const p = state.player;
-  ensureMaterials(p);
+function renderStarChartHtml(p){
   if(!SEASON_ACTIVE){
-    body.innerHTML = `<div class="panel"><h2>${tt('星盤解鎖樹','Star Chart')}</h2><p class="sub">${tt('目前沒有進行中的賽季。','No season is currently active.')}</p></div>`;
-    return;
+    return `<div class="panel"><h2>${tt('星盤解鎖樹','Star Chart')}</h2><p class="sub">${tt('目前沒有進行中的賽季。','No season is currently active.')}</p></div>`;
   }
   const R = 42; // 百分比半徑
   const nodesHtml = STAR_CHART_ZODIAC.map(z=>{
@@ -3720,7 +4284,7 @@ function renderStarChart(body){
       <div class="sc-node-label">${tt(z.label,z.labelEn)}</div>
     </div>`;
   }).join('');
-  let html = `<div class="panel">
+  return `<div class="panel">
     <h2>✦ ${tt('星盤解鎖樹','Star Chart Talent Tree')}</h2>
     <p class="sub">${tt('消耗「日月之輝」一次性點亮 12 星座節點，各元素三連可疊加百分比加成，賽季結束將會重置。','Spend Sun-Moon Brilliance to permanently light each of the 12 zodiac nodes this season. Bonuses stack per element and reset when the season ends.')}</p>
     <div class="countdown" style="margin-bottom:12px;">🌙 ${tt('日月之輝','Sun-Moon Brilliance')}：<b style="color:var(--gold-bright);">${p.materials.moon}</b></div>
@@ -3775,7 +4339,10 @@ function renderStarChart(body){
       }).join('')}
     </div>
   </div>`;
-  body.innerHTML = html;
+}
+
+function wireStarChart(body){
+  const p = state.player;
   body.querySelectorAll('.sc-node[data-zodiac]').forEach(el=>{
     el.onclick = ()=>{
       const zid = el.dataset.zodiac;
@@ -6239,7 +6806,19 @@ async function harvestPlot(plotIndex, opts){
       const def = PROFESSION_DEFS.find(d=>d.materialId===materialId);
       materialDrop = {materialId, qty, icon: def ? def.materialIcon : '', label: def ? professionMaterialLabel(def) : materialId};
     }
-    result = {withered:false, seedName: seedName(seed), coinGain, bonusCard, moonGain, materialDrop};
+    // 寵物尋寶玩法：花園收成掉落職業材料的同時，額外有小機率直接開出一隻寵物
+    // （對應規格書「蛋的另一來源：職業採集有機率額外掉落」；此處為求簡化，命中時
+    // 直接產生已孵化的寵物，不吃花園等級加成，維持基礎稀有度機率）。
+    let bonusPet = null;
+    if(materialDrop && Math.random() < PET_BONUS_EGG_CHANCE){
+      ensurePets(p);
+      const rarity = rollPetRarity(0);
+      const pet = createPet(materialDrop.materialId, rarity);
+      p.pets.push(pet);
+      if(!p.petActiveId) p.petActiveId = pet.id;
+      bonusPet = pet;
+    }
+    result = {withered:false, seedName: seedName(seed), coinGain, bonusCard, moonGain, materialDrop, bonusPet};
     bumpQuest(p, 'harvest', 1);
     ensureStats(p).totalHarvests += 1;
   }
@@ -6259,6 +6838,7 @@ async function harvestOne(plotIndex){
     if(result.moonGain) msg += tt(` + 🌙 日月之輝 x${result.moonGain}`, ` + 🌙 Sun-Moon Brilliance x${result.moonGain}`);
     if(result.bonusCard) msg += tt(` + 額外一張「${result.bonusCard.name}」！`, ` + a bonus "${result.bonusCard.name}"!`);
     if(result.materialDrop) msg += tt(` + ${result.materialDrop.icon} ${result.materialDrop.label} x${result.materialDrop.qty}`, ` + ${result.materialDrop.icon} ${result.materialDrop.label} x${result.materialDrop.qty}`);
+    if(result.bonusPet) msg += tt(` + 🥚➡️🐾 額外孵化一隻${petRarityLabel(result.bonusPet.rarity)}寵物！`, ` + 🥚➡️🐾 bonus hatched a ${petRarityLabel(result.bonusPet.rarity)} pet!`);
     showToast(msg);
   }
   render();
@@ -6271,6 +6851,7 @@ async function harvestAllReady(){
   const now = Date.now();
   let coinTotal = 0, harvestedCount = 0, witheredCount = 0, moonTotal = 0;
   const bonusCards = [];
+  const bonusPets = [];
   const materialTotals = {};
   for(let i=0;i<farm.length;i++){
     const status = plotStatus(farm[i], now);
@@ -6281,6 +6862,7 @@ async function harvestAllReady(){
     else{
       harvestedCount++; coinTotal += result.coinGain; moonTotal += (result.moonGain||0);
       if(result.bonusCard) bonusCards.push(result.bonusCard.name);
+      if(result.bonusPet) bonusPets.push(result.bonusPet);
       if(result.materialDrop){
         const md = result.materialDrop;
         if(!materialTotals[md.materialId]) materialTotals[md.materialId] = {icon: md.icon, label: md.label, qty: 0};
@@ -6296,6 +6878,7 @@ async function harvestAllReady(){
   const materialParts = Object.values(materialTotals).map(m=>`${m.icon} ${m.label} x${m.qty}`);
   if(materialParts.length) msg += ` + ${materialParts.join('、')}`;
   if(bonusCards.length) msg += tt(`（額外獲得：${bonusCards.join('、')}）`, ` (bonus: ${bonusCards.join(', ')})`);
+  if(bonusPets.length) msg += tt(` + 🥚➡️🐾 額外孵化 ${bonusPets.length} 隻寵物！`, ` + 🥚➡️🐾 bonus hatched ${bonusPets.length} pet(s)!`);
   if(witheredCount>0) msg += `${msg?tt('；', '; '):''}${tt(`${witheredCount} 塊地作物枯萎了`, `${witheredCount} plot(s) withered`)}`;
   showToast(msg);
   render();
@@ -6563,6 +7146,7 @@ async function loadPlayer(nick){
     ensureMaterials(p);
     ensureExpedition(p);
     ensureProfession(p);
+    ensurePets(p);
     ensureDiceInventory(p); // 順便把骰子面效果從精簡格式（id）還原成完整物件，見該函式註解
     return p;
   }catch(e){ return null; }
@@ -6586,6 +7170,7 @@ async function loadPlayerRaw(nick){
   ensureMaterials(p);
   ensureExpedition(p);
   ensureProfession(p);
+  ensurePets(p);
   ensureDiceInventory(p);
   return {player: p, raw: rows[0].value, updatedAt: rows[0].updated_at || null};
 }
@@ -6643,7 +7228,10 @@ function newPlayer(nick, passwordHash){
     professionProgress:{alchemist:{level:1,exp:0}, blacksmith:{level:1,exp:0}, carpenter:{level:1,exp:0}},
     professionMaterials:{herb:0, ore:0, lumber:0},
     professionItems:{potion_small:0, weapon_common:0, accessory_common:0, furniture_common:0},
-    stamina:PROFESSION_STAMINA_MAX, staminaMax:PROFESSION_STAMINA_MAX, lastStaminaRegenAt:Date.now()};
+    stamina:PROFESSION_STAMINA_MAX, staminaMax:PROFESSION_STAMINA_MAX, lastStaminaRegenAt:Date.now(),
+    pets:[], petActiveId:null,
+    petNest:{element:null, plantedAt:null, readyAt:null},
+    petHunt:{active:false, durationKey:null, startAt:null, readyAt:null, petId:null}};
 }
 function ensureStats(p){
   if(!p.stats) p.stats = {totalHarvests:0, totalAuctionTrades:0, maxBossHitDamage:0};
@@ -6721,7 +7309,7 @@ const T = {
   tabCollection: {zh:'我的收藏', en:'My Collection'},
   tabFriends: {zh:'好友', en:'Friends'},
   tabAuction: {zh:'拍賣行', en:'Auction House'},
-  tabFarm: {zh:'🌱 花園', en:'🌱 Garden'},
+  tabFarm: {zh:'🌱 花園和寵物', en:'🌱 Garden & Pets'},
   tabExpedition: {zh:'🧭 遠征', en:'🧭 Expedition'},
   tabProfession: {zh:'🛠️ 職業', en:'🛠️ Profession'},
   tabLeaderboard: {zh:'🏆 排行榜', en:'🏆 Leaderboard'},
@@ -7247,6 +7835,7 @@ async function boot(){
   loadExpeditionConfig().catch(()=>{});
   loadExpeditionRoguelikeConfig().catch(()=>{});
   loadProfessionConfig().catch(()=>{});
+  loadPetConfig().catch(()=>{});
   loadAuctionConfig().catch(()=>{});
   loadTitleHolders().catch(()=>{});
   loadFortuneStarConfig().then(()=>checkFortuneStarSchedule().then(()=>{ if(state.tab==='home') renderTab(); })).catch(()=>{});
@@ -8167,6 +8756,23 @@ async function fetchMyFriends(nickname){
     .filter(f=>f.a && f.b && (f.a.toLowerCase()===lower || f.b.toLowerCase()===lower))
     .map(f=> f.a.toLowerCase()===lower ? f.b : f.a);
 }
+// 花園分頁每秒都會整段重繪一次（farmTickInterval），如果每次重繪都重新對 fetchMyFriends
+// 掃描一次「全站」好友關係表再逐筆抓值，會變成每秒打一輪很重的網路請求；領取寵物尋寶獎勵時
+// 剛好也會觸發一次 renderTab → renderFarm，得排在這些每秒發出的請求後面才輪得到，
+// 玩家就會感覺「按領獎勵很慢」。好友名單變動不頻繁，這裡加一層短期快取，
+// 只有在資料過期或好友關係真的變動時才重新抓，大幅減少花園分頁的網路請求量。
+let myFriendsCache = null; // {nickname, friends, fetchedAt}
+const MY_FRIENDS_CACHE_MS = 8000;
+function invalidateMyFriendsCache(){ myFriendsCache = null; }
+async function fetchMyFriendsCached(nickname){
+  const now = Date.now();
+  if(myFriendsCache && myFriendsCache.nickname === nickname && (now - myFriendsCache.fetchedAt) < MY_FRIENDS_CACHE_MS){
+    return myFriendsCache.friends;
+  }
+  const friends = await fetchMyFriends(nickname);
+  myFriendsCache = {nickname, friends, fetchedAt: now};
+  return friends;
+}
 async function isFriendWith(nickA, nickB){
   try{
     const all = await fetchAllFriendships();
@@ -8223,6 +8829,7 @@ async function respondFriendRequest(reqId, accept){
   await storage.set(freqKey(reqId), JSON.stringify(req));
   if(accept){
     await createFriendship(state.nickname, req.from);
+    invalidateMyFriendsCache();
     showToast(tt(`你與 ${req.from} 已成為好友 ✦`, `You and ${req.from} are now friends ✦`));
   } else {
     showToast(tt('已婉拒好友邀請','Friend request declined'));
@@ -8243,6 +8850,7 @@ async function cancelFriendRequest(reqId){
 
 async function removeFriend(friendNick){
   await deleteFriendship(state.nickname, friendNick);
+  invalidateMyFriendsCache();
   showToast(tt(`已將 ${friendNick} 從好友移除`, `Removed ${friendNick} from friends`));
   render();
 }
@@ -8854,8 +9462,7 @@ async function render(){
     <div class="tabs">
       <div class="tab ${state.tab==='home'?'active':''}" data-tab="home">${t('tabHome')}</div>
       <div class="tab ${state.tab==='resonance'?'active':''}" data-tab="resonance">${t('tabResonance')}</div>
-      ${SEASON_ACTIVE ? `<div class="tab ${state.tab==='season'?'active':''}" data-tab="season">✦ ${tt(SEASON_LABEL_ZH, SEASON_LABEL_EN)}</div>` : ''}
-      ${SEASON_ACTIVE ? `<div class="tab ${state.tab==='starchart'?'active':''}" data-tab="starchart">🌌 ${tt('星盤','Star Chart')}</div>` : ''}
+      ${SEASON_ACTIVE ? `<div class="tab ${(state.tab==='season'||state.tab==='starchart')?'active':''}" data-tab="season">✦ ${tt('星象幻境和星盤','Astral Reverie & Star Chart')}</div>` : ''}
       ${SEASON_ACTIVE ? `<div class="tab ${state.tab==='boss'?'active':''}" data-tab="boss">⚔️ ${tt('Boss 和骰子','Boss & Dice')}</div>` : ''}
       <div class="tab ${state.tab==='collection'?'active':''}" data-tab="collection">${t('tabCollection')}</div>
       <div class="tab ${state.tab==='friends'?'active':''}" data-tab="friends">${t('tabFriends')}</div>
@@ -8896,7 +9503,11 @@ async function render(){
   if(state.tab === 'farm'){
     farmTickInterval = setInterval(()=>{
       if(state.tab === 'farm'){
-        if(!state.farmUpgradeMode){
+        // 寵物庫存的合成面板打開時（petSynthesisOpenId 非空）跳過這一秒的整段重繪：
+        // 面板裡的勾選框是靠 petSynthesisSelected 這個變數記住勾選狀態，
+        // 不會因為跳過重繪而遺失，但如果照常每秒重繪，勾選框會被整個換新，
+        // 玩家點擊的瞬間可能剛好撞上重繪，點擊被吃掉，感覺像是「遲鈍」。
+        if(!state.farmUpgradeMode && !petSynthesisOpenId){
           // 每秒重繪整個花園分頁（含出戰夥伴區塊）沒有保留捲動位置，
           // 會讓畫面看起來一直在跳動；重繪前後記住/還原捲動位置修掉這個問題。
           const farmScrollY = window.scrollY;
@@ -8938,9 +9549,13 @@ async function render(){
   if(professionTickInterval){ clearInterval(professionTickInterval); professionTickInterval = null; }
   if(state.tab === 'profession'){
     professionTickInterval = setInterval(()=>{
-      if(state.tab === 'profession'){ renderTab(); }
+      if(state.tab === 'profession'){
+        const professionScrollY = window.scrollY;
+        renderTab();
+        window.scrollTo(0, professionScrollY);
+      }
       else { clearInterval(professionTickInterval); professionTickInterval = null; }
-    }, 30000);
+    }, 1000);
   }
 }
 
@@ -8975,8 +9590,7 @@ function renderTab(){
   renderToken++;
   if(state.tab === 'home') return renderHome(body);
   if(state.tab === 'resonance') return renderResonance(body);
-  if(state.tab === 'season') return renderSeason(body);
-  if(state.tab === 'starchart') return renderStarChart(body);
+  if(state.tab === 'season' || state.tab === 'starchart') { state.tab = 'season'; return renderSeason(body); }
   if(state.tab === 'boss') return renderBoss(body);
   if(state.tab === 'collection') return renderCollection(body);
   if(state.tab === 'friends') return renderFriends(body);
@@ -9903,7 +10517,7 @@ async function renderFarm(body){
   html += `</div>`;
 
   // ---------- 好友花園：互相澆水/偷菜 ----------
-  const friends = await fetchMyFriends(state.nickname);
+  const friends = await fetchMyFriendsCached(state.nickname);
   html += `<div class="panel">
     <h2>${t('friendGardenHeader')}</h2>
     <p class="sub">${tt('幫好友的作物澆水可以加速生長（雙方都有小獎勵），成熟後太久沒收成也可以被好友偷一點走，但不影響本人收成',"Watering a friend's crop speeds up its growth (small reward for both of you); crops left unharvested too long after ripening can be taken from by friends, but it doesn't affect the owner's harvest")}</p>
@@ -9973,6 +10587,8 @@ async function renderFarm(body){
     });
     html += `</div></div>`;
   }
+
+  html += petSectionHtml(p);
 
   // 這段 await 期間如果又有更新一次的 renderTab() 被觸發（例如玩家澆完水後自己觸發的重繪，
   // 或下一次 farmTickInterval），代表這次拿到的資料已經過期，放棄寫入 DOM，避免用舊資料
@@ -10049,6 +10665,7 @@ async function renderFarm(body){
   document.querySelectorAll('[data-steal-plot]').forEach(btn=>{
     btn.onclick = ()=>stealFriendPlot(btn.dataset.stealFriend, parseInt(btn.dataset.stealPlot,10));
   });
+  wirePetEvents();
 }
 
 // 排行榜快取：直接抓全站玩家完整資料（含卡牌、材料、道具等大型物件）再挑幾個數字欄位，
@@ -10820,6 +11437,52 @@ async function renderGM(body){
     </div>
   </div>`;
 
+  html += `<div class="panel">
+    <h2>🐾 ${tt('寵物尋寶玩法設定','Pet Treasure Hunt Settings')}</h2>
+    <p class="sub">${tt('孵蛋、換寵、稀有度機率、各時長的獎勵區間與稀有掉落機率，皆為草案值，即時對所有玩家生效。', 'Egg hatching, pet swap cost, rarity odds, and per-duration reward ranges & rare-loot chance - all draft values, effective immediately for all players.')}</p>
+    <div class="farm-upgrade-box" style="margin-bottom:10px;">
+      <div class="farm-upgrade-title">🥚 ${tt('孵蛋設定','Egg Settings')}</div>
+      <div class="form-row">
+        <div><label>${tt('孵化時間（小時）','Grow time (hours)')}</label><input type="number" id="gm-pet-egg-hours" value="${(PET_EGG_GROW_MS/3600000).toFixed(2)}" min="0.01" step="0.25" style="width:90px;" /></div>
+        <div><label>${tt('種蛋材料消耗','Material cost to plant')}</label><input type="number" id="gm-pet-egg-cost" value="${PET_EGG_MATERIAL_COST}" min="1" style="width:90px;" /></div>
+        <div><label>${tt('採集額外開蛋機率 %','Bonus egg on harvest %')}</label><input type="number" id="gm-pet-bonus-chance" value="${(PET_BONUS_EGG_CHANCE*100).toFixed(1)}" min="0" max="100" step="0.1" style="width:90px;" /></div>
+        <div><label>${tt('更換出戰寵物花費','Swap active pet cost')}</label><input type="number" id="gm-pet-swap-cost" value="${PET_SWAP_COST}" min="0" style="width:100px;" /></div>
+      </div>
+    </div>
+    <div class="farm-upgrade-box" style="margin-bottom:10px;">
+      <div class="farm-upgrade-title">🎲 ${tt('稀有度權重','Rarity Weights')}</div>
+      <div class="farm-upgrade-line" style="color:var(--muted);font-size:12px;">${tt('基礎權重（三者比例決定機率）＋每花園等級額外加成（從普通中扣除）', 'Base weights (ratio determines odds) + bonus per garden level (subtracted from Common)')}</div>
+      <div class="form-row">
+        ${PET_RARITY_IDS.map(id=>`<div><label>${petRarityLabel(id)} ${tt('基礎權重','base')}</label><input type="number" id="gm-pet-rarity-${id}" value="${PET_RARITY_BASE_WEIGHT[id]}" min="0" step="0.1" style="width:90px;" /></div>`).join('')}
+      </div>
+      <div class="form-row">
+        <div><label>${tt('稀有 每級加成','Rare bonus/lvl')}</label><input type="number" id="gm-pet-rarity-bonus-rare" value="${PET_RARITY_LEVEL_BONUS.rare}" min="0" step="0.1" style="width:90px;" /></div>
+        <div><label>${tt('史詩 每級加成','Epic bonus/lvl')}</label><input type="number" id="gm-pet-rarity-bonus-epic" value="${PET_RARITY_LEVEL_BONUS.epic}" min="0" step="0.1" style="width:90px;" /></div>
+      </div>
+    </div>
+    ${PET_DURATION_KEYS.map(key=>{
+      const v = PET_DURATION_REWARDS[key];
+      return `<div class="farm-upgrade-box" style="margin-bottom:10px;">
+        <div class="farm-upgrade-title">⏱ ${petDurationLabel(key)}</div>
+        <div class="form-row">
+          <div><label>${tt('金幣下限','Coin min')}</label><input type="number" id="gm-pet-${key}-coinmin" value="${v.coin[0]}" min="0" style="width:85px;" /></div>
+          <div><label>${tt('金幣上限','Coin max')}</label><input type="number" id="gm-pet-${key}-coinmax" value="${v.coin[1]}" min="0" style="width:85px;" /></div>
+          <div><label>${tt('精華下限','Essence min')}</label><input type="number" id="gm-pet-${key}-essmin" value="${v.essence[0]}" min="0" style="width:85px;" /></div>
+          <div><label>${tt('精華上限','Essence max')}</label><input type="number" id="gm-pet-${key}-essmax" value="${v.essence[1]}" min="0" style="width:85px;" /></div>
+        </div>
+        <div class="form-row">
+          <div><label>${tt('材料下限','Material min')}</label><input type="number" id="gm-pet-${key}-matmin" value="${v.material[0]}" min="0" style="width:85px;" /></div>
+          <div><label>${tt('材料上限','Material max')}</label><input type="number" id="gm-pet-${key}-matmax" value="${v.material[1]}" min="0" style="width:85px;" /></div>
+          <div><label>${tt('稀有掉落機率 %','Rare loot %')}</label><input type="number" id="gm-pet-${key}-rare" value="${((PET_RARE_LOOT_CHANCE[key]||0)*100).toFixed(1)}" min="0" max="100" step="0.1" style="width:90px;" /></div>
+        </div>
+      </div>`;
+    }).join('')}
+    <div class="form-row" style="margin-top:6px;">
+      <button class="btn small" id="gm-pet-save-btn">${tt('儲存寵物尋寶設定','Save Pet Hunt Settings')}</button>
+      <button class="btn small secondary" id="gm-pet-reset-btn">${tt('還原預設值','Reset to Default')}</button>
+    </div>
+  </div>`;
+
   body.innerHTML = html;
 
   wirePager(state.gmPlayersPage, gmPlayersTotalPages, 'gm-players-page', 'gmPlayersPage');
@@ -11465,6 +12128,64 @@ async function renderGM(body){
     EXPEDITION_STREAK_BONUS_CAP = DEFAULT_EXPEDITION_STREAK_BONUS_CAP;
     await saveExpeditionRoguelikeConfig();
     showToast(tt('已還原為預設 Roguelike 設定','Reverted to default roguelike settings'));
+    renderTab();
+  };
+  const petSaveBtn = document.getElementById('gm-pet-save-btn');
+  if(petSaveBtn) petSaveBtn.onclick = async ()=>{
+    const hours = parseFloat(document.getElementById('gm-pet-egg-hours').value);
+    const eggCost = parseInt(document.getElementById('gm-pet-egg-cost').value, 10);
+    const bonusChance = parseFloat(document.getElementById('gm-pet-bonus-chance').value);
+    const swapCost = parseInt(document.getElementById('gm-pet-swap-cost').value, 10);
+    const rarityWeights = {};
+    let invalid = isNaN(hours) || hours <= 0 || isNaN(eggCost) || eggCost < 1 || isNaN(bonusChance) || bonusChance < 0 || bonusChance > 100 || isNaN(swapCost) || swapCost < 0;
+    PET_RARITY_IDS.forEach(id=>{
+      const w = parseFloat(document.getElementById(`gm-pet-rarity-${id}`).value);
+      if(isNaN(w) || w < 0) invalid = true;
+      rarityWeights[id] = w;
+    });
+    const rarityBonusRare = parseFloat(document.getElementById('gm-pet-rarity-bonus-rare').value);
+    const rarityBonusEpic = parseFloat(document.getElementById('gm-pet-rarity-bonus-epic').value);
+    if([rarityBonusRare, rarityBonusEpic].some(v=>isNaN(v) || v<0)) invalid = true;
+    const durationRewards = {};
+    const rareLootChance = {};
+    PET_DURATION_KEYS.forEach(key=>{
+      const coinMin = parseFloat(document.getElementById(`gm-pet-${key}-coinmin`).value);
+      const coinMax = parseFloat(document.getElementById(`gm-pet-${key}-coinmax`).value);
+      const essMin = parseFloat(document.getElementById(`gm-pet-${key}-essmin`).value);
+      const essMax = parseFloat(document.getElementById(`gm-pet-${key}-essmax`).value);
+      const matMin = parseFloat(document.getElementById(`gm-pet-${key}-matmin`).value);
+      const matMax = parseFloat(document.getElementById(`gm-pet-${key}-matmax`).value);
+      const rare = parseFloat(document.getElementById(`gm-pet-${key}-rare`).value);
+      const nums = [coinMin, coinMax, essMin, essMax, matMin, matMax, rare];
+      if(nums.some(v=>isNaN(v) || v<0) || coinMax<coinMin || essMax<essMin || matMax<matMin || rare>100){ invalid = true; }
+      durationRewards[key] = {coin:[coinMin,coinMax], essence:[essMin,essMax], material:[matMin,matMax]};
+      rareLootChance[key] = rare/100;
+    });
+    if(invalid){ showToast(tt('請確認每項數值皆為有效的非負數字，區間上限需大於等於下限','Please check all values are valid non-negative numbers, and range max ≥ min')); return; }
+    PET_EGG_GROW_MS = Math.round(hours*3600000);
+    PET_EGG_MATERIAL_COST = eggCost;
+    PET_BONUS_EGG_CHANCE = bonusChance/100;
+    PET_SWAP_COST = swapCost;
+    PET_RARITY_BASE_WEIGHT = rarityWeights;
+    PET_RARITY_LEVEL_BONUS = {rare:rarityBonusRare, epic:rarityBonusEpic};
+    PET_DURATION_REWARDS = durationRewards;
+    PET_RARE_LOOT_CHANCE = rareLootChance;
+    await savePetConfig();
+    showToast(tt('寵物尋寶設定已更新，即時對所有玩家生效 ⚡','Pet hunt settings updated, effective immediately for all players ⚡'));
+    renderTab();
+  };
+  const petResetBtn = document.getElementById('gm-pet-reset-btn');
+  if(petResetBtn) petResetBtn.onclick = async ()=>{
+    PET_EGG_GROW_MS = DEFAULT_PET_EGG_GROW_MS;
+    PET_EGG_MATERIAL_COST = DEFAULT_PET_EGG_MATERIAL_COST;
+    PET_SWAP_COST = DEFAULT_PET_SWAP_COST;
+    PET_BONUS_EGG_CHANCE = DEFAULT_PET_BONUS_EGG_CHANCE;
+    PET_RARITY_BASE_WEIGHT = {...DEFAULT_PET_RARITY_BASE_WEIGHT};
+    PET_RARITY_LEVEL_BONUS = {...DEFAULT_PET_RARITY_LEVEL_BONUS};
+    PET_DURATION_REWARDS = JSON.parse(JSON.stringify(DEFAULT_PET_DURATION_REWARDS));
+    PET_RARE_LOOT_CHANCE = {...DEFAULT_PET_RARE_LOOT_CHANCE};
+    await savePetConfig();
+    showToast(tt('已還原為預設寵物尋寶設定','Reverted to default pet hunt settings'));
     renderTab();
   };
 }
