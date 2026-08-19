@@ -1821,6 +1821,57 @@ const PET_DURATION_META = {
   '12h': {ms:12*60*60*1000, labelZh:'12 小時', labelEn:'12 hr'},
 };
 
+// 尋寶派遣地點：出戰寵物負責解鎖門檻判斷（花園等級 OR 出戰寵物星級，vault 額外要求出戰寵物稀有度），
+// 實際派去尋寶的可以是任何一隻沒在忙的寵物，跟出戰寵物是否為同一隻無關。
+const PET_LOCATION_KEYS = ['trail', 'ruins', 'vault'];
+const PET_LOCATION_META = {
+  trail: {
+    icon:'🗺️', labelZh:'迷路古道', labelEn:'Lost Trail',
+    unlock: null,
+    rewardBias: {coin:1, essence:1, material:1},
+    rareChanceBonus: 0,
+  },
+  ruins: {
+    icon:'🏛️', labelZh:'遺跡深處', labelEn:'Ancient Ruins',
+    unlock: {farmLevel:5, petStar:2},
+    rewardBias: {coin:1, essence:1.5, material:1.1},
+    rareChanceBonus: 0.05,
+  },
+  vault: {
+    icon:'💎', labelZh:'寶藏密窟', labelEn:'Treasure Vault',
+    unlock: {farmLevel:12, petStar:3, petRarity:'epic'},
+    rewardBias: {coin:1.4, essence:1, material:1.3},
+    rareChanceBonus: 0.08,
+  },
+};
+// 尋寶派遣格數：目前固定 2 格（出戰寵物與尋寶寵物已拆開，多格才能真正發揮地點差異化）。
+const PET_HUNT_SLOT_COUNT = 2;
+// 好友互動：一鍵幫全部好友加速尋寶中的格子，比照花園「一鍵幫好友澆水」的比例與一人一格限一次的規則。
+const PET_HUNT_HELP_RATIO = 0.15; // 每次幫忙，縮短該格「當時剩餘時間」的 15%
+const PET_HUNT_HELP_REWARD_ESSENCE = 1; // 幫忙者每加速一格，獲得的骰子精華
+function petLocationLabel(id){ const m = PET_LOCATION_META[id]; return m ? tt(m.labelZh, m.labelEn) : id; }
+function isPetLocationUnlocked(p, locationKey){
+  const meta = PET_LOCATION_META[locationKey];
+  if(!meta || !meta.unlock) return true;
+  const req = meta.unlock;
+  const pet = getActivePet(p);
+  const farmOk = req.farmLevel ? (p.farmLevel||0) >= req.farmLevel : false;
+  const starOk = (req.petStar && pet) ? pet.star >= req.petStar : false;
+  const rarityOk = req.petRarity ? (!!pet && pet.rarity === req.petRarity) : true;
+  return (farmOk || starOk) && rarityOk;
+}
+function petLocationUnlockHint(locationKey){
+  const meta = PET_LOCATION_META[locationKey];
+  if(!meta || !meta.unlock) return '';
+  const req = meta.unlock;
+  const orParts = [];
+  if(req.farmLevel) orParts.push(tt(`花園 Lv.${req.farmLevel}`, `Garden Lv.${req.farmLevel}`));
+  if(req.petStar) orParts.push(tt(`出戰寵物 ★${req.petStar}`, `active pet ★${req.petStar}`));
+  let text = orParts.join(tt(' 或 ', ' or '));
+  if(req.petRarity) text += tt(`（且出戰寵物需為${petRarityLabel(req.petRarity)}）`, ` (active pet must also be ${petRarityLabel(req.petRarity)})`);
+  return text;
+}
+
 // 以下數值皆為規格書「尚待拍板的數字」的草案值，全部開放 GM 後台即時調整。
 const DEFAULT_PET_EGG_GROW_MS = 4*60*60*1000; // 蛋孵化時間草案：4 小時
 const DEFAULT_PET_EGG_MATERIAL_COST = 20; // 種蛋消耗材料數量草案
@@ -1905,9 +1956,28 @@ function ensurePets(p){
   if(p.petActiveId === undefined) p.petActiveId = null;
   if(p.petActiveId && !p.pets.some(pet=>pet.id===p.petActiveId)) p.petActiveId = null;
   if(!p.petNest || typeof p.petNest !== 'object') p.petNest = {element:null, plantedAt:null, readyAt:null};
-  if(!p.petHunt || typeof p.petHunt !== 'object') p.petHunt = {active:false, durationKey:null, startAt:null, readyAt:null, petId:null};
+  // 舊資料相容：原本尋寶只有單一 p.petHunt 物件（出戰寵物兼尋寶），改版後拆成
+  // 出戰寵物（petActiveId，功能不變）＋多個尋寶派遣格（p.petHunts 陣列）。
+  // 若偵測到舊格式且當時正在尋寶中，搬進 slot 0、地點一律當作古道結算（無門檻，安全預設），
+  // 確保沒有人會因為這次更新卡在無法領獎的狀態。
+  if(!Array.isArray(p.petHunts)){
+    const migrated = [];
+    for(let i=0;i<PET_HUNT_SLOT_COUNT;i++) migrated.push({slotId:i, active:false, locationKey:null, durationKey:null, startAt:null, readyAt:null, petId:null, helpLog:{}});
+    if(p.petHunt && typeof p.petHunt === 'object' && p.petHunt.active){
+      migrated[0] = {slotId:0, active:true, locationKey:'trail', durationKey:p.petHunt.durationKey, startAt:p.petHunt.startAt, readyAt:p.petHunt.readyAt, petId:p.petHunt.petId, helpLog:{}};
+    }
+    p.petHunts = migrated;
+    delete p.petHunt;
+  }
+  while(p.petHunts.length < PET_HUNT_SLOT_COUNT) p.petHunts.push({slotId:p.petHunts.length, active:false, locationKey:null, durationKey:null, startAt:null, readyAt:null, petId:null, helpLog:{}});
+  p.petHunts.forEach((slot, i)=>{
+    if(typeof slot.slotId !== 'number') slot.slotId = i;
+    if(slot.active && !PET_LOCATION_KEYS.includes(slot.locationKey)) slot.locationKey = 'trail';
+    if(!slot.helpLog || typeof slot.helpLog !== 'object') slot.helpLog = {}; // 舊資料相容：補上好友加速紀錄欄位
+  });
   return p;
 }
+function isPetHunting(p, petId){ return p.petHunts.some(h=>h.active && h.petId===petId); }
 function petElementLabel(id){ const m = PET_ELEMENT_META[id]; return m ? tt(m.labelZh, m.labelEn) : id; }
 function petRarityLabel(id){ const m = PET_RARITY_META[id]; return m ? tt(m.labelZh, m.labelEn) : id; }
 function petDurationLabel(key){ const m = PET_DURATION_META[key]; return m ? tt(m.labelZh, m.labelEn) : key; }
@@ -1985,7 +2055,6 @@ async function setActivePet(petId){
   if(p.petActiveId === petId) return;
   const pet = p.pets.find(pt=>pt.id===petId);
   if(!pet) return;
-  if(p.petHunt.active){ showToast(tt('寵物出戰尋寶中，暫時無法更換','Your pet is on a hunt - cannot switch right now')); return; }
   if(p.petActiveId){
     if((p.coins||0) < PET_SWAP_COST){
       showToast(tt(`金幣不足，更換出戰寵物需要 ✦${PET_SWAP_COST}`, `Not enough coins - switching pets costs ✦${PET_SWAP_COST}`));
@@ -2010,7 +2079,7 @@ function petSynthesisEligibleMaterials(p, pet){
     pt.element === pet.element &&
     pt.rarity === pet.rarity &&
     pt.id !== p.petActiveId &&
-    !(p.petHunt.active && p.petHunt.petId === pt.id)
+    !isPetHunting(p, pt.id)
   );
 }
 
@@ -2062,32 +2131,65 @@ async function synthesizePet(petId){
     : tt('💔 合成失敗，素材已消耗，星級未變', '💔 Synthesis failed - materials were consumed, star unchanged'));
   renderTab();
 }
-async function startPetHunt(durationKey){
+// 尋寶派遣格的「選擇中」草稿狀態（尚未正式派遣）：slotId -> {petId, locationKey}
+// 選寵物 → 選地點 → 選時長 三步驟走完才會真正呼叫 startPetHunt 寫入 p.petHunts。
+let petHuntDraft = {};
+function petHuntAvailablePets(p){
+  ensurePets(p);
+  return p.pets.filter(pt=>!isPetHunting(p, pt.id));
+}
+function pickHuntPet(slotId, petId){
+  petHuntDraft[slotId] = {petId, locationKey:null};
+  renderTab();
+}
+function pickHuntLocation(slotId, locationKey){
+  const p = state.player;
+  if(!p || !petHuntDraft[slotId]) return;
+  if(!isPetLocationUnlocked(p, locationKey)){
+    const hint = petLocationUnlockHint(locationKey);
+    showToast(tt(`${petLocationLabel(locationKey)}尚未解鎖，還差：${hint}`, `${petLocationLabel(locationKey)} isn't unlocked yet - need: ${hint}`));
+    return;
+  }
+  petHuntDraft[slotId].locationKey = locationKey;
+  renderTab();
+}
+function cancelHuntDraft(slotId){
+  delete petHuntDraft[slotId];
+  renderTab();
+}
+async function startPetHunt(slotId, durationKey){
   const p = state.player;
   if(!p) return;
   ensurePets(p);
   if(!PET_DURATION_KEYS.includes(durationKey)) return;
-  const pet = getActivePet(p);
-  if(!pet){ showToast(tt('請先設定出戰寵物','Set an active pet first')); return; }
-  if(p.petHunt.active){ showToast(tt('寵物已經在尋寶中了','Your pet is already out on a hunt')); return; }
+  const slot = p.petHunts[slotId];
+  if(!slot || slot.active) return;
+  const draft = petHuntDraft[slotId];
+  if(!draft || !draft.petId || !draft.locationKey){ showToast(tt('請先選好寵物與地點','Pick a pet and a location first')); return; }
+  const pet = p.pets.find(pt=>pt.id===draft.petId);
+  if(!pet){ showToast(tt('請先選擇要派遣的寵物','Pick a pet to dispatch first')); return; }
+  if(isPetHunting(p, pet.id)){ showToast(tt('這隻寵物已經在尋寶中了','This pet is already out on a hunt')); delete petHuntDraft[slotId]; renderTab(); return; }
+  if(!isPetLocationUnlocked(p, draft.locationKey)){ showToast(tt('這個地點尚未解鎖','This location is not unlocked yet')); return; }
   const eff = petEffects(pet);
   const baseMs = PET_DURATION_META[durationKey].ms;
   const actualMs = Math.round(baseMs * (1 - eff.durationReduction));
   const now = Date.now();
-  p.petHunt = {active:true, durationKey, startAt: now, readyAt: now + actualMs, petId: pet.id};
+  p.petHunts[slotId] = {slotId, active:true, locationKey:draft.locationKey, durationKey, startAt:now, readyAt:now+actualMs, petId:pet.id, helpLog:{}};
+  delete petHuntDraft[slotId];
   await savePlayer(p);
-  showToast(tt(`🧭 已派遣寵物尋寶（${petDurationLabel(durationKey)}）`, `🧭 Pet dispatched on a hunt (${petDurationLabel(durationKey)})`));
+  showToast(tt(`🧭 已派遣寵物前往${petLocationLabel(draft.locationKey)}尋寶（${petDurationLabel(durationKey)}）`, `🧭 Pet dispatched to ${petLocationLabel(draft.locationKey)} (${petDurationLabel(durationKey)})`));
   renderTab();
 }
-async function claimPetHunt(){
+async function claimPetHunt(slotId){
   const p = state.player;
   if(!p) return;
   ensurePets(p); ensureProfession(p); ensureMaterials(p);
-  const hunt = p.petHunt;
-  if(!hunt.active) return;
+  const hunt = p.petHunts[slotId];
+  if(!hunt || !hunt.active) return;
   if(Date.now() < hunt.readyAt){ showToast(tt('尋寶還沒結束','The hunt is not finished yet')); return; }
   const pet = p.pets.find(pt=>pt.id===hunt.petId) || getActivePet(p);
   const eff = petEffects(pet);
+  const locMeta = PET_LOCATION_META[hunt.locationKey] || PET_LOCATION_META.trail;
   const cfg = PET_DURATION_REWARDS[hunt.durationKey] || DEFAULT_PET_DURATION_REWARDS['15m'];
   const roll = (range)=> Math.floor(range[0] + Math.random()*(range[1]-range[0]+1));
   let coin = roll(cfg.coin);
@@ -2098,17 +2200,18 @@ async function claimPetHunt(){
   if(element === 'herb'){ material = Math.round(material*1.6); coin = Math.round(coin*0.6); essence = Math.round(essence*0.5); }
   else if(element === 'ore'){ coin = Math.round(coin*1.6); material = Math.round(material*0.8); essence = Math.round(essence*0.4); }
   else if(element === 'lumber'){ essence = Math.round(essence*1.6); material = Math.round(material*0.8); coin = Math.round(coin*0.5); }
-  coin = Math.round(coin * eff.rewardMult);
-  essence = Math.round(essence * eff.rewardMult);
-  material = Math.round(material * eff.rewardMult);
-  const rareChance = (PET_RARE_LOOT_CHANCE[hunt.durationKey]||0) + eff.rareChanceBonus;
+  // 地點偏向（第三層乘數，疊在屬性偏向與星級加成之上）
+  coin = Math.round(coin * eff.rewardMult * locMeta.rewardBias.coin);
+  essence = Math.round(essence * eff.rewardMult * locMeta.rewardBias.essence);
+  material = Math.round(material * eff.rewardMult * locMeta.rewardBias.material);
+  const rareChance = (PET_RARE_LOOT_CHANCE[hunt.durationKey]||0) + eff.rareChanceBonus + locMeta.rareChanceBonus;
   const rareHit = Math.random() < rareChance;
   if(rareHit){ coin *= PET_RARE_LOOT_MULT; essence *= PET_RARE_LOOT_MULT; material *= PET_RARE_LOOT_MULT; }
   p.coins = (p.coins||0) + coin;
   p.materials.diceEssence = (p.materials.diceEssence||0) + essence;
   const materialId = element || PROFESSION_MATERIAL_IDS[Math.floor(Math.random()*PROFESSION_MATERIAL_IDS.length)];
   p.professionMaterials[materialId] = (p.professionMaterials[materialId]||0) + material;
-  p.petHunt = {active:false, durationKey:null, startAt:null, readyAt:null, petId:null};
+  p.petHunts[slotId] = {slotId, active:false, locationKey:null, durationKey:null, startAt:null, readyAt:null, petId:null, helpLog:{}};
   await savePlayer(p);
   const matMeta = PET_ELEMENT_META[materialId];
   showToast(tt(
@@ -2157,40 +2260,29 @@ function petSectionHtml(p){
   }
   html += `</div>`;
 
-  // ---------- 出戰寵物 / 尋寶派遣 ----------
-  html += `<div class="panel"><h2>${tt('🧭 出戰與尋寶','🧭 Active Pet & Hunt')}</h2>`;
+  // ---------- 出戰寵物 ----------
+  html += `<div class="panel"><h2>${tt('🧭 出戰寵物','🧭 Active Pet')}</h2>`;
   if(!activePet){
-    html += `<p class="sub">${tt('目前沒有出戰中的寵物，請到下方庫存選一隻出戰。','No active pet yet - pick one from your inventory below.')}</p>`;
+    html += `<p class="sub">${tt('目前沒有出戰中的寵物，請到下方庫存選一隻出戰。出戰寵物不影響尋寶派遣，但決定進階尋寶地點的解鎖門檻。','No active pet yet - pick one from your inventory below. It doesn\'t affect hunt dispatch directly, but its star/rarity decides which advanced hunt locations you can unlock.')}</p>`;
   } else {
     const eff = petEffects(activePet);
     const meta = PET_ELEMENT_META[activePet.element];
     html += `<div class="farm-upgrade-box">
       <div class="farm-upgrade-title">${meta.icon} ${petRarityLabel(activePet.rarity)}${petElementLabel(activePet.element)} · ${'★'.repeat(activePet.star)}${'☆'.repeat(PET_STAR_MAX-activePet.star)}</div>
       <div class="farm-upgrade-line" style="color:var(--muted);font-size:12px;">
-        ${tt('尋寶時間縮短','Duration cut')} -${Math.round(eff.durationReduction*100)}% · ${tt('獎勵倍率','Reward mult')} +${Math.round((eff.rewardMult-1)*100)}% · ${tt('稀有掉落加成','Rare bonus')} +${(eff.rareChanceBonus*100).toFixed(1)}%
+        ${tt('若派牠尋寶：時間縮短','If dispatched: duration cut')} -${Math.round(eff.durationReduction*100)}% · ${tt('獎勵倍率','reward mult')} +${Math.round((eff.rewardMult-1)*100)}% · ${tt('稀有掉落加成','rare bonus')} +${(eff.rareChanceBonus*100).toFixed(1)}%
       </div>
     </div>`;
-
-    const hunt = p.petHunt;
-    if(hunt.active){
-      const huntReady = now >= hunt.readyAt;
-      html += `<div class="farm-upgrade-box">
-        <div class="farm-upgrade-title">${tt('尋寶中','Out hunting')}：${petDurationLabel(hunt.durationKey)}</div>
-        ${huntReady
-          ? `<div class="farm-upgrade-line" style="color:var(--gold-bright);">${tt('✨ 尋寶完成，可以領取獎勵了！','✨ Hunt complete - claim your reward!')}</div>
-             <button class="btn small" id="pet-claim-btn">${tt('領取','Claim')}</button>`
-          : `<div class="countdown" id="pet-hunt-countdown">${tt('倒數：','Remaining: ')}${formatDuration(hunt.readyAt-now)}</div>`
-        }
-      </div>`;
-    } else {
-      html += `<p class="sub">${tt('選擇派遣時長，時間到即可回來領取獎勵（金幣／骰子精華／職業材料，依寵物屬性決定偏向）。','Pick a duration - when it finishes you can claim coins/essence/material, weighted by your pet\'s element.')}</p>
-      <div style="display:flex;flex-wrap:wrap;gap:8px;">`;
-      PET_DURATION_KEYS.forEach(key=>{
-        html += `<button class="btn small" data-start-hunt="${key}">${petDurationLabel(key)}</button>`;
-      });
-      html += `</div>`;
-    }
   }
+  html += `</div>`;
+
+  // ---------- 尋寶派遣（多格，任一沒在忙的寵物皆可派遣） ----------
+  const busySlots = p.petHunts.filter(h=>h.active).length;
+  html += `<div class="panel"><h2>${tt('🐾 尋寶派遣','🐾 Hunt Dispatch')}（${busySlots}/${PET_HUNT_SLOT_COUNT}）</h2>
+    <p class="sub">${tt('選一隻沒在忙的寵物、一個地點、一個時長，時間到即可回來領取獎勵。出戰寵物也可以同時被派去尋寶。', 'Pick an idle pet, a location, and a duration - claim your reward once it\'s done. Your active pet can be dispatched too.')}</p>
+    <button class="btn small" id="pet-help-all-btn">${tt('🐾 一鍵幫好友加速尋寶','🐾 Speed up all friends\' hunts')}</button>
+    <p class="sub" style="margin-top:6px;font-size:12px;">${tt(`每幫一格加速 ${Math.round(PET_HUNT_HELP_RATIO*100)}%，每位好友的同一格只能幫一次，獲得精華 × ${PET_HUNT_HELP_REWARD_ESSENCE}／格作為謝禮。`, `Each help cuts ${Math.round(PET_HUNT_HELP_RATIO*100)}% off a slot's remaining time - once per friend per slot. You earn ${PET_HUNT_HELP_REWARD_ESSENCE} Essence per slot helped.`)}</p>`;
+  p.petHunts.forEach(slot=>{ html += petHuntSlotHtml(p, slot, now); });
   html += `</div>`;
 
   // ---------- 寵物庫存 / 養成 ----------
@@ -2205,8 +2297,9 @@ function petSectionHtml(p){
       const isMax = pet.star >= PET_STAR_MAX;
       const starLabel = '★'.repeat(pet.star) + '☆'.repeat(PET_STAR_MAX-pet.star);
       const isOpen = petSynthesisOpenId === pet.id;
+      const huntingSlot = p.petHunts.find(h=>h.active && h.petId===pet.id);
       html += `<div class="farm-upgrade-box" style="border-color:${isActive?'var(--gold)':'var(--line)'};">
-        <div class="farm-upgrade-title">${meta.icon} ${petRarityLabel(pet.rarity)}${petElementLabel(pet.element)} · ${starLabel}${isActive?tt(' （出戰中）',' (Active)'):''}</div>
+        <div class="farm-upgrade-title">${meta.icon} ${petRarityLabel(pet.rarity)}${petElementLabel(pet.element)} · ${starLabel}${isActive?tt(' （出戰中）',' (Active)'):''}${huntingSlot?tt(` （尋寶中：${petLocationLabel(huntingSlot.locationKey)}）`, ` (Hunting: ${petLocationLabel(huntingSlot.locationKey)})`):''}</div>
         <div class="farm-upgrade-line" style="color:var(--muted);font-size:12px;">${isMax ? tt('已滿星','Max star') : ''}</div>
         <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap;">
           ${isActive ? '' : `<button class="btn small secondary" data-set-active="${pet.id}">${tt('設為出戰','Set Active')}</button>`}
@@ -2219,6 +2312,71 @@ function petSectionHtml(p){
   }
   html += `</div>`;
 
+  return html;
+}
+function petHuntSlotHtml(p, slot, now){
+  const slotId = slot.slotId;
+  if(slot.active){
+    const pet = p.pets.find(pt=>pt.id===slot.petId);
+    const meta = pet ? PET_ELEMENT_META[pet.element] : null;
+    const locMeta = PET_LOCATION_META[slot.locationKey] || PET_LOCATION_META.trail;
+    const ready = now >= slot.readyAt;
+    return `<div class="farm-upgrade-box">
+      <div class="farm-upgrade-title">${locMeta.icon} ${petLocationLabel(slot.locationKey)} · ${petDurationLabel(slot.durationKey)}</div>
+      <div class="farm-upgrade-line" style="color:var(--muted);font-size:12px;">${pet ? `${meta.icon} ${petRarityLabel(pet.rarity)}${petElementLabel(pet.element)} · ${'★'.repeat(pet.star)}${'☆'.repeat(PET_STAR_MAX-pet.star)}` : tt('（寵物不見了？）','(pet missing?)')}</div>
+      ${ready
+        ? `<div class="farm-upgrade-line" style="color:var(--gold-bright);">${tt('✨ 尋寶完成，可以領取獎勵了！','✨ Hunt complete - claim your reward!')}</div>
+           <button class="btn small" data-claim-hunt="${slotId}">${tt('領取','Claim')}</button>`
+        : `<div class="countdown" id="pet-hunt-countdown-${slotId}">${tt('倒數：','Remaining: ')}${formatDuration(slot.readyAt-now)}</div>`
+      }
+    </div>`;
+  }
+  const draft = petHuntDraft[slotId];
+  if(!draft || !draft.petId){
+    const available = petHuntAvailablePets(p);
+    let html = `<div class="farm-upgrade-box"><div class="farm-upgrade-title">${tt('空格','Empty slot')}</div>`;
+    if(!available.length){
+      html += `<p class="sub" style="margin:6px 0 0;">${tt('目前沒有可派遣的寵物（都在尋寶中，或還沒孵化）','No pets available to dispatch (all busy, or none hatched yet)')}</p>`;
+    } else {
+      html += `<div class="farm-upgrade-line" style="color:var(--muted);font-size:12px;margin-bottom:4px;">${tt('第一步：選擇要派遣的寵物','Step 1: choose a pet to dispatch')}</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;">`;
+      available.forEach(pet=>{
+        const meta = PET_ELEMENT_META[pet.element];
+        html += `<button class="btn small secondary" data-hunt-pick-pet="${slotId}|${pet.id}">${meta.icon} ${petRarityLabel(pet.rarity)}${petElementLabel(pet.element)} ${'★'.repeat(pet.star)}</button>`;
+      });
+      html += `</div>`;
+    }
+    html += `</div>`;
+    return html;
+  }
+  const pet = p.pets.find(pt=>pt.id===draft.petId);
+  if(!pet){ delete petHuntDraft[slotId]; return petHuntSlotHtml(p, slot, now); }
+  const petMeta = PET_ELEMENT_META[pet.element];
+  const petLine = `${petMeta.icon} ${petRarityLabel(pet.rarity)}${petElementLabel(pet.element)} · ${'★'.repeat(pet.star)}${'☆'.repeat(PET_STAR_MAX-pet.star)}`;
+  if(!draft.locationKey){
+    let html = `<div class="farm-upgrade-box"><div class="farm-upgrade-title">${petLine}</div>
+      <div class="farm-upgrade-line" style="color:var(--muted);font-size:12px;margin-bottom:4px;">${tt('第二步：選擇尋寶地點','Step 2: choose a location')}</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;">`;
+    PET_LOCATION_KEYS.forEach(key=>{
+      const meta = PET_LOCATION_META[key];
+      const unlocked = isPetLocationUnlocked(p, key);
+      html += `<button class="btn small ${unlocked?'secondary':''}" data-hunt-pick-loc="${slotId}|${key}" ${unlocked?'':'style="opacity:.6;"'}>${meta.icon} ${petLocationLabel(key)}${unlocked?'':' 🔒'}</button>`;
+    });
+    html += `</div>
+      <button class="btn small secondary" style="margin-top:8px;" data-hunt-cancel="${slotId}">${tt('取消','Cancel')}</button>
+    </div>`;
+    return html;
+  }
+  const locMeta = PET_LOCATION_META[draft.locationKey];
+  let html = `<div class="farm-upgrade-box"><div class="farm-upgrade-title">${petLine}</div>
+    <div class="farm-upgrade-line" style="color:var(--muted);font-size:12px;margin-bottom:4px;">${locMeta.icon} ${petLocationLabel(draft.locationKey)} · ${tt('第三步：選擇派遣時長','Step 3: choose a duration')}</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;">`;
+  PET_DURATION_KEYS.forEach(key=>{
+    html += `<button class="btn small" data-hunt-start="${slotId}|${key}">${petDurationLabel(key)}</button>`;
+  });
+  html += `</div>
+    <button class="btn small secondary" style="margin-top:8px;" data-hunt-cancel="${slotId}">${tt('取消','Cancel')}</button>
+  </div>`;
   return html;
 }
 function petSynthesisPanelHtml(p, pet){
@@ -2255,9 +2413,19 @@ function wirePetEvents(){
   document.querySelectorAll('[data-plant-egg]').forEach(btn=>{ btn.onclick = ()=>plantPetEgg(btn.dataset.plantEgg); });
   const collectBtn = document.getElementById('pet-collect-btn');
   if(collectBtn) collectBtn.onclick = collectPetEgg;
-  document.querySelectorAll('[data-start-hunt]').forEach(btn=>{ btn.onclick = ()=>startPetHunt(btn.dataset.startHunt); });
-  const claimBtn = document.getElementById('pet-claim-btn');
-  if(claimBtn) claimBtn.onclick = claimPetHunt;
+  document.querySelectorAll('[data-hunt-pick-pet]').forEach(btn=>{
+    btn.onclick = ()=>{ const [slotId, petId] = btn.dataset.huntPickPet.split('|'); pickHuntPet(parseInt(slotId,10), petId); };
+  });
+  document.querySelectorAll('[data-hunt-pick-loc]').forEach(btn=>{
+    btn.onclick = ()=>{ const [slotId, locKey] = btn.dataset.huntPickLoc.split('|'); pickHuntLocation(parseInt(slotId,10), locKey); };
+  });
+  document.querySelectorAll('[data-hunt-cancel]').forEach(btn=>{ btn.onclick = ()=>cancelHuntDraft(parseInt(btn.dataset.huntCancel,10)); });
+  document.querySelectorAll('[data-hunt-start]').forEach(btn=>{
+    btn.onclick = ()=>{ const [slotId, durationKey] = btn.dataset.huntStart.split('|'); startPetHunt(parseInt(slotId,10), durationKey); };
+  });
+  document.querySelectorAll('[data-claim-hunt]').forEach(btn=>{ btn.onclick = ()=>claimPetHunt(parseInt(btn.dataset.claimHunt,10)); });
+  const petHelpAllBtn = document.getElementById('pet-help-all-btn');
+  if(petHelpAllBtn) petHelpAllBtn.onclick = helpAllFriendsPetHunts;
   document.querySelectorAll('[data-set-active]').forEach(btn=>{ btn.onclick = ()=>setActivePet(btn.dataset.setActive); });
   document.querySelectorAll('[data-open-synth]').forEach(btn=>{ btn.onclick = ()=>togglePetSynthesisPanel(btn.dataset.openSynth); });
   document.querySelectorAll('[data-synth-toggle]').forEach(input=>{
@@ -6987,6 +7155,74 @@ async function waterAllFriendsPlots(){
   }
 }
 
+// 一鍵幫全部好友加速尋寶：邏輯比照 waterAllFriendsPlots，逐好友檢查其 petHunts 裡
+// 「正在跑、還沒好、我還沒幫過這格」的 slot，全部加速，最後彙總一則通知給每位受益的好友。
+let helpingAllFriendsHuntInProgress = false; // 防止連點兩下同時觸發兩次批次加速
+async function helpAllFriendsPetHunts(){
+  if(!state.nickname || helpingAllFriendsHuntInProgress) return;
+  helpingAllFriendsHuntInProgress = true;
+  const btn = document.getElementById('pet-help-all-btn');
+  const originalLabel = btn ? btn.textContent : tt('🐾 一鍵幫好友加速尋寶','🐾 Speed up all friends\' hunts');
+  if(btn){ btn.disabled = true; btn.textContent = tt('加速中…','Helping…'); }
+  try{
+    const friends = await fetchMyFriends(state.nickname);
+    if(!friends.length){
+      showToast(tt('目前沒有好友可以幫忙','You have no friends to help yet'));
+      return;
+    }
+    const now = Date.now();
+    let helpedSlotCount = 0;
+    let helpedFriendCount = 0;
+    let totalSpeedup = 0;
+    const notifJobs = []; // 一位好友一筆（彙總這次幫他加速了幾格、總共縮短多少時間）
+    for(const friendNick of friends){
+      const owner = await loadPlayer(friendNick);
+      if(!owner) continue;
+      ensurePets(owner);
+      let friendSlotCount = 0;
+      let friendSpeedup = 0;
+      owner.petHunts.forEach(slot=>{
+        if(!slot.active) return;
+        if(now >= slot.readyAt) return; // 已經好了，加速沒有意義
+        if(!slot.helpLog) slot.helpLog = {};
+        if(slot.helpLog[state.nickname]) return; // 這格已經幫過了
+        const remain = slot.readyAt - now;
+        const speedup = Math.floor(remain * PET_HUNT_HELP_RATIO);
+        slot.readyAt = slot.readyAt - speedup;
+        slot.helpLog[state.nickname] = now;
+        friendSlotCount++;
+        friendSpeedup += speedup;
+      });
+      if(friendSlotCount > 0){
+        helpedFriendCount++;
+        helpedSlotCount += friendSlotCount;
+        totalSpeedup += friendSpeedup;
+        await savePlayer(owner);
+        notifJobs.push({friendNick, slotCount: friendSlotCount, totalSpeedup: friendSpeedup});
+      }
+    }
+    if(helpedSlotCount === 0){
+      showToast(tt('好友目前都沒有可以加速的尋寶','None of your friends have hunts that can be sped up right now'));
+      return;
+    }
+    const essenceGained = helpedSlotCount * PET_HUNT_HELP_REWARD_ESSENCE;
+    ensureMaterials(state.player);
+    state.player.materials.diceEssence = (state.player.materials.diceEssence||0) + essenceGained;
+    await savePlayer(state.player);
+
+    for(const job of notifJobs){
+      await createNotification(job.friendNick, state.nickname, 'pet_help_bulk', {slotCount: job.slotCount, totalSpeedup: job.totalSpeedup});
+    }
+
+    showToast(tt(`已幫 ${helpedFriendCount} 位好友共 ${helpedSlotCount} 格尋寶加速，總共縮短 ${formatDuration(totalSpeedup)}，你獲得精華 × ${essenceGained} 作為謝禮`, `Sped up ${helpedSlotCount} hunt(s) across ${helpedFriendCount} friend(s), cutting a total of ${formatDuration(totalSpeedup)}. You received Essence × ${essenceGained} as thanks`));
+    await renderTab();
+  } finally {
+    helpingAllFriendsHuntInProgress = false;
+    const freshBtn = document.getElementById('pet-help-all-btn');
+    if(freshBtn){ freshBtn.disabled = false; freshBtn.textContent = originalLabel; }
+  }
+}
+
 async function stealFriendPlot(friendNick, plotIndex){
   if(!state.nickname){ return; }
   const owner = await loadPlayer(friendNick);
@@ -7231,7 +7467,7 @@ function newPlayer(nick, passwordHash){
     stamina:PROFESSION_STAMINA_MAX, staminaMax:PROFESSION_STAMINA_MAX, lastStaminaRegenAt:Date.now(),
     pets:[], petActiveId:null,
     petNest:{element:null, plantedAt:null, readyAt:null},
-    petHunt:{active:false, durationKey:null, startAt:null, readyAt:null, petId:null}};
+    petHunts:Array.from({length:PET_HUNT_SLOT_COUNT}, (_,i)=>({slotId:i, active:false, locationKey:null, durationKey:null, startAt:null, readyAt:null, petId:null, helpLog:{}}))};
 }
 function ensureStats(p){
   if(!p.stats) p.stats = {totalHarvests:0, totalAuctionTrades:0, maxBossHitDamage:0};
@@ -8461,7 +8697,7 @@ async function markAllNotificationsRead(notifs){
   await Promise.all(notifs.filter(n=>!n.read).map(n=>markNotificationRead(n.to, n.id)));
 }
 const NOTIF_CATEGORY_MAP = {
-  friend_request: 'friends', water: 'friends', water_bulk: 'friends', steal: 'friends', steal_bulk: 'friends',
+  friend_request: 'friends', water: 'friends', water_bulk: 'friends', steal: 'friends', steal_bulk: 'friends', pet_help_bulk: 'friends',
   auction_sold: 'auction', auction_unsold: 'auction', auction_outbid: 'auction', auction_won: 'auction', wtb_filled: 'auction',
   boss_reward: 'boss',
   gm_grant: 'gm',
@@ -8477,6 +8713,7 @@ function notifText(n){
   if(n.type==='friend_request') return tt(`${n.from} 想加你為好友`, `${n.from} wants to be your friend`);
   if(n.type==='water') return tt(`${n.from} 幫你的${seed}澆了水，縮短了 ${formatDuration(n.speedup||0)}`, `${n.from} watered your ${seed}, cutting ${formatDuration(n.speedup||0)} off the timer`);
   if(n.type==='water_bulk') return tt(`${n.from} 用一鍵澆水幫你澆了 ${n.plotCount||0} 塊地，共縮短了 ${formatDuration(n.totalSpeedup||0)}`, `${n.from} watered ${n.plotCount||0} of your plot(s) with one tap, cutting a total of ${formatDuration(n.totalSpeedup||0)} off the timers`);
+  if(n.type==='pet_help_bulk') return tt(`${n.from} 用一鍵加速幫你的 ${n.slotCount||0} 格尋寶加速，共縮短了 ${formatDuration(n.totalSpeedup||0)}`, `${n.from} sped up ${n.slotCount||0} of your hunt(s) with one tap, cutting a total of ${formatDuration(n.totalSpeedup||0)} off the timers`);
   if(n.type==='steal') return tt(`${n.from} 偷偷順走了一點你的${seed}（不影響你的收成）`, `${n.from} sneaked a bit of your ${seed} (doesn't affect your harvest)`);
   if(n.type==='steal_bulk') return tt(`${n.from} 用一鍵偷菜順走了你 ${n.plotCount||0} 塊地的作物，共 ✦${n.amount||0}（不影響你的收成）`, `${n.from} took from ${n.plotCount||0} of your plot(s) with one tap, ✦${n.amount||0} total (doesn't affect your harvest)`);
   if(n.type==='auction_sold') return tt(`${n.from} 以 ${n.price} 枚金幣${n.viaBuyout?'一口價直接購買了':'買走了'}你的『${n.cardName}』`, `${n.from} ${n.viaBuyout?'bought':'won'} your "${n.cardName}" for ✦${n.price}`);
@@ -9010,6 +9247,10 @@ function auctionFeeAmount(price, venusReductionPct){
 async function listAuction(itemType, itemId, qty, startBid, buyoutPrice, durMs){
   if(!itemId){ showToast(tt('請選擇物品','Please choose an item')); return; }
   if(itemType !== 'material' && itemType !== 'professionItem' && itemType !== 'dice') itemType = 'card';
+  if(itemType === 'card' && !isCardAuctionTradable(itemId)){
+    showToast(tt('普通／不常見卡牌無法上架拍賣','Common/Uncommon cards cannot be listed on the auction'));
+    return;
+  }
   qty = (itemType === 'card' || itemType === 'dice') ? 1 : Math.max(1, Math.floor(qty||1));
   const owned = auctionOwnedQty(state.player, itemType, itemId);
   if(owned < qty){ showToast(tt('數量不足，無法上架','Not enough quantity to list')); return; }
@@ -9176,10 +9417,11 @@ async function cancelAuction(auctionId){
 }
 // ---------- Want-to-buy orders (reverse auction: buyer locks coins, sellers fulfill) ----------
 function allCardOptions(){
-  return DECK.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
+  return DECK.filter(c=>AUCTION_TRADABLE_RARITIES.includes(c.rarity)).map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
 }
 async function createWantToBuy(cardId, pricePerCard, quantity, durMs){
   if(!cardId){ showToast(tt('請選擇卡片','Please choose a card')); return; }
+  if(!isCardAuctionTradable(cardId)){ showToast(tt('普通／不常見卡牌無法建立求購單','Common/Uncommon cards cannot be requested via buy orders')); return; }
   if(!pricePerCard || pricePerCard < 1){ showToast(tt('請輸入有效的收購單價','Please enter a valid price per card')); return; }
   quantity = Math.floor(quantity);
   if(!quantity || quantity < 1){ showToast(tt('請輸入有效的收購數量','Please enter a valid quantity')); return; }
@@ -9902,8 +10144,15 @@ function renderCollection(body){
   if(sellExtraCUBtn) sellExtraCUBtn.onclick = ()=>sellExtraCommonUncommon();
 }
 
+// 拍賣行只開放稀有度較高的卡牌（rare 以上），common/uncommon 太容易取得，
+// 開放拍賣意義不大又會洗版拍賣列表，這裡統一集中判斷，賣卡跟收購單都共用同一條規則。
+const AUCTION_TRADABLE_RARITIES = ['rare', 'epic', 'legendary'];
+function isCardAuctionTradable(cardId){
+  const c = DECK.find(d=>d.id===cardId);
+  return !!c && AUCTION_TRADABLE_RARITIES.includes(c.rarity);
+}
 function ownedCardOptions(){
-  return DECK.filter(c=>(state.player.cards[c.id]||0) > 0)
+  return DECK.filter(c=>(state.player.cards[c.id]||0) > 0 && AUCTION_TRADABLE_RARITIES.includes(c.rarity))
     .map(c=>`<option value="${c.id}">${c.name} (${tt(`持有 ${state.player.cards[c.id]}`, `x${state.player.cards[c.id]} owned`)})</option>`).join('');
 }
 
@@ -10024,7 +10273,7 @@ async function renderMailbox(body){
   html += `<div class="panel">
     ${recentNotifs.length===0 ? `<div class="empty-note">${t('mailboxEmpty')}</div>` : recentNotifs.map(n=>`
       <div class="listing">
-        <div class="left"><div class="icon-box">${n.type==='friend_request'?'🕊':(n.type==='steal'||n.type==='steal_bulk')?'🌾':(n.type==='water'||n.type==='water_bulk')?'🚿':(n.type.startsWith('auction')||n.type.startsWith('wtb'))?'💰':n.type==='gm_grant'?'⚡':n.type==='boss_reward'?'⚔️':(n.type==='jackpot_win'||n.type==='jackpot_self_win')?'💫':'🔔'}</div><div class="meta"><div>${escapeHtml(notifText(n))}</div><div class="who">${timeAgo(n.createdAt)}</div></div></div>
+        <div class="left"><div class="icon-box">${n.type==='friend_request'?'🕊':(n.type==='steal'||n.type==='steal_bulk')?'🌾':(n.type==='water'||n.type==='water_bulk')?'🚿':n.type==='pet_help_bulk'?'🐾':(n.type.startsWith('auction')||n.type.startsWith('wtb'))?'💰':n.type==='gm_grant'?'⚡':n.type==='boss_reward'?'⚔️':(n.type==='jackpot_win'||n.type==='jackpot_self_win')?'💫':'🔔'}</div><div class="meta"><div>${escapeHtml(notifText(n))}</div><div class="who">${timeAgo(n.createdAt)}</div></div></div>
       </div>
     `).join('')}
     ${notifTotalPages > 1 ? `
