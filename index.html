@@ -685,6 +685,29 @@
     45%{ opacity:1; transform: scale(1.1) translateY(0); }
     100%{ opacity:1; transform: scale(1) translateY(0); }
   }
+  /* 打擊感補強（階段六）：不管有沒有 combo，每一擊都給畫面回饋——HP 條上方閃一下、
+     Boss 立繪震一下、HP 條本身用「殘影慢半拍追上」取代單純瞬間跳格，三者共用在
+     大 Boss 戰與連勝加碼 Boss 戰兩處，靠 id 傳入不同容器。 */
+  .hp-hit-flash{position:absolute;inset:0;border-radius:inherit;pointer-events:none;z-index:2;
+    background:radial-gradient(ellipse at center, rgba(255,120,90,0.55), transparent 75%);
+    opacity:0;animation:hp-hit-flash-burst .4s ease-out;}
+  .hp-hit-flash.crit{background:radial-gradient(ellipse at center, rgba(255,90,90,0.75), transparent 75%);animation-duration:.55s;}
+  @keyframes hp-hit-flash-burst{
+    0%{ opacity:0.95; }
+    100%{ opacity:0; }
+  }
+  .boss-portrait-shake{animation:boss-portrait-shake .32s ease-in-out;}
+  @keyframes boss-portrait-shake{
+    0%,100%{ transform:translate(0,0) rotate(0); }
+    20%{ transform:translate(-7px,3px) rotate(-1.6deg); }
+    40%{ transform:translate(6px,-3px) rotate(1.6deg); }
+    60%{ transform:translate(-5px,2px) rotate(-1deg); }
+    80%{ transform:translate(4px,-1px) rotate(1deg); }
+  }
+  /* HP 條殘影：底層白色殘影條先定格在舊血量寬度，JS 強制 reflow 後才過渡到新寬度，
+     製造「慢半拍追上」的視覺，前景實色條則立刻跳到新血量，兩者疊出打擊的重量感。 */
+  .hp-bar-ghost{position:absolute;top:0;left:0;height:100%;background:rgba(255,255,255,0.6);}
+  .hp-bar-fill{position:relative;height:100%;transition:width .15s ease-out;z-index:1;}
   /* 骰子欄位（Boss 面板內的已裝備骰子小卡）與骰子商店卡片共用的靜態骰面樣式 */
   .dice-slot-chip{display:inline-flex;align-items:center;gap:6px;padding:5px 10px 5px 6px;margin:2px;border-radius:10px;border:1px solid var(--line);font-size:12px;background:rgba(255,255,255,0.03);}
   .dice-slot-chip .dice-slot-swatch{width:20px;height:20px;border-radius:6px;flex-shrink:0;box-shadow:0 0 6px currentColor;}
@@ -1380,9 +1403,9 @@ const EXPEDITION_COMBAT_EVENT_POOL = [
   {id:'beast_pack', icon:'🐺', labelZh:'獸群纏鬥', labelEn:'Pack of Beasts',  difficulty:1.5, winRewardPctDelta:0.35, loseRewardPctDelta:-0.25},
 ];
 
-// 🔥 連勝加成：p.expeditionStreak 持續累計連續成功次數，結算時失敗歸零；每連勝1次這趟獎勵金幣+3%，封頂+30%
+// 🔥 連勝加成：p.expeditionStreak 持續累計連續成功次數，結算時失敗歸零；每連勝1次這趟獎勵金幣+3%，封頂+50%
 const DEFAULT_EXPEDITION_STREAK_BONUS_PER_WIN = 0.03;
-const DEFAULT_EXPEDITION_STREAK_BONUS_CAP = 0.30;
+const DEFAULT_EXPEDITION_STREAK_BONUS_CAP = 0.50;
 let EXPEDITION_STREAK_BONUS_PER_WIN = DEFAULT_EXPEDITION_STREAK_BONUS_PER_WIN;
 let EXPEDITION_STREAK_BONUS_CAP = DEFAULT_EXPEDITION_STREAK_BONUS_CAP;
 
@@ -1874,27 +1897,18 @@ const PET_RARITY_META = {
   epic:   {labelZh:'史詩', labelEn:'Epic', baseValue:16, color:'var(--legendary-b)'},
 };
 const PET_STAR_MAX = 5;
-// 合成升星：消耗「同名寵物」（同屬性＋同稀有度）將目標寵物升星。
-// 陣列 index 0~3 對應 ★1→★2、★2→★3、★3→★4、★4→★5 四段轉換。
-const PET_SYNTHESIS_REQUIRED = {
-  common: [2, 3, 4, 5],
-  rare:   [2, 3, 3, 4],
-  epic:   [2, 2, 2, 2],
-};
-const PET_SYNTHESIS_SUCCESS_RATE = {
-  common: [1.00, 0.90, 0.80, 0.65],
-  rare:   [0.95, 0.80, 0.60, 0.40],
-  epic:   [0.75, 0.45, 0.25, 0.10],
-};
-function petSynthesisRequired(rarity, star){
-  const table = PET_SYNTHESIS_REQUIRED[rarity] || PET_SYNTHESIS_REQUIRED.common;
-  const idx = Math.min(table.length - 1, Math.max(0, star - 1));
-  return table[idx];
+// 合成升星：選 2 隻「同名寵物」（同屬性＋同稀有度＋同星級）直接合併，兩隻都會被消耗，保證成功。
+// ★1+★1→★2、★2+★2→★3、★3+★3→★4、★4+★4→★5，一路都是固定 2 隻、無失敗率。
+// ★5+★5 這一步比較特別：不是繼續升星（已經滿星），而是把品質（稀有度）往上推一階，
+// 星級歸零回 ★1（例如兩隻 ★5 普通合併成 1 隻 ★1 稀有）。已經是最高稀有度（epic）的
+// ★5 寵物則無法再合併——沒有更高一階的品質可以推了，兩隻都會保留、按鈕直接不給點。
+const PET_QUALITY_UPGRADE_CHAIN = {common:'rare', rare:'epic'}; // epic 沒有下一階，故不在此表內
+function petNextRarity(rarity){
+  return PET_QUALITY_UPGRADE_CHAIN[rarity] || null; // null 代表已經是最高稀有度，無法再突破
 }
-function petSynthesisSuccessRate(rarity, star){
-  const table = PET_SYNTHESIS_SUCCESS_RATE[rarity] || PET_SYNTHESIS_SUCCESS_RATE.common;
-  const idx = Math.min(table.length - 1, Math.max(0, star - 1));
-  return table[idx];
+// 是否已經徹底到頂（滿星 + 最高稀有度），這種寵物完全沒有可以再合成的空間
+function isPetFullyMaxed(pet){
+  return pet.star >= PET_STAR_MAX && !petNextRarity(pet.rarity);
 }
 const PET_DURATION_KEYS = ['15m', '1h', '3h', '6h', '12h'];
 const PET_DURATION_META = {
@@ -2153,7 +2167,7 @@ async function setActivePet(petId){
   renderTab();
 }
 // 合成升星面板狀態：目前展開中的目標寵物 id，以及已勾選的素材寵物 id 集合。
-// 素材＝與目標寵物「同名」（同屬性＋同稀有度）的其他寵物，出戰中／尋寶中的寵物不可被選為素材。
+// 素材＝與目標寵物「同名」（同屬性＋同稀有度＋同星級）的其他寵物，出戰中／尋寶中的寵物不可被選為素材。
 let petSynthesisOpenId = null;
 let petSynthesisSelected = new Set();
 
@@ -2162,6 +2176,7 @@ function petSynthesisEligibleMaterials(p, pet){
     pt.id !== pet.id &&
     pt.element === pet.element &&
     pt.rarity === pet.rarity &&
+    pt.star === pet.star &&
     pt.id !== p.petActiveId &&
     !isPetHunting(p, pt.id)
   );
@@ -2189,30 +2204,43 @@ async function synthesizePet(petId){
   ensurePets(p);
   const pet = p.pets.find(pt=>pt.id===petId);
   if(!pet) return;
-  if(pet.star >= PET_STAR_MAX){ showToast(tt('寵物已經滿星了','This pet is already max star')); return; }
-  const required = petSynthesisRequired(pet.rarity, pet.star);
+  if(isPetFullyMaxed(pet)){ showToast(tt('這隻寵物已經是最高星級與最高品質了，無法再合成','This pet is already max star and max quality')); return; }
+  // 每次固定用 1 隻同名（同屬性＋同稀有度＋同星級）素材，跟目標寵物本身合併（共消耗 2 隻）。
+  const required = 1;
   const eligible = petSynthesisEligibleMaterials(p, pet);
   const eligibleIds = new Set(eligible.map(pt=>pt.id));
   const chosenIds = Array.from(petSynthesisSelected).filter(id=>eligibleIds.has(id));
   if(chosenIds.length < required){
-    showToast(tt(`素材不足，需要選擇 ${required} 隻同名寵物才能合成`, `Not enough material selected - need ${required} matching pets to synthesize`));
+    showToast(tt('請選擇 1 隻同名（同屬性、同稀有度、同星級）的寵物來合併', 'Please select 1 matching pet (same element, rarity, and star) to merge'));
     return;
   }
-  const successRate = petSynthesisSuccessRate(pet.rarity, pet.star);
-  if(!confirm(tt(
-    `確定要用 ${required} 隻同名寵物合成升星嗎？成功率 ${Math.round(successRate*100)}%，無論成功或失敗，素材都會被消耗，此動作無法復原。`,
-    `Synthesize using ${required} matching pets? Success rate ${Math.round(successRate*100)}%. Materials are consumed either way - this cannot be undone.`
-  ))) return;
+  const isBreakthrough = pet.star >= PET_STAR_MAX; // 滿星再合併＝品質突破，不是繼續升星
+  const nextRarity = isBreakthrough ? petNextRarity(pet.rarity) : null;
+  if(isBreakthrough && !nextRarity){
+    showToast(tt('已經是最高品質，無法再突破','Already max quality - cannot upgrade further'));
+    return;
+  }
+  const confirmMsg = isBreakthrough
+    ? tt(`確定要用 2 隻 ★${PET_STAR_MAX} ${petRarityLabel(pet.rarity)}寵物合併，突破品質為「${petRarityLabel(nextRarity)}」（星級歸零為 ★1）嗎？保證成功，此動作無法復原。`,
+         `Merge 2 ★${PET_STAR_MAX} ${petRarityLabel(pet.rarity)} pets to upgrade quality to "${petRarityLabel(nextRarity)}" (star resets to ★1)? Guaranteed success - this cannot be undone.`)
+    : tt(`確定要用 2 隻 ★${pet.star} 同名寵物合併升到 ★${pet.star+1} 嗎？保證成功，此動作無法復原。`,
+         `Merge 2 ★${pet.star} matching pets to reach ★${pet.star+1}? Guaranteed success - this cannot be undone.`);
+  if(!confirm(confirmMsg)) return;
   const useIds = new Set(chosenIds.slice(0, required));
   p.pets = p.pets.filter(pt=>!useIds.has(pt.id));
-  const success = Math.random() < successRate;
-  if(success) pet.star += 1;
+  let resultMsg;
+  if(isBreakthrough){
+    pet.rarity = nextRarity;
+    pet.star = 1;
+    resultMsg = tt(`✨ 品質突破成功！寵物晉升為「${petRarityLabel(pet.rarity)}」★1`, `✨ Quality breakthrough succeeded! Pet is now ${petRarityLabel(pet.rarity)} ★1`);
+  } else {
+    pet.star += 1;
+    resultMsg = tt(`✨ 合成成功！寵物升到 ★${pet.star}`, `✨ Synthesis succeeded! Pet is now ★${pet.star}`);
+  }
   petSynthesisOpenId = null;
   petSynthesisSelected = new Set();
   await savePlayer(p);
-  showToast(success
-    ? tt(`✨ 合成成功！寵物升到 ★${pet.star}`, `✨ Synthesis succeeded! Pet is now ★${pet.star}`)
-    : tt('💔 合成失敗，素材已消耗，星級未變', '💔 Synthesis failed - materials were consumed, star unchanged'));
+  showToast(resultMsg);
   renderTab();
 }
 // 尋寶派遣格的「選擇中」草稿狀態（尚未正式派遣）：slotId -> {petId, locationKey}
@@ -2379,18 +2407,20 @@ function petSectionHtml(p){
     p.pets.forEach(pet=>{
       const meta = PET_ELEMENT_META[pet.element];
       const isActive = pet.id === p.petActiveId;
-      const isMax = pet.star >= PET_STAR_MAX;
+      const isMaxStar = pet.star >= PET_STAR_MAX;
+      const fullyMaxed = isPetFullyMaxed(pet); // 滿星且已是最高品質，完全沒有合成空間了
       const starLabel = '★'.repeat(pet.star) + '☆'.repeat(PET_STAR_MAX-pet.star);
       const isOpen = petSynthesisOpenId === pet.id;
       const huntingSlot = p.petHunts.find(h=>h.active && h.petId===pet.id);
+      const synthBtnLabel = isMaxStar ? tt('合併突破品質','Merge to Upgrade Quality') : tt('合成升星','Synthesize');
       html += `<div class="farm-upgrade-box" style="border-color:${isActive?'var(--gold)':'var(--line)'};">
         <div class="farm-upgrade-title">${meta.icon} ${petRarityLabel(pet.rarity)}${petElementLabel(pet.element)} · ${starLabel}${isActive?tt(' （出戰中）',' (Active)'):''}${huntingSlot?tt(` （尋寶中：${petLocationLabel(huntingSlot.locationKey)}）`, ` (Hunting: ${petLocationLabel(huntingSlot.locationKey)})`):''}</div>
-        <div class="farm-upgrade-line" style="color:var(--muted);font-size:12px;">${isMax ? tt('已滿星','Max star') : ''}</div>
+        <div class="farm-upgrade-line" style="color:var(--muted);font-size:12px;">${fullyMaxed ? tt('已滿星且為最高品質','Max star and max quality') : (isMaxStar ? tt('已滿星，可與另一隻★5同名寵物合併突破品質','Max star - merge with another ★5 matching pet to upgrade quality') : '')}</div>
         <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap;">
           ${isActive ? '' : `<button class="btn small secondary" data-set-active="${pet.id}">${tt('設為出戰','Set Active')}</button>`}
-          ${isMax ? '' : `<button class="btn small secondary" data-open-synth="${pet.id}">${isOpen ? tt('收起合成面板','Close Synthesis') : tt('合成升星','Synthesize')}</button>`}
+          ${fullyMaxed ? '' : `<button class="btn small secondary" data-open-synth="${pet.id}">${isOpen ? tt('收起合成面板','Close Synthesis') : synthBtnLabel}</button>`}
         </div>
-        ${(!isMax && isOpen) ? petSynthesisPanelHtml(p, pet) : ''}
+        ${(!fullyMaxed && isOpen) ? petSynthesisPanelHtml(p, pet) : ''}
       </div>`;
     });
     html += `</div>`;
@@ -2465,16 +2495,20 @@ function petHuntSlotHtml(p, slot, now){
   return html;
 }
 function petSynthesisPanelHtml(p, pet){
-  const required = petSynthesisRequired(pet.rarity, pet.star);
-  const successRate = petSynthesisSuccessRate(pet.rarity, pet.star);
+  const required = 1; // 固定選 1 隻同名（同屬性＋同稀有度＋同星級）素材，跟目標寵物本身合併（共消耗 2 隻）
+  const isBreakthrough = pet.star >= PET_STAR_MAX;
+  const nextRarity = isBreakthrough ? petNextRarity(pet.rarity) : null;
   const eligible = petSynthesisEligibleMaterials(p, pet);
   const selectedCount = Array.from(petSynthesisSelected).filter(id=>eligible.some(pt=>pt.id===id)).length;
   const canConfirm = selectedCount >= required;
   let html = `<div class="farm-upgrade-box" style="margin-top:8px;background:var(--bg-panel-raised);">
-    <div class="farm-upgrade-line" style="color:var(--cream);">${tt('合成素材：勾選同名寵物','Synthesis material: select matching pets')}（<span style="color:${canConfirm?'var(--gold-bright)':'var(--danger)'};">${selectedCount}/${required}</span>）</div>
-    <div class="farm-upgrade-line" style="color:var(--muted);font-size:12px;">${tt(`成功率 ${Math.round(successRate*100)}%，無論成敗素材皆會消耗`, `Success rate ${Math.round(successRate*100)}% - materials are consumed either way`)}</div>`;
+    <div class="farm-upgrade-line" style="color:var(--cream);">${tt('合成素材：勾選 1 隻同名（同屬性、同稀有度、同星級）寵物','Synthesis material: select 1 matching pet (same element, rarity, and star)')}（<span style="color:${canConfirm?'var(--gold-bright)':'var(--danger)'};">${selectedCount}/${required}</span>）</div>
+    <div class="farm-upgrade-line" style="color:var(--muted);font-size:12px;">${isBreakthrough
+      ? tt(`兩隻 ★${PET_STAR_MAX} 合併會突破品質為「${petRarityLabel(nextRarity)}」，星級歸零為 ★1，保證成功`, `Merging two ★${PET_STAR_MAX} pets upgrades quality to "${petRarityLabel(nextRarity)}" and resets star to ★1 - guaranteed success`)
+      : tt(`兩隻 ★${pet.star} 合併升到 ★${pet.star+1}，保證成功`, `Merging two ★${pet.star} pets reaches ★${pet.star+1} - guaranteed success`)
+    }</div>`;
   if(!eligible.length){
-    html += `<p class="sub" style="margin:8px 0 0;">${tt('目前沒有可用的同名寵物（需同屬性＋同稀有度，且不在出戰／尋寶中）','No matching pets available (needs same element + rarity, and must not be active or on a hunt)')}</p>`;
+    html += `<p class="sub" style="margin:8px 0 0;">${tt('目前沒有可用的同名寵物（需同屬性＋同稀有度＋同星級，且不在出戰／尋寶中）','No matching pets available (needs same element + rarity + star, and must not be active or on a hunt)')}</p>`;
   } else {
     html += `<div style="display:flex;flex-direction:column;gap:4px;margin-top:8px;">`;
     eligible.forEach(mat=>{
@@ -3373,6 +3407,46 @@ async function resolveBossChestChoice(nickname, choice){
   return null;
 }
 
+// 階段六：HP 條「殘影慢半拍追上」+ 受擊閃光/立繪震動。都是純 DOM 操作，不碰 state，
+// 每次攻擊 render() 完之後呼叫一次即可；沒有對應的 DOM（例如面板還沒渲染出來、
+// 或這次沒有殘影可播）就靜靜跳過，不丟例外。
+function animateHpGhostBar(fillId, ghostId, fromPct, toPct){
+  const fillEl = document.getElementById(fillId);
+  const ghostEl = document.getElementById(ghostId);
+  if(!fillEl || !ghostEl) return;
+  const clampedFrom = Math.max(0, Math.min(100, fromPct));
+  const clampedTo = Math.max(0, Math.min(100, toPct));
+  // 前景條（實色）：立刻跳到新血量，打擊當下馬上看到掉了多少。
+  fillEl.style.width = clampedTo + '%';
+  // 殘影條（半透明白）：先無過場地定格在「打之前」的寬度，強制 reflow 後才套上
+  // 過場動畫慢慢縮到新寬度——這段延遲追趕就是「殘影」，兩條疊在一起看起來才有重量。
+  ghostEl.style.transition = 'none';
+  ghostEl.style.width = clampedFrom + '%';
+  void ghostEl.offsetWidth; // 強制 reflow，讓瀏覽器先畫出舊寬度再接上過場
+  ghostEl.style.transition = 'width .6s cubic-bezier(.22,.85,.32,1) .12s';
+  ghostEl.style.width = clampedTo + '%';
+}
+function playHitImpactFx(opts){
+  opts = opts || {};
+  if(opts.portraitId){
+    const img = document.getElementById(opts.portraitId);
+    if(img){
+      img.classList.remove('boss-portrait-shake');
+      void img.offsetWidth;
+      img.classList.add('boss-portrait-shake');
+    }
+  }
+  if(opts.trackId){
+    const track = document.getElementById(opts.trackId);
+    if(track){
+      const flash = document.createElement('div');
+      flash.className = 'hp-hit-flash' + (opts.crit ? ' crit' : '');
+      track.appendChild(flash);
+      setTimeout(()=>flash.remove(), 600);
+    }
+  }
+}
+
 // 階段五：擲骰動畫。真正的骰子結果（burst）在動畫開始前就已經算好（rollDiceAttack
 // 是純運算、無副作用），動畫只是「開獎」式地把已經決定好的數字揭曉出來，
 // 不會出現動畫播完後結果又變的情況。用 #dice-roll-anim 容器直接操作 DOM，
@@ -3431,13 +3505,37 @@ function playDiceRollAnimation(diceObjs, burst, stageId, btnId){
         stage.appendChild(wrap);
       }
       setTimeout(()=>{
-        stage.style.display = 'none';
-        stage.innerHTML = '';
+        // 🎲 骰子畫面不再自動收掉：讓開出的結果留在畫面上，直到玩家按下一次攻擊
+        // 才會被新一輪的擲骰畫面換掉（下面 renderSettledDiceHtml 負責在重繪/翻頁後
+        // 把同一組結果原樣畫回來，避免像之前那樣被整段重繪清空）。
         if(btn){ btn.style.display = ''; }
         resolve();
       }, badges.length ? 750 : 450);
     }, 900);
   });
+}
+
+// 把「已經開獎」的骰子結果直接畫成 settled 狀態的靜態 HTML（不重播擲骰動畫），
+// 給 render 模板在重繪整個面板時使用，讓上一次攻擊的骰子畫面能原樣保留在畫面上，
+// 而不是每次重繪都被换成空的、隱藏的容器。跟 playDiceRollAnimation 收尾時產生的
+// DOM 結構刻意保持一致，看起來才會像同一個東西只是沒有播放動畫。
+function renderSettledDiceHtml(rolls, comboTier, qualityComboTier, allWild, isCrit){
+  if(!rolls || rolls.length === 0) return '';
+  const diceHtml = rolls.map(r=>{
+    const meta = DICE_QUALITY_META[r.quality];
+    const comboClass = comboTier === 'triple' ? ' combo-glow-triple' : comboTier === 'pair' ? ' combo-glow-pair' : '';
+    const effectClass = r.face.effect ? ' has-effect' : '';
+    return `<div class="dice-roll-die settled${effectClass}${comboClass}" style="border-color:${meta.color};color:${meta.color};">${r.face.num}</div>`;
+  }).join('');
+  const badges = [];
+  if(allWild) badges.push(`<span class="dice-roll-badge allwild">${tt(`🎉 萬能三連！暴擊傷害+${Math.round(TRIPLE_WILD_CRIT_DMG_BONUS*100)}%`, `🎉 Triple Wild! Crit dmg +${Math.round(TRIPLE_WILD_CRIT_DMG_BONUS*100)}%`)}</span>`);
+  if(comboTier === 'triple') badges.push(`<span class="dice-roll-badge triple">${tt('🎯 豹子 ×2！','🎯 Triple ×2!')}</span>`);
+  else if(comboTier === 'pair') badges.push(`<span class="dice-roll-badge pair">${tt(`✌️ 對子 ×${DICE_COMBO_MULT.pair}！`, `✌️ Pair ×${DICE_COMBO_MULT.pair}!`)}</span>`);
+  if(qualityComboTier === 'triple') badges.push(`<span class="dice-roll-badge quality">${tt(`🔷 品質豹子 ×${DICE_QUALITY_COMBO_MULT.triple}！`, `🔷 Quality Triple ×${DICE_QUALITY_COMBO_MULT.triple}!`)}</span>`);
+  else if(qualityComboTier === 'pair') badges.push(`<span class="dice-roll-badge quality">${tt(`🔷 品質對子 ×${DICE_QUALITY_COMBO_MULT.pair}！`, `🔷 Quality Pair ×${DICE_QUALITY_COMBO_MULT.pair}!`)}</span>`);
+  if(isCrit) badges.push(`<span class="dice-roll-badge crit">${tt('💥 暴擊！','💥 Critical!')}</span>`);
+  const badgesHtml = badges.length ? `<div class="dice-roll-badges" style="position:relative;z-index:1;">${badges.join('')}</div>` : '';
+  return diceHtml + badgesHtml;
 }
 
 // 攻擊流程：擲 3 顆骰子取代原本的「一般爆發／超爆發」雙按鈕設計。
@@ -3490,6 +3588,16 @@ async function performBossAttack(){
   }
   const { prevBoss, newBoss, cycleCompleteFor, minionResult, minionSpawned, eventTriggered } = result;
 
+  // 🔊 打擊感：記下這次攻擊「前」跟「後」的血量百分比，交給 renderBoss 在下次渲染完
+  // 之後拿去播殘影追趕動畫。只在同一階段/同一輪內才播——一旦破階或全破，血量池
+  // 本身換了一組（新階段滿血 or 明天才重置），殘影動畫套在上面只會很奇怪，直接跳過。
+  state.bossHpAnim = (newBoss.stage === prevBoss.stage && newBoss.cycle === prevBoss.cycle) ? {
+    fromPct: Math.max(0, Math.min(100, (prevBoss.hp/prevBoss.maxHp)*100)),
+    stage: newBoss.stage,
+    cycle: newBoss.cycle,
+    crit: burst.isCrit,
+  } : null;
+
   // 👹 小怪擊殺獎勵：獨立於 Boss 破台獎勵，用自己的 CAS 更新玩家資料，不影響
   // 上面已經寫入的 state.player（擊殺當下先算好）；CAS 回傳的物件本身就是寫入
   // 成功後的最新玩家資料，直接沿用即可，不用再多打一次可能失敗的 loadPlayer。
@@ -3521,7 +3629,7 @@ async function performBossAttack(){
     defeatMsg = tt(`⚔️ 「${BOSS_STAGE_META[newBoss.stage-2].label}」被擊破！Boss 進入「${BOSS_STAGE_META[newBoss.stage-1].label}」！${stageEssenceReward?`　💠精華 +${stageEssenceReward.essence}`:''}`, `⚔️ "${BOSS_STAGE_META[newBoss.stage-2].labelEn}" defeated! The Boss enters "${BOSS_STAGE_META[newBoss.stage-1].labelEn}"!${stageEssenceReward?`  💠Essence +${stageEssenceReward.essence}`:''}`);
   }
 
-  state.bossLastAttack = {damage: burst.damage, contrib: contribGain, rolls: burst.rolls, comboTier: burst.comboTier, sameNumber: burst.sameNumber, qualityComboTier: burst.qualityComboTier, isCrit: burst.isCrit, eventApplied: burst.eventApplied, comboStreakUsed: burst.comboStreakUsed, comboStreakBonus: burst.comboStreakBonus, comboStreakAfter: newBoss.comboStreak};
+  state.bossLastAttack = {damage: burst.damage, contrib: contribGain, rolls: burst.rolls, comboTier: burst.comboTier, sameNumber: burst.sameNumber, qualityComboTier: burst.qualityComboTier, allWild: burst.allWild, isCrit: burst.isCrit, eventApplied: burst.eventApplied, comboStreakUsed: burst.comboStreakUsed, comboStreakBonus: burst.comboStreakBonus, comboStreakAfter: newBoss.comboStreak};
   checkAchievementUnlocks(state.player);
   renderTab();
   updateHeaderCoins();
@@ -4297,12 +4405,13 @@ function renderBoss(body){
       <h2>⚔️ ${tt(SEASON_LABEL_ZH, SEASON_LABEL_EN)} · ${tt('Boss 戰','Boss Battle')}</h2>
       <p class="sub">${tt(`第 ${boss.cycle} 輪　第 ${boss.stage}/3 階段　·　每日 00:00 重置`, `Cycle ${boss.cycle} · Stage ${boss.stage}/3 · Resets daily at 00:00`)}</p>
       <div style="text-align:center;">
-        <img src="${meta.img}" style="width:100%;max-width:340px;border-radius:14px;border:1px solid var(--gold);box-shadow:0 0 22px rgba(139,107,209,0.4);margin-bottom:10px;" alt="${meta.label}" />
+        <img id="boss-portrait-img" src="${meta.img}" style="width:100%;max-width:340px;border-radius:14px;border:1px solid var(--gold);box-shadow:0 0 22px rgba(139,107,209,0.4);margin-bottom:10px;" alt="${meta.label}" />
         <div style="font-family:'Cinzel Decorative',serif;color:var(--gold-bright);font-size:16px;">${tt(meta.label, meta.labelEn)}</div>
         <p class="sub" style="margin-top:4px;">${tt(meta.desc, meta.descEn)}</p>
       </div>
-      <div style="background:var(--bg-panel-raised, rgba(255,255,255,0.06));border-radius:999px;height:18px;overflow:hidden;border:1px solid var(--line);margin:12px 0 4px;">
-        <div style="height:100%;width:${pct}%;background:linear-gradient(90deg, var(--violet), var(--gold));"></div>
+      <div id="boss-hp-track" style="position:relative;background:var(--bg-panel-raised, rgba(255,255,255,0.06));border-radius:999px;height:18px;overflow:hidden;border:1px solid var(--line);margin:12px 0 4px;">
+        <div id="boss-hp-ghost" class="hp-bar-ghost" style="width:${pct}%;"></div>
+        <div id="boss-hp-fill" class="hp-bar-fill" style="width:${pct}%;background:linear-gradient(90deg, var(--violet), var(--gold));"></div>
       </div>
       <div class="countdown" style="text-align:center;margin-bottom:12px;">${Math.max(0,boss.hp).toLocaleString()} / ${boss.maxHp.toLocaleString()} HP</div>
       ${boss.minion ? (()=>{
@@ -4366,7 +4475,10 @@ function renderBoss(body){
           ${lastRollHtml}
         </div>`;
       })()}
-      <div id="dice-roll-anim" class="dice-roll-anim" style="display:none;"></div>
+      <!-- 🎲 上次擲骰的骰子畫面：整頁重繪（renderTab）不會再把它換成空白容器——
+           有上次結果時直接用 renderSettledDiceHtml 原樣畫出來、保持可見，直到玩家
+           按下一次攻擊、playDiceRollAnimation 重新接管這個容器為止。 -->
+      <div id="dice-roll-anim" class="dice-roll-anim" style="${state.bossLastAttack && state.bossLastAttack.rolls ? '' : 'display:none;'}">${state.bossLastAttack && state.bossLastAttack.rolls ? renderSettledDiceHtml(state.bossLastAttack.rolls, state.bossLastAttack.comboTier, state.bossLastAttack.qualityComboTier, state.bossLastAttack.allWild, state.bossLastAttack.isCrit) : ''}</div>
       <button class="btn" id="boss-burst-btn" ${(p.coins < BOSS_COIN_COST) ? 'disabled' : ''}>${tt(`🎲 擲骰攻擊（消耗✦${BOSS_COIN_COST}）`, `🎲 Dice Attack (✦${BOSS_COIN_COST})`)}</button>
     </div>`;
     if(myGen !== bossRenderGen) return; // 已經有更新的一次 renderBoss 呼叫了，這份是過期結果，丟棄不寫 DOM
@@ -4374,6 +4486,13 @@ function renderBoss(body){
     body.innerHTML = bossNavHtml + html;
     bindBossNav();
     if(bossAlreadyRendered) window.scrollTo(0, bossScrollY);
+    // 🔊 打擊感：剛才 performBossAttack 記下的「攻擊前血量%」在這裡消費掉——播完
+    // 一次就清掉，避免下次單純切頁籤重繪（不是真的打了一下）又重播一次動畫。
+    if(state.bossHpAnim && state.bossHpAnim.stage === boss.stage && state.bossHpAnim.cycle === boss.cycle){
+      animateHpGhostBar('boss-hp-fill', 'boss-hp-ghost', state.bossHpAnim.fromPct, pct);
+      playHitImpactFx({portraitId:'boss-portrait-img', trackId:'boss-hp-track', crit: state.bossHpAnim.crit});
+    }
+    state.bossHpAnim = null;
     // 點擊後立刻把兩顆按鈕都 disable，避免使用者在 performBossAttack 還沒
     // resolve（尤其 resolveBossAttack 內有 CAS 重試、可能要好幾輪 await）
     // 之前手滑連點，一次點擊觸發多次扣金幣/多次攻擊。等 performBossAttack
@@ -5256,9 +5375,10 @@ const TITLES = [
   {key:'streak', nameZh:'亡命連勝之王', nameEn:'Reckless Streak King', icon:'🔥'},
   {key:'boss', nameZh:'屠神使者', nameEn:'Godslayer', icon:'👹'},
   {key:'harvest', nameZh:'田園宗師', nameEn:'Farming Grandmaster', icon:'🌻'},
+  {key:'auction', nameZh:'黃金競拍師', nameEn:'Golden Auctioneer', icon:'🔨'},
 ];
 const TITLE_BY_KEY = Object.fromEntries(TITLES.map(t=>[t.key,t]));
-let TITLE_HOLDERS = {wealth:null, collection:null, resonance:null, streak:null, boss:null, harvest:null, updatedAt:0};
+let TITLE_HOLDERS = {wealth:null, collection:null, resonance:null, streak:null, boss:null, harvest:null, auction:null, updatedAt:0};
 async function loadTitleHolders(){
   try{
     const r = await storage.get('config:title_holders');
@@ -5271,6 +5391,7 @@ async function loadTitleHolders(){
         streak: s.streak || null,
         boss: s.boss || null,
         harvest: s.harvest || null,
+        auction: s.auction || null,
         updatedAt: s.updatedAt || 0,
       };
     }
@@ -5281,19 +5402,21 @@ async function saveTitleHolders(){
   await storage.set('config:title_holders', JSON.stringify(TITLE_HOLDERS));
 }
 // 依排行榜頁面已經算好的榜單重新判斷榜首，若有變動才寫回，避免每次開排行榜都打一次寫入
-async function refreshTitleHoldersFromLeaderboards(byCoins, byCards, bySlotSpend, byStreak, byBossDamage, byHarvest){
+async function refreshTitleHoldersFromLeaderboards(byCoins, byCards, bySlotSpend, byStreak, byBossDamage, byHarvest, byAuctionVolume){
   const nextWealth = (byCoins[0] && byCoins[0].coins > 0) ? byCoins[0].nickname : null;
   const nextCollection = (byCards[0] && byCards[0].total > 0) ? byCards[0].nickname : null;
   const nextResonance = (bySlotSpend[0] && bySlotSpend[0].spend > 0) ? bySlotSpend[0].nickname : null;
   const nextStreak = (byStreak && byStreak[0] && byStreak[0].streak > 0) ? byStreak[0].nickname : null;
   const nextBoss = (byBossDamage && byBossDamage[0] && byBossDamage[0].damage > 0) ? byBossDamage[0].nickname : null;
   const nextHarvest = (byHarvest && byHarvest[0] && byHarvest[0].harvests > 0) ? byHarvest[0].nickname : null;
+  const nextAuction = (byAuctionVolume && byAuctionVolume[0] && byAuctionVolume[0].volume > 0) ? byAuctionVolume[0].nickname : null;
   const changed = nextWealth !== TITLE_HOLDERS.wealth
     || nextCollection !== TITLE_HOLDERS.collection
     || nextResonance !== TITLE_HOLDERS.resonance
     || nextStreak !== TITLE_HOLDERS.streak
     || nextBoss !== TITLE_HOLDERS.boss
-    || nextHarvest !== TITLE_HOLDERS.harvest;
+    || nextHarvest !== TITLE_HOLDERS.harvest
+    || nextAuction !== TITLE_HOLDERS.auction;
   if(changed){
     TITLE_HOLDERS.wealth = nextWealth;
     TITLE_HOLDERS.collection = nextCollection;
@@ -5301,6 +5424,7 @@ async function refreshTitleHoldersFromLeaderboards(byCoins, byCards, bySlotSpend
     TITLE_HOLDERS.streak = nextStreak;
     TITLE_HOLDERS.boss = nextBoss;
     TITLE_HOLDERS.harvest = nextHarvest;
+    TITLE_HOLDERS.auction = nextAuction;
     await saveTitleHolders();
   }
 }
@@ -6500,35 +6624,75 @@ async function claimExpedition(){
 async function attackStreakBoss(){
   const p = state.player;
   const enc = state.streakBossEncounter;
-  if(!p || !enc || enc.result || enc.attacksLeft <= 0) return;
+  // 🐛 修正「骰子不會消失」：expeditionTickInterval 每秒會整段重繪遠征分頁（含這個
+  // 面板），如果剛好在骰子動畫播放中間重繪，playDiceRollAnimation 正在操作的
+  // #streak-boss-dice-anim 節點會被整個換掉——動畫自己收尾的 display:none 是作用在
+  // 已經被換掉、玩家看不到的舊節點上，畫面上留著的新節點反而沒被控制到，於是骰子
+  // 就卡在顯示最後一次的數字，直到下次點擊攻擊重新呼叫動畫才會被換掉，造成「按下
+  // 一次攻擊前不會消失」的錯覺。用 state.streakBossAnimating 這個旗標讓計時器在動畫
+  // 播放期間跳過那一秒的重繪（比照下面 isPickerActive 的作法），同時擋掉重繪出的
+  // 按鈕還沒 disable 時被連點造成的重複攻擊。
+  if(!p || !enc || enc.result || enc.attacksLeft <= 0 || state.streakBossAnimating) return;
   ensureDiceInventory(p);
   const equippedIds = p.diceSlots.filter(id => id && p.dice[id]);
   if(equippedIds.length === 0) return;
   const btn = document.getElementById('streak-boss-attack-btn');
   if(btn) btn.disabled = true;
-  const burst = rollDiceAttack(p, null, enc.comboStreak);
-  await playDiceRollAnimation(equippedIds.map(id => p.dice[id]), burst, 'streak-boss-dice-anim', 'streak-boss-attack-btn');
-  enc.dealt += burst.damage;
-  enc.hp = Math.max(0, enc.hp - burst.damage);
-  enc.comboStreak = (burst.comboTier === 'pair' || burst.comboTier === 'triple') ? enc.comboStreak + 1 : 0;
-  enc.attacksLeft -= 1;
-  // 🔥 每一擊的傷害數字都留在面板上（不只是骰子動畫裡一閃而過的徽章），戰鬥結束後
-  // 也保留在畫面上讓玩家看清楚結果，不自動關閉——需要玩家自己按「關閉」才會清掉。
-  enc.lastDamage = burst.damage;
-  enc.lastComboTier = burst.comboTier;
-  enc.lastCrit = burst.isCrit;
-  if(enc.hp <= 0){
-    const essence = expeditionStreakBossEssenceReward(enc.streak);
-    const coins = expeditionStreakBossCoinReward(enc.streak);
-    ensureMaterials(p);
-    p.materials.diceEssence = (p.materials.diceEssence||0) + essence;
-    p.coins = (p.coins||0) + coins;
-    await savePlayer(p);
-    enc.result = 'win';
-    enc.essence = essence;
-    enc.coins = coins;
-  } else if(enc.attacksLeft <= 0){
-    enc.result = 'lose';
+  state.streakBossAnimating = true;
+  try{
+    const burst = rollDiceAttack(p, null, enc.comboStreak);
+    await playDiceRollAnimation(equippedIds.map(id => p.dice[id]), burst, 'streak-boss-dice-anim', 'streak-boss-attack-btn');
+    // 🔊 打擊感：跟大 Boss 那邊一樣，先記下「打之前」的血量%，畫面重繪後才知道要
+    // 讓殘影條從哪裡開始追趕；hpAnimFrom 只是暫存在記憶體物件上，不落地存檔。
+    enc.hpAnimFrom = Math.max(0, Math.min(100, (enc.hp/enc.maxHp)*100));
+    enc.dealt += burst.damage;
+    enc.hp = Math.max(0, enc.hp - burst.damage);
+    enc.comboStreak = (burst.comboTier === 'pair' || burst.comboTier === 'triple') ? enc.comboStreak + 1 : 0;
+    enc.attacksLeft -= 1;
+    // 🔥 每一擊的傷害數字都留在面板上（不只是骰子動畫裡一閃而過的徽章），戰鬥結束後
+    // 也保留在畫面上讓玩家看清楚結果，不自動關閉——需要玩家自己按「關閉」才會清掉。
+    enc.lastDamage = burst.damage;
+    enc.lastComboTier = burst.comboTier;
+    enc.lastCrit = burst.isCrit;
+    // 🎲 連同完整擲骰結果一起存下來，讓遠征分頁每秒重繪時能把骰子畫面原樣重畫出來
+    // （見下面 render 模板的 renderSettledDiceHtml），不會只剩文字紀錄。
+    enc.lastRolls = burst.rolls;
+    enc.lastQualityComboTier = burst.qualityComboTier;
+    enc.lastAllWild = burst.allWild;
+    // 🔊 打擊感：骰子動畫本身只會停留 0.45~0.75 秒（跟大 Boss 那邊的 playDiceRollAnimation
+    // 完全共用同一段計時），大 Boss 之所以感覺比較重，其實是因為它額外跳了一則 showToast
+    // （至少 2.2 秒起跳，見 toastDurationForMsg），把「這一擊」的回饋延續下去。連勝加碼 Boss
+    // 之前完全沒呼叫 showToast，畫面上只剩那行小字，動畫一收就像沒打到一樣。這裡補上同款
+    // toast，讓兩邊的打擊感一致。
+    const diceTag = burst.rolls.map(r => r.face.num).join('·');
+    const bonusTags = [];
+    if(burst.allWild) bonusTags.push(tt('🎉萬能三連','🎉Triple Wild'));
+    if(burst.comboTier === 'triple') bonusTags.push(tt('🎯豹子×2','🎯Triple×2'));
+    else if(burst.comboTier === 'pair') bonusTags.push(tt(`✌️對子×${DICE_COMBO_MULT.pair}`, `✌️Pair×${DICE_COMBO_MULT.pair}`));
+    if(burst.qualityComboTier === 'triple') bonusTags.push(tt(`🔷品質豹子×${DICE_QUALITY_COMBO_MULT.triple}`, `🔷Quality Triple×${DICE_QUALITY_COMBO_MULT.triple}`));
+    else if(burst.qualityComboTier === 'pair') bonusTags.push(tt(`🔷品質對子×${DICE_QUALITY_COMBO_MULT.pair}`, `🔷Quality Pair×${DICE_QUALITY_COMBO_MULT.pair}`));
+    if(burst.comboStreakBonus > 0) bonusTags.push(tt(`🔥連擊+${Math.round(burst.comboStreakBonus*100)}%`, `🔥Streak+${Math.round(burst.comboStreakBonus*100)}%`));
+    if(burst.isCrit) bonusTags.push(tt('💥暴擊','💥Crit'));
+    const bonusStr = bonusTags.length ? `（${bonusTags.join('、')}）` : '';
+    if(enc.hp <= 0){
+      const essence = expeditionStreakBossEssenceReward(enc.streak);
+      const coins = expeditionStreakBossCoinReward(enc.streak);
+      ensureMaterials(p);
+      p.materials.diceEssence = (p.materials.diceEssence||0) + essence;
+      p.coins = (p.coins||0) + coins;
+      await savePlayer(p);
+      enc.result = 'win';
+      enc.essence = essence;
+      enc.coins = coins;
+      showToast(tt(`🐲 擲出 ${diceTag}，造成 ${burst.damage.toLocaleString()} 傷害！${bonusStr}　擊退成功！獲得 💠${essence}、✦${coins}`, `🐲 Rolled ${diceTag}, dealt ${burst.damage.toLocaleString()} damage!${bonusStr}  Boss repelled! Gained 💠${essence}, ✦${coins}`));
+    } else if(enc.attacksLeft <= 0){
+      enc.result = 'lose';
+      showToast(tt(`🐲 擲出 ${diceTag}，造成 ${burst.damage.toLocaleString()} 傷害！${bonusStr}　沒能擊退，下次連勝再挑戰吧`, `🐲 Rolled ${diceTag}, dealt ${burst.damage.toLocaleString()} damage!${bonusStr}  Could not repel it - try again next streak`));
+    } else {
+      showToast(tt(`🐲 擲出 ${diceTag}，造成 ${burst.damage.toLocaleString()} 傷害！${bonusStr}`, `🐲 Rolled ${diceTag}, dealt ${burst.damage.toLocaleString()} damage!${bonusStr}`));
+    }
+  } finally {
+    state.streakBossAnimating = false;
   }
   render();
 }
@@ -6726,13 +6890,16 @@ async function renderExpedition(body){
     html += `<div class="panel">
       <h2>🐲 ${tt('連勝加碼挑戰','Streak Bonus Boss')}</h2>
       <p class="sub">${tt(`連勝 ${enc.streak} 場，遭遇強敵！用裝備的骰子攻擊，總傷害打光血量即可擊退，獲得額外骰子精華。打輸完全不影響連勝與遠征獎勵。`, `${enc.streak}-win streak - a strong foe appears! Attack with your equipped dice. Deplete its HP to repel it for bonus Dice Essence. Losing doesn't affect your streak or expedition reward at all.`)}</p>
-      <div style="background:var(--bg-panel-raised, rgba(255,255,255,0.06));border-radius:999px;height:14px;overflow:hidden;border:1px solid var(--line);margin-bottom:4px;">
-        <div style="height:100%;width:${hpPct}%;background:linear-gradient(90deg, var(--danger), var(--gold));transition:width .3s;"></div>
+      <div id="streak-hp-track" style="position:relative;background:var(--bg-panel-raised, rgba(255,255,255,0.06));border-radius:999px;height:14px;overflow:hidden;border:1px solid var(--line);margin-bottom:4px;">
+        <div id="streak-hp-ghost" class="hp-bar-ghost" style="width:${hpPct}%;"></div>
+        <div id="streak-hp-fill" class="hp-bar-fill" style="width:${hpPct}%;background:linear-gradient(90deg, var(--danger), var(--gold));"></div>
       </div>
       <div class="countdown" style="font-size:11px;margin-bottom:10px;">${tt(`HP ${enc.hp} / ${enc.maxHp}`, `HP ${enc.hp} / ${enc.maxHp}`)}</div>
       ${lastHitLine}
       ${resultLine}
-      <div id="streak-boss-dice-anim" class="dice-roll-anim" style="display:none;"></div>
+      <!-- 🎲 同樣道理：有上次擲骰結果就直接畫出來、保持可見，每秒重繪（見上面
+           expeditionTickInterval 的 streakBossAnimating 判斷）不會再把它清空。 -->
+      <div id="streak-boss-dice-anim" class="dice-roll-anim" style="${enc.lastRolls ? '' : 'display:none;'}">${enc.lastRolls ? renderSettledDiceHtml(enc.lastRolls, enc.lastComboTier, enc.lastQualityComboTier, enc.lastAllWild, enc.lastCrit) : ''}</div>
       ${controls}
     </div>`;
   }
@@ -6904,6 +7071,15 @@ async function renderExpedition(body){
   }
 
   body.innerHTML = html;
+  // 🔊 打擊感：跟大 Boss 那邊同一招——播完一次殘影追趕 + 閃光就把暫存的起始值清掉，
+  // 避免玩家切分頁回來又重繪一次時，動畫被誤觸發。
+  const streakEnc = state.streakBossEncounter;
+  if(streakEnc && streakEnc.hpAnimFrom != null){
+    const streakToPct = Math.max(0, Math.min(100, (streakEnc.hp/streakEnc.maxHp)*100));
+    animateHpGhostBar('streak-hp-fill', 'streak-hp-ghost', streakEnc.hpAnimFrom, streakToPct);
+    playHitImpactFx({trackId:'streak-hp-track', crit: streakEnc.lastCrit});
+    streakEnc.hpAnimFrom = null;
+  }
   const claimBtn = document.getElementById('expedition-claim-btn');
   if(claimBtn) claimBtn.onclick = claimExpedition;
   const streakBossBtn = document.getElementById('streak-boss-attack-btn');
@@ -7214,26 +7390,38 @@ async function harvestAllReady(){
 
 async function waterFriendPlot(friendNick, plotIndex){
   if(!state.nickname){ return; }
-  const owner = await loadPlayer(friendNick);
-  if(!owner){ showToast(tt('找不到這位好友的資料',"Couldn't find this friend's data")); return; }
-  const farm = ensureFarm(owner);
-  const plot = farm[plotIndex];
-  const now = Date.now();
-  const status = plotStatus(plot, now);
-  if(status !== 'growing'){ showToast(tt('這塊地目前不需要澆水',"This plot doesn't need watering right now")); return; }
-  if(plot.waterLog[state.nickname]){ showToast(tt('你已經幫這塊地澆過水了',"You've already watered this plot")); return; }
-  const remain = plot.readyAt - now;
-  const speedup = Math.floor(remain * WATER_SPEEDUP_RATIO);
-  plot.readyAt = plot.readyAt - speedup;
-  if(plot.witherAt) plot.witherAt = plot.witherAt - speedup;
-  plot.waterLog[state.nickname] = now;
-  await savePlayer(owner);
+  // 🔒 跟 stealFriendPlot 同一種漏洞、同一種修法：讀跟寫中間有網路延遲空檔，
+  // 連續請求會各自讀到「還沒澆過」的舊資料，各自通過 waterLog 檢查、各自領一次謝禮。
+  // 改用 updatePlayerCAS，把檢查跟標記 waterLog 包進同一次樂觀鎖讀-改-寫。
+  let waterInfo = null;
+  let failReason = null;
+  const appliedOwner = await updatePlayerCAS(friendNick, (owner)=>{
+    const farm = ensureFarm(owner);
+    const plot = farm[plotIndex];
+    const now = Date.now();
+    const status = plotStatus(plot, now);
+    if(status !== 'growing'){ failReason = 'not_growing'; return; }
+    if(plot.waterLog[state.nickname]){ failReason = 'already_watered'; return; }
+    const remain = plot.readyAt - now;
+    const speedup = Math.floor(remain * WATER_SPEEDUP_RATIO);
+    plot.readyAt = plot.readyAt - speedup;
+    if(plot.witherAt) plot.witherAt = plot.witherAt - speedup;
+    plot.waterLog[state.nickname] = now;
+    waterInfo = {speedup, seed: plot.seed};
+  });
+  if(!appliedOwner){ showToast(tt('找不到這位好友的資料',"Couldn't find this friend's data")); return; }
+  if(failReason === 'not_growing'){ showToast(tt('這塊地目前不需要澆水',"This plot doesn't need watering right now")); return; }
+  if(failReason === 'already_watered'){ showToast(tt('你已經幫這塊地澆過水了',"You've already watered this plot")); return; }
+  if(!waterInfo) return;
+  const speedup = waterInfo.speedup;
 
-  state.player.coins = (state.player.coins||0) + WATER_HELPER_REWARD;
-  bumpQuest(state.player, 'water', 1);
-  await savePlayer(state.player);
+  const appliedSelf = await updatePlayerCAS(state.nickname, (player)=>{
+    player.coins = (player.coins||0) + WATER_HELPER_REWARD;
+    bumpQuest(player, 'water', 1);
+  });
+  if(appliedSelf) state.player = appliedSelf;
 
-  const wateredSeedName = seedName(SEED_TYPES[plot.seed]);
+  const wateredSeedName = seedName(SEED_TYPES[waterInfo.seed]);
   await createNotification(friendNick, state.nickname, 'water', {plotIndex, seedName: wateredSeedName, speedup});
 
   showToast(tt(`已幫 ${friendNick} 澆水，縮短了 ${formatDuration(speedup)}，你獲得 ✦${WATER_HELPER_REWARD} 作為謝禮`, `Watered ${friendNick}'s plot, cutting ${formatDuration(speedup)} off the timer. You received ✦${WATER_HELPER_REWARD} as thanks`));
@@ -7255,46 +7443,49 @@ async function waterAllFriendsPlots(){
       showToast(tt('目前沒有好友可以澆水','You have no friends to water yet'));
       return;
     }
-    const now = Date.now();
     let wateredPlotCount = 0;
     let wateredFriendCount = 0;
     let totalSpeedup = 0;
     const notifJobs = []; // 一位好友一筆（彙總這位好友被澆了幾塊地、共縮短多少時間），而不是每塊地各發一則通知
-    // 逐一好友檢查，每位好友只要有變動就存一次檔（而不是每塊地都存一次），減少寫入次數
+    // 🔒 跟單塊澆水同一種修法：每位好友改用 updatePlayerCAS，把「檢查每塊地是否
+    // 在成長中／是否澆過」跟「標記 waterLog、縮短時間」包進同一次樂觀鎖讀-改-寫，
+    // 沒搶到鎖會自動重讀最新資料再試，避免跟同時間的其他澆水請求互相蓋掉。
     for(const friendNick of friends){
-      const owner = await loadPlayer(friendNick);
-      if(!owner) continue;
-      const farm = ensureFarm(owner);
       let friendPlotCount = 0;
       let friendSpeedup = 0;
-      farm.forEach((plot, i)=>{
-        const status = plotStatus(plot, now);
-        if(status !== 'growing') return;
-        if(plot.waterLog[state.nickname]) return;
-        const remain = plot.readyAt - now;
-        const speedup = Math.floor(remain * WATER_SPEEDUP_RATIO);
-        plot.readyAt = plot.readyAt - speedup;
-        if(plot.witherAt) plot.witherAt = plot.witherAt - speedup;
-        plot.waterLog[state.nickname] = now;
-        friendPlotCount++;
-        friendSpeedup += speedup;
+      const applied = await updatePlayerCAS(friendNick, (owner)=>{
+        const farm = ensureFarm(owner);
+        const now = Date.now();
+        friendPlotCount = 0; friendSpeedup = 0; // 每次重試都要重算，避免殘留上次嘗試失敗時算的數字
+        farm.forEach((plot)=>{
+          const status = plotStatus(plot, now);
+          if(status !== 'growing') return;
+          if(plot.waterLog[state.nickname]) return;
+          const remain = plot.readyAt - now;
+          const speedup = Math.floor(remain * WATER_SPEEDUP_RATIO);
+          plot.readyAt = plot.readyAt - speedup;
+          if(plot.witherAt) plot.witherAt = plot.witherAt - speedup;
+          plot.waterLog[state.nickname] = now;
+          friendPlotCount++;
+          friendSpeedup += speedup;
+        });
       });
-      if(friendPlotCount > 0){
-        wateredFriendCount++;
-        wateredPlotCount += friendPlotCount;
-        totalSpeedup += friendSpeedup;
-        await savePlayer(owner);
-        notifJobs.push({friendNick, plotCount: friendPlotCount, totalSpeedup: friendSpeedup});
-      }
+      if(!applied || friendPlotCount === 0) continue;
+      wateredFriendCount++;
+      wateredPlotCount += friendPlotCount;
+      totalSpeedup += friendSpeedup;
+      notifJobs.push({friendNick, plotCount: friendPlotCount, totalSpeedup: friendSpeedup});
     }
     if(wateredPlotCount === 0){
       showToast(tt('好友的花園目前都不需要澆水','None of your friends have plots that need watering right now'));
       return;
     }
     const coinsGained = wateredPlotCount * WATER_HELPER_REWARD;
-    state.player.coins = (state.player.coins||0) + coinsGained;
-    bumpQuest(state.player, 'water', wateredPlotCount);
-    await savePlayer(state.player);
+    const appliedSelf = await updatePlayerCAS(state.nickname, (player)=>{
+      player.coins = (player.coins||0) + coinsGained;
+      bumpQuest(player, 'water', wateredPlotCount);
+    });
+    if(appliedSelf) state.player = appliedSelf;
 
     // 通知一位好友只發一則（type: water_bulk，彙總這次幫他澆了幾塊地、總共縮短多少時間），
     // 不再像單塊澆水那樣每塊地各發一則，避免好友的信箱被同一次操作洗版
@@ -7385,22 +7576,38 @@ async function helpAllFriendsPetHunts(){
 
 async function stealFriendPlot(friendNick, plotIndex){
   if(!state.nickname){ return; }
-  const owner = await loadPlayer(friendNick);
-  if(!owner){ showToast(tt('找不到這位好友的資料',"Couldn't find this friend's data")); return; }
-  const farm = ensureFarm(owner);
-  const plot = farm[plotIndex];
-  const now = Date.now();
-  const status = plotStatus(plot, now);
-  if(status !== 'ready'){ showToast(tt('這塊地目前沒有成熟的作物可以偷','Nothing ripe to take from this plot right now')); return; }
-  if(plot.stolenBy.includes(state.nickname)){ showToast(tt('你已經偷過這塊地了',"You've already taken from this plot")); return; }
-  const gain = stealYieldFor(plot.seed);
-  plot.stolenBy.push(state.nickname);
-  await savePlayer(owner);
+  // 🔒 修正重複偷菜漏洞：原本先 loadPlayer 讀好友資料、檢查完才 savePlayer 寫回，
+  // 讀跟寫中間有真正的網路延遲空檔。若同一時間對同一塊地連續送出多次偷菜請求
+  // （連點、多分頁、或直接呼叫這個函式），每個請求都各自讀到「尚未偷過」的
+  // 舊資料、各自通過檢查、各自加到自己的金幣，等於同一塊地能被同一人偷很多次。
+  // 改用跟 boss 獎勵發放一致的 updatePlayerCAS：檢查與標記 stolenBy 在同一次
+  // 樂觀鎖讀-改-寫中完成，沒搶到鎖會自動重讀最新資料再試，確保同一塊地
+  // 對同一玩家只會成功標記一次。
+  let stealInfo = null;
+  let failReason = null;
+  const appliedOwner = await updatePlayerCAS(friendNick, (owner)=>{
+    const farm = ensureFarm(owner);
+    const plot = farm[plotIndex];
+    const now = Date.now();
+    const status = plotStatus(plot, now);
+    if(status !== 'ready'){ failReason = 'not_ready'; return; }
+    if(plot.stolenBy.includes(state.nickname)){ failReason = 'already_stolen'; return; }
+    stealInfo = {gain: stealYieldFor(plot.seed), seed: plot.seed};
+    plot.stolenBy.push(state.nickname);
+  });
+  if(!appliedOwner){ showToast(tt('找不到這位好友的資料',"Couldn't find this friend's data")); return; }
+  if(failReason === 'not_ready'){ showToast(tt('這塊地目前沒有成熟的作物可以偷','Nothing ripe to take from this plot right now')); return; }
+  if(failReason === 'already_stolen'){ showToast(tt('你已經偷過這塊地了',"You've already taken from this plot")); return; }
+  if(!stealInfo) return;
+  const gain = stealInfo.gain;
 
-  state.player.coins = (state.player.coins||0) + gain;
-  await savePlayer(state.player);
+  // 自己這邊拿獎勵也改用 CAS，避免跟同一時間的其他收益（例如剛好在收成、抽卡）互相蓋掉。
+  const appliedSelf = await updatePlayerCAS(state.nickname, (player)=>{
+    player.coins = (player.coins||0) + gain;
+  });
+  if(appliedSelf) state.player = appliedSelf;
 
-  const stolenSeedName = seedName(SEED_TYPES[plot.seed]);
+  const stolenSeedName = seedName(SEED_TYPES[stealInfo.seed]);
   await createNotification(friendNick, state.nickname, 'steal', {plotIndex, seedName: stolenSeedName, amount: gain});
 
   showToast(tt(`偷偷順走一點 ${friendNick} 的${stolenSeedName}，獲得 ✦${gain}（不影響對方收成）`, `Sneaked a bit of ${friendNick}'s ${stolenSeedName}, gaining ✦${gain} (doesn't affect their harvest)`));
@@ -7422,41 +7629,45 @@ async function stealAllFriendsPlots(){
       showToast(tt('目前沒有好友可以偷菜','You have no friends to take from yet'));
       return;
     }
-    const now = Date.now();
     let stolenPlotCount = 0;
     let stolenFriendCount = 0;
     let totalGain = 0;
     const notifJobs = []; // 一位好友一筆（彙總這次總共偷了幾塊地、獲得多少），而不是每塊地各發一則通知
-    // 逐一好友檢查，每位好友只要有變動就存一次檔（而不是每塊地都存一次），減少寫入次數
+    // 🔒 跟單塊偷菜同一種修法：每位好友改用 updatePlayerCAS，把「檢查每塊地是否
+    // 成熟／是否偷過」跟「標記 stolenBy」包進同一次樂觀鎖讀-改-寫，沒搶到鎖
+    // 會自動重讀最新資料再試。這樣就算同時間還有單塊偷菜、或這位好友被別的
+    // 玩家一鍵偷菜，也不會互相蓋掉彼此的 stolenBy 標記，不會被重複偷取。
     for(const friendNick of friends){
-      const owner = await loadPlayer(friendNick);
-      if(!owner) continue;
-      const farm = ensureFarm(owner);
       let friendPlotCount = 0;
       let friendGain = 0;
-      farm.forEach((plot, i)=>{
-        const status = plotStatus(plot, now);
-        if(status !== 'ready') return;
-        if(plot.stolenBy.includes(state.nickname)) return;
-        const gain = stealYieldFor(plot.seed);
-        plot.stolenBy.push(state.nickname);
-        friendPlotCount++;
-        friendGain += gain;
+      const applied = await updatePlayerCAS(friendNick, (owner)=>{
+        const farm = ensureFarm(owner);
+        const now = Date.now();
+        friendPlotCount = 0; friendGain = 0; // 每次重試都要重算，避免殘留上次嘗試失敗時算的數字
+        farm.forEach((plot)=>{
+          const status = plotStatus(plot, now);
+          if(status !== 'ready') return;
+          if(plot.stolenBy.includes(state.nickname)) return;
+          const gain = stealYieldFor(plot.seed);
+          plot.stolenBy.push(state.nickname);
+          friendPlotCount++;
+          friendGain += gain;
+        });
       });
-      if(friendPlotCount > 0){
-        stolenFriendCount++;
-        stolenPlotCount += friendPlotCount;
-        totalGain += friendGain;
-        await savePlayer(owner);
-        notifJobs.push({friendNick, plotCount: friendPlotCount, amount: friendGain});
-      }
+      if(!applied || friendPlotCount === 0) continue;
+      stolenFriendCount++;
+      stolenPlotCount += friendPlotCount;
+      totalGain += friendGain;
+      notifJobs.push({friendNick, plotCount: friendPlotCount, amount: friendGain});
     }
     if(stolenPlotCount === 0){
       showToast(tt('好友的花園目前沒有能偷的成熟作物','None of your friends have ripe crops to take right now'));
       return;
     }
-    state.player.coins = (state.player.coins||0) + totalGain;
-    await savePlayer(state.player);
+    const appliedSelf = await updatePlayerCAS(state.nickname, (player)=>{
+      player.coins = (player.coins||0) + totalGain;
+    });
+    if(appliedSelf) state.player = appliedSelf;
 
     // 通知一位好友只發一則（type: steal_bulk，彙總這次偷了他幾塊地、共拿走多少），
     // 不再像單塊偷菜那樣每塊地各發一則，避免好友的信箱被同一次操作洗版
@@ -7634,7 +7845,7 @@ async function updatePlayerCAS(nick, mutator){
   throw new Error('player state contention exceeded retries');
 }
 function newPlayer(nick, passwordHash){
-  return {nickname:nick, passwordHash, coins:START_COINS, cards:{}, lastClaim:null, lastDrawCards:[], streak:0, joinedAt:Date.now(), slotSpend:0, farmLevel:0, avatarId:DEFAULT_AVATAR_ID, unlockedAvatars:[], stats:{totalHarvests:0, totalAuctionTrades:0}, equippedBadges:[], unlockedBadges:[], lastSeenChatAt:0, lastActiveAt:Date.now(), materials:{}, seasonCards:{}, expLevel:0, expExp:0, expedition:null, expeditionRolls:{},
+  return {nickname:nick, passwordHash, coins:START_COINS, cards:{}, lastClaim:null, lastDrawCards:[], streak:0, joinedAt:Date.now(), slotSpend:0, farmLevel:0, avatarId:DEFAULT_AVATAR_ID, unlockedAvatars:[], stats:{totalHarvests:0, totalAuctionTrades:0, totalAuctionVolume:0}, equippedBadges:[], unlockedBadges:[], lastSeenChatAt:0, lastActiveAt:Date.now(), materials:{}, seasonCards:{}, expLevel:0, expExp:0, expedition:null, expeditionRolls:{},
     profession:null,
     professionProgress:{alchemist:{level:1,exp:0}, blacksmith:{level:1,exp:0}, carpenter:{level:1,exp:0}},
     professionMaterials:{herb:0, ore:0, lumber:0},
@@ -7645,9 +7856,10 @@ function newPlayer(nick, passwordHash){
     petHunts:Array.from({length:PET_HUNT_SLOT_COUNT}, (_,i)=>({slotId:i, active:false, locationKey:null, durationKey:null, startAt:null, readyAt:null, petId:null, helpLog:{}}))};
 }
 function ensureStats(p){
-  if(!p.stats) p.stats = {totalHarvests:0, totalAuctionTrades:0, maxBossHitDamage:0};
+  if(!p.stats) p.stats = {totalHarvests:0, totalAuctionTrades:0, totalAuctionVolume:0, maxBossHitDamage:0};
   if(typeof p.stats.totalHarvests !== 'number') p.stats.totalHarvests = 0;
   if(typeof p.stats.totalAuctionTrades !== 'number') p.stats.totalAuctionTrades = 0;
+  if(typeof p.stats.totalAuctionVolume !== 'number') p.stats.totalAuctionVolume = 0;
   if(typeof p.stats.maxBossHitDamage !== 'number') p.stats.maxBossHitDamage = 0;
   return p.stats;
 }
@@ -7762,6 +7974,7 @@ const T = {
   leaderStreakHeader: {zh:'🔥 遠征亡命連勝榜', en:'🔥 Expedition Reckless Streak Leaderboard'},
   leaderBossHeader: {zh:'👹 Boss 單擊最高傷害榜', en:'👹 Boss Highest Single Hit Leaderboard'},
   leaderHarvestHeader: {zh:'🌻 種菜收成次數排行榜', en:'🌻 Crop Harvest Count Leaderboard'},
+  leaderAuctionVolumeHeader: {zh:'🔨 拍賣交易量排行榜', en:'🔨 Auction Trade Volume Leaderboard'},
   gmHeader: {zh:'⚡ GM 管理控制台', en:'⚡ GM Console'},
   allPlayersHeader: {zh:'所有玩家', en:'All Players'},
   grantCoinsHeader: {zh:'發放金幣', en:'Grant Coins'},
@@ -8951,12 +9164,15 @@ async function applyPendingRewards(player){
         changed = true;
       }
     } else if(data.grantKind === 'auction_sale'){
-      // 拍賣賣家收款：金額 + 成交次數一起套用，避免分兩筆寫入時中間被覆蓋
+      // 拍賣賣家收款：金額 + 成交次數 + 交易量一起套用，避免分兩筆寫入時中間被覆蓋。
+      // 交易量記的是「成交價格」（未扣手續費前），跟買家那邊記的口徑一致，方便排行榜比較。
       player.coins = Math.max(0, (player.coins||0) + (data.amount||0));
       ensureStats(player).totalAuctionTrades += 1;
+      if(typeof data.price === 'number') ensureStats(player).totalAuctionVolume += data.price;
       changed = true;
     } else if(data.grantKind === 'auction_trade_stat'){
       ensureStats(player).totalAuctionTrades += 1;
+      if(typeof data.price === 'number') ensureStats(player).totalAuctionVolume += data.price;
       changed = true;
     } else if(data.grantKind === 'stat_bump'){
       // 通用統計數字累加（例如每日星運之星中獎次數），供成就徽章的 check() 判斷用
@@ -9050,7 +9266,7 @@ function initNotifPoll(){
 // 改成單一 key 後，讀/寫都只需要一次網路請求。
 const CHAT_LOG_KEY = 'chat:log';
 const CHAT_META_KEY = 'chat:meta'; // 輕量 key：只存 {count,lastId,updatedAt}，輪詢先讀這個，變了才抓整包聊天記錄
-const CHAT_MAX_MESSAGES = 500;
+const CHAT_MAX_MESSAGES = 300;
 const CHAT_TRIM_BATCH = 100; // 累積超過上限+100則才一次清洗回上限，減少清洗頻率
 let lastChatFingerprint = null;
 async function fetchChatMessages(){
@@ -9637,6 +9853,7 @@ async function buyoutAuction(auctionId){
   auctionAdjustInventory(state.player, auction.itemType, auction.itemId, auction.qty, auction.diceData);
   bumpQuest(state.player, 'auction', 1);
   ensureStats(state.player).totalAuctionTrades += 1;
+  ensureStats(state.player).totalAuctionVolume += price; // 買家這筆交易量算「一口價全額」
   await savePlayer(state.player);
   const sellerForFee = (auction.seller === state.nickname) ? state.player : await loadPlayer(auction.seller);
   const fee = auctionFeeAmount(price, sellerForFee ? starChartVenusFeeReductionPct(sellerForFee) : 0);
@@ -9644,7 +9861,9 @@ async function buyoutAuction(auctionId){
   // 賣家收款走 pendingReward：賣家不是當前操作者，若直接 loadPlayer+savePlayer，
   // 賣家自己那邊若同時存檔會把這筆收款覆蓋掉（同「沒收到卡」的成因）。
   // createPendingReward 內建重試，這裡只需處理「重試後仍失敗」的情況。
-  const sellerPayoutOk = await createPendingReward(auction.seller, 'auction_sale', {amount: payout});
+  // price 一併帶過去，讓賣家那邊記錄的交易量用「成交價」而非「扣完手續費的實收金額」，
+  // 買賣雙方口徑才會一致。
+  const sellerPayoutOk = await createPendingReward(auction.seller, 'auction_sale', {amount: payout, price});
   auction.status = 'completed';
   auction.currentBid = price;
   auction.currentBidder = state.nickname;
@@ -9667,14 +9886,14 @@ async function resolveAuction(auction){
   const itemName = auctionDisplayInfo(auction).nameOnly;
   if(auction.currentBidder){
     await grantAuctionItem(auction.currentBidder, auction.itemType, auction.itemId, auction.qty, auction.diceData);
-    await createPendingReward(auction.currentBidder, 'auction_trade_stat', {});
+    await createPendingReward(auction.currentBidder, 'auction_trade_stat', {price: auction.currentBid});
     const sellerForFee = await loadPlayer(auction.seller);
     const fee = auctionFeeAmount(auction.currentBid, sellerForFee ? starChartVenusFeeReductionPct(sellerForFee) : 0);
     const payout = auction.currentBid - fee;
     // 這裡是背景自動結算（沒有明確的「操作中玩家」可以跳 toast），
     // 失敗時 createPendingReward 內部會重試、寫 failedreward: 記錄並 console.error，
     // 之後可在 GM 後台或 storage 查 failedreward: 前綴找出所有未成功發放的收款。
-    await createPendingReward(auction.seller, 'auction_sale', {amount: payout});
+    await createPendingReward(auction.seller, 'auction_sale', {amount: payout, price: auction.currentBid});
     await createNotification(auction.seller, auction.currentBidder, 'auction_sold', {cardName: itemName, price: payout});
     await createNotification(auction.currentBidder, auction.seller, 'auction_won', {cardName: itemName, price: auction.currentBid});
   } else {
@@ -9742,11 +9961,12 @@ async function fulfillWantToBuy(orderId, sellQty){
   state.player.coins += total;
   bumpQuest(state.player, 'auction', 1);
   ensureStats(state.player).totalAuctionTrades += 1;
+  ensureStats(state.player).totalAuctionVolume += total; // 求購單賣家這筆交易量算「成交總額」
   await savePlayer(state.player);
   // 求購單買家收到卡片：買家不是當前操作者（是賣家在賣），若直接
   // loadPlayer+savePlayer，買家自己那邊若同時存檔會把這張卡覆蓋掉。
   await grantAuctionItem(order.buyer, 'card', order.cardId, sellQty);
-  await createPendingReward(order.buyer, 'auction_trade_stat', {});
+  await createPendingReward(order.buyer, 'auction_trade_stat', {price: total});
   order.remaining -= sellQty;
   if(order.remaining <= 0){ order.status = 'completed'; }
   await storage.set(`wtb:${orderId}`, JSON.stringify(order));
@@ -10074,6 +10294,11 @@ async function render(){
         const isPickerActive = active && typeof active.id === 'string' &&
           (active.id.startsWith('furniture-sel-') || active.id.startsWith('accessory-sel-') || active.id.startsWith('weapon-cb-'));
         if(isPickerActive) return;
+        // 🐛 連勝加碼 Boss 攻擊動畫（playDiceRollAnimation）播放期間也跳過這一秒的整段
+        // 重繪，理由跟上面的下拉選單一樣：重繪會把動畫正在操作的 #streak-boss-dice-anim
+        // 節點整個換掉，動畫收尾的隱藏邏輯就作用在被換掉、看不到的舊節點上，畫面上
+        // 反而卡住不會消失。見 attackStreakBoss() 開頭的說明。
+        if(state.streakBossAnimating) return;
         // 遠征頁每秒重繪倒數計時，會連帶重建「使用道具」的選單，重繪後預設值會被重設；
         // 重繪前先記住家具/飾品下拉選單的值、武器勾選框的勾選狀態，重繪後再還原，避免玩家選了下一秒就消失。
         const savedSelects = Array.from(document.querySelectorAll('select[id^="furniture-sel-"], select[id^="accessory-sel-"]')).map(el=>({id: el.id, value: el.value}));
@@ -11075,7 +11300,7 @@ async function renderFarm(body){
     <p class="sub">${tt('幫好友的作物澆水可以加速生長（雙方都有小獎勵），成熟後太久沒收成也可以被好友偷一點走，但不影響本人收成',"Watering a friend's crop speeds up its growth (small reward for both of you); crops left unharvested too long after ripening can be taken from by friends, but it doesn't affect the owner's harvest")}</p>
     ${friends.length>0 ? `<div class="farm-bulk-actions" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
       <button class="btn small" id="farm-water-all-btn">${tt('🚿 一鍵幫好友澆水','🚿 Water all friends')}</button>
-      <button class="btn small secondary" id="farm-steal-all-btn">${tt('🌾 一鍵偷好友菜','🌾 Take from all friends')}</button>
+      <button class="btn small" id="farm-steal-all-btn">${tt('🌾 一鍵偷好友菜','🌾 Take from all friends')}</button>
     </div>` : ''}
     ${friends.length===0 ? `<div class="empty-note">${tt('尚未加入任何好友，先到「好友」分頁加人吧 ✦','No friends yet - add some on the Friends tab first ✦')}</div>` : (state.farmFriendsShowAll ? friends : friends.slice(0,5)).map(f=>`
       <div class="listing">
@@ -11242,7 +11467,9 @@ async function computeLeaderboards(){
     .sort((a,b)=>b.damage-a.damage).slice(0,5);
   const byHarvest = players.map(pl=>({nickname:pl.nickname, harvests: (pl.stats && pl.stats.totalHarvests) || 0}))
     .sort((a,b)=>b.harvests-a.harvests).slice(0,5);
-  return {byCards, byCoins, bySlotSpend, byStreak, byBossDamage, byHarvest, updatedAt: Date.now()};
+  const byAuctionVolume = players.map(pl=>({nickname:pl.nickname, volume: (pl.stats && pl.stats.totalAuctionVolume) || 0, trades: (pl.stats && pl.stats.totalAuctionTrades) || 0}))
+    .sort((a,b)=>b.volume-a.volume).slice(0,5);
+  return {byCards, byCoins, bySlotSpend, byStreak, byBossDamage, byHarvest, byAuctionVolume, updatedAt: Date.now()};
 }
 async function fetchLeaderboards(){
   try{
@@ -11258,9 +11485,11 @@ async function fetchLeaderboards(){
 }
 async function renderLeaderboard(body){
   body.innerHTML = `<div class="loading-line">${tt('讀取排行榜中...','Loading leaderboard...')}</div>`;
-  const {byCards, byCoins, bySlotSpend, byStreak, byBossDamage, byHarvest} = await fetchLeaderboards();
+  const {byCards, byCoins, bySlotSpend, byStreak, byBossDamage, byHarvest, byAuctionVolume} = await fetchLeaderboards();
+  // 部署後 3 分鐘快取期內，舊快取資料可能還沒有這個新欄位，補一個空陣列避免整頁掛掉
+  const safeAuctionVolume = byAuctionVolume || [];
 
-  refreshTitleHoldersFromLeaderboards(byCoins, byCards, bySlotSpend, byStreak, byBossDamage, byHarvest).catch(()=>{});
+  refreshTitleHoldersFromLeaderboards(byCoins, byCards, bySlotSpend, byStreak, byBossDamage, byHarvest, byAuctionVolume).catch(()=>{});
 
   const medal = i => i===0?'🥇':i===1?'🥈':i===2?'🥉':`#${i+1}`;
   const isMe = nick => state.nickname && nick.toLowerCase()===state.nickname.toLowerCase();
@@ -11327,6 +11556,17 @@ async function renderLeaderboard(body){
       <div class="listing">
         <div class="left"><div class="icon-box">${medal(i)}</div><div class="meta"><div data-view-profile="${escapeHtml(pl.nickname)}">${escapeHtml(pl.nickname)}${isMe(pl.nickname)?` <span style="color:var(--gold-bright);">(${tt('你','you')})</span>`:''}${nameWithTitlesHtml(pl.nickname)}</div></div></div>
         <div class="right"><span class="price">🌻 ${tt(`${pl.harvests} 次`, `${pl.harvests} harvests`)}</span></div>
+      </div>
+    `).join('')}
+  </div>`;
+
+  html += `<div class="panel">
+    <h2>${t('leaderAuctionVolumeHeader')}</h2>
+    <p class="sub">${tt('依累計拍賣成交金額（買進+賣出，含求購單）排名','Ranked by cumulative auction trade value (buying + selling, including buy orders)')}</p>
+    ${safeAuctionVolume.length===0 || safeAuctionVolume[0].volume<=0 ? `<div class="empty-note">${tt('目前尚無玩家完成拍賣交易','No player has completed an auction trade yet')}</div>` : safeAuctionVolume.filter(pl=>pl.volume>0).map((pl,i)=>`
+      <div class="listing">
+        <div class="left"><div class="icon-box">${medal(i)}</div><div class="meta"><div data-view-profile="${escapeHtml(pl.nickname)}">${escapeHtml(pl.nickname)}${isMe(pl.nickname)?` <span style="color:var(--gold-bright);">(${tt('你','you')})</span>`:''}${nameWithTitlesHtml(pl.nickname)}</div></div></div>
+        <div class="right"><span class="price">🔨 ✦${pl.volume.toLocaleString()}</span></div>
       </div>
     `).join('')}
   </div>`;
