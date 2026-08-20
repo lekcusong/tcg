@@ -1386,6 +1386,34 @@ const DEFAULT_EXPEDITION_STREAK_BONUS_CAP = 0.30;
 let EXPEDITION_STREAK_BONUS_PER_WIN = DEFAULT_EXPEDITION_STREAK_BONUS_PER_WIN;
 let EXPEDITION_STREAK_BONUS_CAP = DEFAULT_EXPEDITION_STREAK_BONUS_CAP;
 
+// 🐲 連勝 Boss 加碼戰：連勝（僅「亡命」風險等級＋8小時）達到門檻後，之後每次成功回來
+// 領獎前都會多一段用現有骰子攻擊引擎打的加碼挑戰。純粹是「加碼」——打輸完全零代價，
+// 不影響 p.expeditionStreak 本身，也不影響剛結算好的遠征獎勵，只是沒拿到骰子精華加碼。
+// Boss 血量與精華獎勵都用連勝數線性計算，不封頂，兩者同步成長維持風險/報酬對稱。
+const DEFAULT_EXPEDITION_STREAK_BOSS_TRIGGER = 3;       // 連勝達到這個數字才開始出現加碼戰
+const DEFAULT_EXPEDITION_STREAK_BOSS_BASE_HP = 2000;    // 門檻那一場（streak===trigger）的 Boss 血量
+const DEFAULT_EXPEDITION_STREAK_BOSS_HP_STEP = 300;     // 之後每多連勝 1 次，血量 +這個值
+const DEFAULT_EXPEDITION_STREAK_BOSS_ATTACKS = 3;       // 固定攻擊次數，用完即結算勝負
+const DEFAULT_EXPEDITION_STREAK_BOSS_ESSENCE_BASE = 3;  // 門檻那一場擊退成功的骰子精華獎勵
+const DEFAULT_EXPEDITION_STREAK_BOSS_COIN_BASE = 200;   // 門檻那一場擊退成功額外發放的金幣獎勵
+const DEFAULT_EXPEDITION_STREAK_BOSS_COIN_STEP = 50;    // 之後每多連勝 1 次，金幣獎勵 +這個值
+let EXPEDITION_STREAK_BOSS_TRIGGER = DEFAULT_EXPEDITION_STREAK_BOSS_TRIGGER;
+let EXPEDITION_STREAK_BOSS_BASE_HP = DEFAULT_EXPEDITION_STREAK_BOSS_BASE_HP;
+let EXPEDITION_STREAK_BOSS_HP_STEP = DEFAULT_EXPEDITION_STREAK_BOSS_HP_STEP;
+let EXPEDITION_STREAK_BOSS_ATTACKS = DEFAULT_EXPEDITION_STREAK_BOSS_ATTACKS;
+let EXPEDITION_STREAK_BOSS_ESSENCE_BASE = DEFAULT_EXPEDITION_STREAK_BOSS_ESSENCE_BASE;
+let EXPEDITION_STREAK_BOSS_COIN_BASE = DEFAULT_EXPEDITION_STREAK_BOSS_COIN_BASE;
+let EXPEDITION_STREAK_BOSS_COIN_STEP = DEFAULT_EXPEDITION_STREAK_BOSS_COIN_STEP;
+function expeditionStreakBossHp(streak){
+  return EXPEDITION_STREAK_BOSS_BASE_HP + Math.max(0, streak - EXPEDITION_STREAK_BOSS_TRIGGER) * EXPEDITION_STREAK_BOSS_HP_STEP;
+}
+function expeditionStreakBossEssenceReward(streak){
+  return EXPEDITION_STREAK_BOSS_ESSENCE_BASE + Math.max(0, streak - EXPEDITION_STREAK_BOSS_TRIGGER);
+}
+function expeditionStreakBossCoinReward(streak){
+  return EXPEDITION_STREAK_BOSS_COIN_BASE + Math.max(0, streak - EXPEDITION_STREAK_BOSS_TRIGGER) * EXPEDITION_STREAK_BOSS_COIN_STEP;
+}
+
 // ---------- 階段二：派遣邏輯（風險等級 + 局內祝福/詛咒翻牌）----------
 // 純前端暫存的「翻牌」草稿狀態，key 是 `${tierId}-${durationKey}`；只影響尚未派遣的選擇畫面，
 // 派遣成功後清掉、重新整理頁面也會重置，不需要存進玩家存檔。
@@ -3349,9 +3377,9 @@ async function resolveBossChestChoice(nickname, choice){
 // 是純運算、無副作用），動畫只是「開獎」式地把已經決定好的數字揭曉出來，
 // 不會出現動畫播完後結果又變的情況。用 #dice-roll-anim 容器直接操作 DOM，
 // 全程不呼叫 renderTab()，避免整個 Boss 面板重繪把動畫打斷。
-function playDiceRollAnimation(diceObjs, burst){
-  const stage = document.getElementById('dice-roll-anim');
-  const btn = document.getElementById('boss-burst-btn');
+function playDiceRollAnimation(diceObjs, burst, stageId, btnId){
+  const stage = document.getElementById(stageId || 'dice-roll-anim');
+  const btn = document.getElementById(btnId || 'boss-burst-btn');
   if(!stage || diceObjs.length === 0){
     return Promise.resolve(); // 沒有動畫容器（理論上不會發生）或沒裝備骰子時直接跳過
   }
@@ -6370,6 +6398,7 @@ async function claimExpedition(){
 
   let msg;
   const bonusNotes = [];
+  let streakBossEncounter = null; // 🐲 這次領獎若觸發連勝加碼 Boss 戰，存這裡供結尾交給 state 顯示
   if(success){
     // 獎勵區間：⚔️武器/💍飾品(既有) + 🎴祝福獎勵區間 + 🗺️事件節點結果，先疊加成一個百分比套用在上下限，
     // 再乘上 🎲 風險等級倍率；💍飾品最後把下限往（疊加後的）上限拉近；成功後再套 🎴祝福/詛咒的成功獎勵倍率、🔥連勝加成。
@@ -6398,6 +6427,19 @@ async function claimExpedition(){
     if(exp.riskLevel === 'reckless' && exp.durationKey === 'd8h'){
       p.expeditionStreak = streakBefore + 1;
       p.expeditionRecklessStreak = (p.expeditionRecklessStreak||0) + 1;
+      // 🐲 連勝達門檻後，每次成功回來都先進一段加碼 Boss 戰（純加碼，打輸不影響任何東西）。
+      // 沒裝備骰子的話必輸，直接跳過不讓玩家看一段注定輸的動畫。
+      if(p.expeditionStreak >= EXPEDITION_STREAK_BOSS_TRIGGER){
+        ensureDiceInventory(p);
+        const equippedIds = p.diceSlots.filter(id => id && p.dice[id]);
+        if(equippedIds.length > 0){
+          const hp = expeditionStreakBossHp(p.expeditionStreak);
+          streakBossEncounter = {
+            streak: p.expeditionStreak, hp, maxHp: hp,
+            attacksLeft: EXPEDITION_STREAK_BOSS_ATTACKS, comboStreak: 0, dealt: 0,
+          };
+        }
+      }
     }
 
     if(exp.furnitureBonus) bonusNotes.push(tt('🪑家具加成生效','🪑Furniture bonus applied'));
@@ -6449,6 +6491,49 @@ async function claimExpedition(){
   }
   await savePlayer(p);
   showToast(msg);
+  state.streakBossEncounter = streakBossEncounter; // null 就是沒觸發，正常清掉舊的殘留
+  render();
+}
+// 🐲 連勝加碼 Boss 戰：每次點擊消耗 1 次攻擊機會，100% 沿用 rollDiceAttack 的傷害運算與
+// playDiceRollAnimation 的動畫（傳自訂 DOM id 避免跟 Boss 分頁互相干擾）。純前端計算、
+// 不落地存檔（state.streakBossEncounter 只存在記憶體），玩家中途離開視同放棄挑戰。
+async function attackStreakBoss(){
+  const p = state.player;
+  const enc = state.streakBossEncounter;
+  if(!p || !enc || enc.result || enc.attacksLeft <= 0) return;
+  ensureDiceInventory(p);
+  const equippedIds = p.diceSlots.filter(id => id && p.dice[id]);
+  if(equippedIds.length === 0) return;
+  const btn = document.getElementById('streak-boss-attack-btn');
+  if(btn) btn.disabled = true;
+  const burst = rollDiceAttack(p, null, enc.comboStreak);
+  await playDiceRollAnimation(equippedIds.map(id => p.dice[id]), burst, 'streak-boss-dice-anim', 'streak-boss-attack-btn');
+  enc.dealt += burst.damage;
+  enc.hp = Math.max(0, enc.hp - burst.damage);
+  enc.comboStreak = (burst.comboTier === 'pair' || burst.comboTier === 'triple') ? enc.comboStreak + 1 : 0;
+  enc.attacksLeft -= 1;
+  // 🔥 每一擊的傷害數字都留在面板上（不只是骰子動畫裡一閃而過的徽章），戰鬥結束後
+  // 也保留在畫面上讓玩家看清楚結果，不自動關閉——需要玩家自己按「關閉」才會清掉。
+  enc.lastDamage = burst.damage;
+  enc.lastComboTier = burst.comboTier;
+  enc.lastCrit = burst.isCrit;
+  if(enc.hp <= 0){
+    const essence = expeditionStreakBossEssenceReward(enc.streak);
+    const coins = expeditionStreakBossCoinReward(enc.streak);
+    ensureMaterials(p);
+    p.materials.diceEssence = (p.materials.diceEssence||0) + essence;
+    p.coins = (p.coins||0) + coins;
+    await savePlayer(p);
+    enc.result = 'win';
+    enc.essence = essence;
+    enc.coins = coins;
+  } else if(enc.attacksLeft <= 0){
+    enc.result = 'lose';
+  }
+  render();
+}
+function dismissStreakBossEncounter(){
+  state.streakBossEncounter = null;
   render();
 }
 async function usePotionOnExpedition(){
@@ -6615,6 +6700,42 @@ async function renderExpedition(body){
     ${(p.expeditionStreak||0) > 0 ? `<div class="countdown" style="font-size:11px;color:var(--gold-bright);margin-top:2px;">${tt(`🔥連勝 ${p.expeditionStreak} 次（下趟成功時獎勵加成 +${Math.round(Math.min(EXPEDITION_STREAK_BONUS_CAP, p.expeditionStreak*EXPEDITION_STREAK_BONUS_PER_WIN)*100)}%）`, `🔥${p.expeditionStreak}-win streak (next success reward +${Math.round(Math.min(EXPEDITION_STREAK_BONUS_CAP, p.expeditionStreak*EXPEDITION_STREAK_BONUS_PER_WIN)*100)}%)`)}</div>` : ''}
     ${(p.expLevel||0) >= EXPEDITION_ROGUELIKE_UNLOCK_LEVEL ? `<div class="countdown" style="font-size:11px;margin-top:2px;">${tt('🔥僅「亡命」風險等級＋8小時遠征才計入連勝次數', '🔥Only Reckless risk + 8-hour expeditions count toward the win streak')}</div>` : ''}
   </div>`;
+
+  // 🐲 連勝加碼 Boss 戰：純前端記憶體狀態，跟 exp 進行中／可領取無關，優先顯示在最上面
+  const enc = state.streakBossEncounter;
+  if(enc){
+    const hpPct = Math.max(0, Math.min(100, (enc.hp/enc.maxHp)*100));
+    let lastHitLine = '';
+    if(enc.lastDamage != null){
+      const tags = [];
+      if(enc.lastComboTier === 'triple') tags.push(tt('🎯豹子','🎯Triple'));
+      else if(enc.lastComboTier === 'pair') tags.push(tt('✌️對子','✌️Pair'));
+      if(enc.lastCrit) tags.push(tt('💥暴擊','💥Crit'));
+      const tagSuffix = tags.length ? `（${tags.join('、')}）` : '';
+      lastHitLine = `<div class="countdown" style="color:var(--gold-bright);margin-bottom:6px;">${tt(`⚔️ 本次造成 ${enc.lastDamage} 傷害${tagSuffix}`, `⚔️ Dealt ${enc.lastDamage} damage${tagSuffix}`)}</div>`;
+    }
+    let resultLine = '';
+    let controls = `<button class="btn" id="streak-boss-attack-btn">${tt(`⚔️ 攻擊（剩 ${enc.attacksLeft} 次）`, `⚔️ Attack (${enc.attacksLeft} left)`)}</button>`;
+    if(enc.result === 'win'){
+      resultLine = `<div class="countdown" style="color:var(--gold-bright);margin-bottom:10px;">${tt(`🐲 擊退成功！獲得 💠骰子精華 +${enc.essence}、✦${enc.coins} 金幣`, `🐲 Boss repelled! Gained 💠Dice Essence +${enc.essence}, ✦${enc.coins} coins`)}</div>`;
+      controls = `<button class="btn small secondary" id="streak-boss-dismiss-btn">${tt('關閉','Close')}</button>`;
+    } else if(enc.result === 'lose'){
+      resultLine = `<div class="countdown" style="margin-bottom:10px;">${tt('🐲 這次沒能擊退，下次連勝再挑戰吧（連勝與遠征獎勵不受影響）','🐲 Could not repel it this time - try again next streak (your streak and expedition reward are unaffected)')}</div>`;
+      controls = `<button class="btn small secondary" id="streak-boss-dismiss-btn">${tt('關閉','Close')}</button>`;
+    }
+    html += `<div class="panel">
+      <h2>🐲 ${tt('連勝加碼挑戰','Streak Bonus Boss')}</h2>
+      <p class="sub">${tt(`連勝 ${enc.streak} 場，遭遇強敵！用裝備的骰子攻擊，總傷害打光血量即可擊退，獲得額外骰子精華。打輸完全不影響連勝與遠征獎勵。`, `${enc.streak}-win streak - a strong foe appears! Attack with your equipped dice. Deplete its HP to repel it for bonus Dice Essence. Losing doesn't affect your streak or expedition reward at all.`)}</p>
+      <div style="background:var(--bg-panel-raised, rgba(255,255,255,0.06));border-radius:999px;height:14px;overflow:hidden;border:1px solid var(--line);margin-bottom:4px;">
+        <div style="height:100%;width:${hpPct}%;background:linear-gradient(90deg, var(--danger), var(--gold));transition:width .3s;"></div>
+      </div>
+      <div class="countdown" style="font-size:11px;margin-bottom:10px;">${tt(`HP ${enc.hp} / ${enc.maxHp}`, `HP ${enc.hp} / ${enc.maxHp}`)}</div>
+      ${lastHitLine}
+      ${resultLine}
+      <div id="streak-boss-dice-anim" class="dice-roll-anim" style="display:none;"></div>
+      ${controls}
+    </div>`;
+  }
 
   if(exp){
     const tier = EXPEDITION_QUESTS.find(q=>q.id===exp.tierId);
@@ -6785,6 +6906,10 @@ async function renderExpedition(body){
   body.innerHTML = html;
   const claimBtn = document.getElementById('expedition-claim-btn');
   if(claimBtn) claimBtn.onclick = claimExpedition;
+  const streakBossBtn = document.getElementById('streak-boss-attack-btn');
+  if(streakBossBtn) streakBossBtn.onclick = attackStreakBoss;
+  const streakBossDismissBtn = document.getElementById('streak-boss-dismiss-btn');
+  if(streakBossDismissBtn) streakBossDismissBtn.onclick = dismissStreakBossEncounter;
   const usePotionBtn = document.getElementById('expedition-use-potion-btn');
   if(usePotionBtn) usePotionBtn.onclick = usePotionOnExpedition;
   document.querySelectorAll('[data-rogue-event-idx]').forEach(btn=>{
@@ -7390,6 +7515,21 @@ function addDaysToDateStr(baseDateStr, offset){
 }
 function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,8); }
 function playerKey(nick){ return `player:${nick.trim().toLowerCase()}`; }
+
+// ---------- Session token（讓 Safari 分頁被系統重新載入後不用手動重新輸入密碼）----------
+// 密碼本身仍然「永遠不存」——這裡存的是登入成功後才簽發的隨機 token，
+// 效期到就失效、登出會立刻在伺服器端撤銷，跟密碼是兩回事。
+const SESSION_TOKEN_TTL_MS = 14 * 24 * 60 * 60 * 1000; // 14 天滑動效期，每次靜默續登都會延長並換發新 token
+function genSessionToken(){
+  try{
+    const bytes = new Uint8Array(24);
+    crypto.getRandomValues(bytes);
+    return Array.from(bytes, b => b.toString(16).padStart(2,'0')).join('');
+  }catch(e){
+    // 極少數不支援 crypto.getRandomValues 的環境退回較弱的隨機來源，仍比明文密碼安全
+    return uid() + uid() + uid();
+  }
+}
 
 // ---------- State ----------
 let state = {
@@ -8080,12 +8220,84 @@ async function showDailyPopupIfNeeded(){
   });
 }
 
+// ---------- Boot 診斷：追蹤分頁是否被瀏覽器（尤其 iOS Safari）中途重新載入 ----------
+// 玩家回報「遊戲開著、操作到一半突然跳回登入畫面」，但程式邏輯裡沒有任何主動登出
+// 的路徑（唯一會清空 state.player 的地方是登出按鈕）。唯一合理的解釋是分頁本身被
+// 系統終止重載，boot() 重跑一次，因為密碼不落地儲存，所以看起來像「被登出」。
+// 這裡記一筆輕量 log（navigation type + 裝置資訊），方便之後從資料庫比對頻率/機型，
+// 不會擋住開機流程，寫入失敗也完全略過。
+const BOOT_LOG_KEY = 'diag:boot_log';
+const BOOT_LOG_MAX = 300;
+async function logBootDiagnostic(){
+  if(!rememberedNick) return; // 只在「這台裝置先前登入過」時才記，降低雜訊、避免每個訪客都寫一筆
+  try{
+    const navEntries = performance.getEntriesByType('navigation');
+    const navType = navEntries && navEntries[0] ? navEntries[0].type : null; // 'navigate' | 'reload' | 'back_forward' | 'prerender'
+    const entry = {
+      ts: Date.now(),
+      nickname: rememberedNick,
+      navType,
+      hadSessionToken: (()=>{ try{ return !!localStorage.getItem('my-session'); }catch(e){ return null; } })(),
+      ua: (navigator.userAgent || '').slice(0, 140),
+    };
+    const r = await storage.get(BOOT_LOG_KEY);
+    const arr = r ? JSON.parse(r.value) : [];
+    arr.push(entry);
+    if(arr.length > BOOT_LOG_MAX) arr.splice(0, arr.length - BOOT_LOG_MAX);
+    await storage.set(BOOT_LOG_KEY, JSON.stringify(arr));
+  }catch(e){ /* 診斷用途，失敗完全不影響遊戲啟動 */ }
+}
+
+// ---------- 靜默續登：分頁重新載入時，用登入當下簽發的 session token 換回登入狀態 ----------
+// 只有 token 對得上、且沒過期才會生效；對不上或過期就默默放棄，回退到正常登入畫面，
+// 不會顯示任何錯誤訊息打斷玩家（因為這本來就只是「盡量」而不是必要流程）。
+async function tryAutoLoginFromSessionToken(){
+  let saved;
+  try{ saved = JSON.parse(localStorage.getItem('my-session') || 'null'); }catch(e){ saved = null; }
+  if(!saved || !saved.nickname || !saved.token) return;
+  try{
+    // 用 CAS（updatePlayerCAS）而不是「讀一份、改一改、整包存回去」：如果跟 savePlayer
+    // 一樣直接整包覆蓋，只要玩家這段期間在另一台裝置/分頁有寫入（好友幫忙澆水、拍賣成交、
+    // 遠征結算…），這次續登寫回去的舊資料就會把那筆新進度蓋掉——跟心跳曾經修過的「存檔跳回
+    // 過去」是同一類問題，而且因為每次分頁重載都會觸發，發生機率比心跳高得多，這裡必須用 CAS。
+    let newToken = null;
+    const applied = await updatePlayerCAS(saved.nickname, (player)=>{
+      if(!player.sessionToken || player.sessionToken !== saved.token) throw new Error('session token mismatch'); // 對不上（例如已在別處登出/換裝置）
+      if(!player.sessionTokenExpiresAt || Date.now() > player.sessionTokenExpiresAt) throw new Error('session token expired');
+      newToken = genSessionToken();
+      player.sessionToken = newToken;
+      player.sessionTokenExpiresAt = Date.now() + SESSION_TOKEN_TTL_MS;
+    });
+    if(!applied || !newToken) return;
+    const p = await applyPendingRewards(applied);
+    state.nickname = p.nickname;
+    state.player = p;
+    try{ localStorage.setItem('my-session', JSON.stringify({nickname: p.nickname, token: newToken})); }catch(e){}
+    // 跟正常登入（doLogin）拿一致的初始徽章資料，避免靜默續登後通知/聊天未讀要等第一次輪詢（12~15秒）才出現
+    fetchNotifications().then(notifs=>{
+      const unread = notifs.filter(n=>!n.read);
+      notifUnreadCount = unread.length;
+      unread.forEach(n=>notifBadgeSeenIds.add(n.id));
+      const badge = document.getElementById('notif-badge');
+      if(badge){ badge.style.display = notifUnreadCount>0 ? 'inline-flex' : 'none'; badge.textContent = notifUnreadCount>9?'9+':String(notifUnreadCount); }
+    }).catch(()=>{});
+    fetchChatMessages().then(messages=>{
+      const lastSeen = p.lastSeenChatAt || 0;
+      chatUnreadCount = messages.filter(m=>m.nickname !== state.nickname && m.createdAt > lastSeen).length;
+      updateChatBadgeDom();
+    }).catch(()=>{});
+  }catch(e){ /* 靜默失敗即可，回退正常登入畫面 */ }
+}
+
 async function boot(){
   try{
     rememberedNick = localStorage.getItem('my-nickname') || null;
   }catch(e){ rememberedNick = null; }
-  // Nickname is pre-filled for convenience, but password is always required —
-  // it is never stored anywhere, so this does not bypass login security.
+  logBootDiagnostic().catch(()=>{});
+  // Nickname is pre-filled for convenience; password is always required unless a still-valid
+  // session token can silently resume the session (see tryAutoLoginFromSessionToken) — the raw
+  // password itself is still never stored anywhere.
+  await tryAutoLoginFromSessionToken();
   initBgm();
   initLangToggle();
   initCardModal();
@@ -8153,10 +8365,28 @@ async function doLogin(nick, password, confirmPassword){
       return;
     }
 
+    // 簽發本次登入的 session token，讓分頁之後如果被系統重新載入（常見於 iOS Safari
+    // 記憶體壓力大時），boot() 能靜默用 token 續登，不用逼玩家重新輸入密碼。
+    // 密碼本身依然不存；這個 token 效期到、或玩家主動登出時就會失效。
+    // 用 updatePlayerCAS 而不是直接 savePlayer 整包覆蓋：避免這次登入的寫入，
+    // 蓋掉玩家在別的裝置/分頁這段期間剛好寫入的更新進度（跟心跳那個「存檔跳回過去」是同一類問題）。
+    let sessionToken = null;
+    try{
+      const applied = await updatePlayerCAS(p.nickname, (player)=>{
+        sessionToken = genSessionToken();
+        player.sessionToken = sessionToken;
+        player.sessionTokenExpiresAt = Date.now() + SESSION_TOKEN_TTL_MS;
+      });
+      if(applied) p = applied; // 用 CAS 寫入成功後的最新物件繼續往下走
+    }catch(e){ /* token 簽發失敗不影響這次登入，頂多下次重載要重新輸入密碼 */ }
+
     state.nickname = p.nickname;
     state.player = p;
     await applyPendingRewards(state.player);
-    try{ localStorage.setItem('my-nickname', p.nickname); }catch(e){}
+    try{
+      localStorage.setItem('my-nickname', p.nickname);
+      if(sessionToken) localStorage.setItem('my-session', JSON.stringify({nickname: p.nickname, token: sessionToken}));
+    }catch(e){}
     updatePresenceHeartbeat();
     render();
     fetchNotifications().then(notifs=>{
@@ -8193,10 +8423,18 @@ function doLogout(){
   if(farmTickInterval){ clearInterval(farmTickInterval); farmTickInterval = null; }
   if(expeditionTickInterval){ clearInterval(expeditionTickInterval); expeditionTickInterval = null; }
   if(professionTickInterval){ clearInterval(professionTickInterval); professionTickInterval = null; }
+  // 撤銷這次登入簽發的 session token（伺服器端 + 本機都清），避免舊分頁/舊裝置
+  // 殘留的 token 在玩家主動登出後還能被拿來靜默續登。best effort：撤銷失敗也不擋登出。
+  if(state.player){
+    const p = state.player;
+    p.sessionToken = null;
+    p.sessionTokenExpiresAt = null;
+    savePlayer(p).catch(()=>{});
+  }
   state.nickname = null; state.player = null; state.tab='home';
   chatUnreadCount = 0;
   notifUnreadCount = 0;
-  try{ localStorage.removeItem('my-nickname'); }catch(e){}
+  try{ localStorage.removeItem('my-nickname'); localStorage.removeItem('my-session'); }catch(e){}
   render();
 }
 
