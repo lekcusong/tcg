@@ -162,6 +162,17 @@
   .draw-cta.resonance-banner h2{text-shadow:0 2px 14px rgba(0,0,0,0.65);}
   .draw-cta.resonance-banner .sub{color:var(--cream);text-shadow:0 1px 8px rgba(0,0,0,0.65);}
   .draw-cta.resonance-banner .countdown{color:var(--cream);text-shadow:0 1px 8px rgba(0,0,0,0.65);}
+  /* 手機版：桌機用 cover 裁切成電影感的橫幅，但手機寬度太窄時同樣的裁切比例會讓圖片主體被切掉一大半、
+     看起來像只看到中間一小條。改用 contain 讓整張圖完整顯示，並拉高 min-height 給圖片足夠的顯示空間。 */
+  @media (max-width:600px){
+    .draw-cta.resonance-banner{
+      min-height:220px;
+      background:
+        linear-gradient(180deg, rgba(14,8,24,0.55) 0%, rgba(14,8,24,0.3) 38%, rgba(14,8,24,0.88) 100%),
+        url('https://lekcusong.github.io/tcg/assets/css-resonance-banner.jpg') center/contain no-repeat,
+        var(--bg-panel);
+    }
+  }
   .panel.profession-banner{
     position:relative;border-radius:14px;overflow:hidden;
     background:
@@ -734,6 +745,13 @@
     0%{ opacity:0.95; }
     100%{ opacity:0; }
   }
+  /* Boss / 幽靈Boss 立繪：手機維持原本 width:100% + 高度自動（完整顯示，不裁切）；
+     桌機螢幕通常比 #app 容器寬很多，同樣寬度的圖在視覺上顯得很小，所以桌機版改用
+     固定高度 + cover，讓立繪撐大、更有臨場感（構圖以角色為主，裁切通常只動到上下留白）。 */
+  .boss-hero-img{width:100%;height:auto;display:block;}
+  @media (min-width:601px){
+    .boss-hero-img{height:440px;object-fit:cover;object-position:center 15%;}
+  }
   .boss-portrait-shake{animation:boss-portrait-shake .32s ease-in-out;}
   @keyframes boss-portrait-shake{
     0%,100%{ transform:translate(0,0) rotate(0); }
@@ -1293,8 +1311,8 @@ function bindSeasonCardClicks(root){
   });
 }
 
-// 集滿 13 張賽季卡池後，剩餘貢獻點可依此比例兌換金幣 / 日月之輝（1 貢獻點 = N）
-const DEFAULT_SEASON_CONTRIB_EXCHANGE_RATE = {coins: 1, moon: 0.2};
+// 集滿 13 張賽季卡池後，剩餘貢獻點可依此比例兌換金幣（1 貢獻點 = N）
+const DEFAULT_SEASON_CONTRIB_EXCHANGE_RATE = {coins: 1};
 
 let SEASON_ACTIVE = true;
 let SEASON_CONTRIB_EXCHANGE_RATE = {...DEFAULT_SEASON_CONTRIB_EXCHANGE_RATE};
@@ -1325,7 +1343,6 @@ async function loadSeasonConfig(){
     if(r){
       const s = JSON.parse(r.value);
       if(typeof s.coins === 'number' && s.coins >= 0) SEASON_CONTRIB_EXCHANGE_RATE.coins = s.coins;
-      if(typeof s.moon === 'number' && s.moon >= 0) SEASON_CONTRIB_EXCHANGE_RATE.moon = s.moon;
     }
   }catch(e){ /* keep default */ }
 }
@@ -1341,7 +1358,6 @@ async function saveSeasonContribExchangeRate(){
 }
 function ensureMaterials(p){
   if(!p.materials) p.materials = {};
-  if(typeof p.materials.moon !== 'number') p.materials.moon = 0;
   if(typeof p.materials.contrib !== 'number') p.materials.contrib = 0;
   if(typeof p.materials.diceEssence !== 'number') p.materials.diceEssence = 0; // 骰子精華：拆解骰子取得，用於強化骰子
   if(typeof p.materials.ghostDiceTalisman !== 'number') p.materials.ghostDiceTalisman = 0; // 幽冥骰符：幽冥活動Boss破階獎勵，用了保底抽稀有以上骰子
@@ -2620,12 +2636,12 @@ const STAR_CHART_ELEMENT_LABEL = {
   water: {zh:'水象・農業加速', en:'Water · Growth Speed', icon:'💧'},
   earth: {zh:'土象・農業加量', en:'Earth · Harvest Yield', icon:'🌍'},
 };
-const DEFAULT_STAR_CHART_COST_TIERS = [80, 200, 400]; // 該元素第1/2/3個節點消耗的日月之輝
+const DEFAULT_STAR_CHART_COST_TIERS = [80, 200, 400]; // 該元素第1/2/3個節點消耗的貢獻點
 const DEFAULT_STAR_CHART_BONUS_PER_NODE = {fire:5, wind:5, water:5, earth:10}; // 每點亮一個節點的百分比加成
 let STAR_CHART_COST_TIERS = [...DEFAULT_STAR_CHART_COST_TIERS];
 let STAR_CHART_BONUS_PER_NODE = {...DEFAULT_STAR_CHART_BONUS_PER_NODE};
 
-// 行星圈：太陽/月亮/火星/木星/金星/水星，各 3 節點。沿用日月之輝與星座節點同一套
+// 行星圈：太陽/月亮/火星/木星/金星/水星，各 3 節點。沿用貢獻點與星座節點同一套
 // STAR_CHART_COST_TIERS 花費，但加成數值固定寫死、不開放 GM 調整。
 const STAR_CHART_PLANET_DEFS = {
   sun:     {label:'太陽', labelEn:'Sun',     icon:'☀️', descZh:'Boss 傷害加成',       descEn:'Boss Damage Bonus',        bonusPerNode:5},
@@ -2705,8 +2721,8 @@ async function unlockStarChartNode(zodiacId){
   if(!z) return;
   if(p.starChart.unlocked.includes(zodiacId)){ showToast(tt('這個星座已經點亮了','This constellation is already lit')); return; }
   const cost = starChartNodeCost(p, z.element);
-  if(p.materials.moon < cost){ showToast(tt(`日月之輝不足，需要 ${cost}`, `Not enough Sun-Moon Brilliance, need ${cost}`)); return; }
-  p.materials.moon -= cost;
+  if(p.materials.contrib < cost){ showToast(tt(`貢獻點不足，需要 ${cost}`, `Not enough contribution points, need ${cost}`)); return; }
+  p.materials.contrib -= cost;
   p.starChart.unlocked.push(zodiacId);
   await savePlayer(p);
   render();
@@ -2723,8 +2739,8 @@ async function unlockStarChartPlanetNode(nodeId){
   const alreadyUnlocked = starChartUnlockedCountByPlanet(p, n.planet);
   if(idx !== alreadyUnlocked){ showToast(tt('要照順序點亮','Unlock in order')); return; }
   const cost = starChartPlanetNodeCost(p, n.planet);
-  if(p.materials.moon < cost){ showToast(tt(`日月之輝不足，需要 ${cost}`, `Not enough Sun-Moon Brilliance, need ${cost}`)); return; }
-  p.materials.moon -= cost;
+  if(p.materials.contrib < cost){ showToast(tt(`貢獻點不足，需要 ${cost}`, `Not enough contribution points, need ${cost}`)); return; }
+  p.materials.contrib -= cost;
   p.starChart.unlocked.push(nodeId);
   await savePlayer(p);
   render();
@@ -3811,11 +3827,13 @@ const DEFAULT_GHOST_BOSS_ENTRY_CARD_COST = 4;  // 入場需要消耗的張數
 const DEFAULT_GHOST_BOSS_STAGE_HP = [6000, 12000, 20000, 30000]; // 4階基礎血量（cycle=1），GM可調
 const DEFAULT_GHOST_BOSS_DIFFICULTY_MULT = 1.20; // 每輪(cycle)血量複利成長倍率，跟主線Boss數值分開設定
 const DEFAULT_GHOST_BOSS_COIN_COST = 100; // 每次攻擊消耗金幣（GM可調）
+const DEFAULT_GHOST_TALISMAN_CONTRIB_COST = 30000; // 貢獻點直接兌換1個幽冥骰符所需點數（GM可調）
 
 let GHOST_BOSS_ENTRY_CARD_COST = DEFAULT_GHOST_BOSS_ENTRY_CARD_COST;
 let GHOST_BOSS_STAGE_HP = [...DEFAULT_GHOST_BOSS_STAGE_HP];
 let GHOST_BOSS_DIFFICULTY_MULT = DEFAULT_GHOST_BOSS_DIFFICULTY_MULT;
 let GHOST_BOSS_COIN_COST = DEFAULT_GHOST_BOSS_COIN_COST;
+let GHOST_TALISMAN_CONTRIB_COST = DEFAULT_GHOST_TALISMAN_CONTRIB_COST;
 
 // GM 後台設定讀寫，跟主線Boss的 loadBossConfig/saveBossConfig 同一套寫法，
 // 但存在自己獨立的 seasonKey，不會互相覆蓋。
@@ -3829,6 +3847,7 @@ async function loadGhostBossConfig(){
       if(typeof s.coinCost === 'number') GHOST_BOSS_COIN_COST = s.coinCost;
       if(typeof s.entryCardCost === 'number') GHOST_BOSS_ENTRY_CARD_COST = s.entryCardCost;
       if(s.talismanRates && typeof s.talismanRates.rare === 'number') GHOST_DICE_TALISMAN_RATES = s.talismanRates;
+      if(typeof s.talismanContribCost === 'number' && s.talismanContribCost >= 0) GHOST_TALISMAN_CONTRIB_COST = s.talismanContribCost;
     }
   }catch(e){ console.warn('loadGhostBossConfig failed', e); }
 }
@@ -3839,6 +3858,7 @@ async function saveGhostBossConfig(){
     coinCost: GHOST_BOSS_COIN_COST,
     entryCardCost: GHOST_BOSS_ENTRY_CARD_COST,
     talismanRates: GHOST_DICE_TALISMAN_RATES,
+    talismanContribCost: GHOST_TALISMAN_CONTRIB_COST,
   }));
 }
 
@@ -3865,6 +3885,7 @@ function ghostBossFreshState(cycle){
     unlockedToday: false, // 今天是否已花4張死神卡解鎖挑戰資格
     clearedToday: false,  // 今天是否已全破4階（全破後鎖到隔天，不會重生重打）
     comboStreak: 0, // 🔥 連續組合命中次數（對子/豹子），沒接住就歸零；跟主線Boss共用同一套連擊公式（BOSS_COMBO_STREAK_BONUS_PER_HIT/CAP）
+    cycleDamage: 0, // 本輪（今日這個cycle，跨4階累計）造成的總傷害，僅供顯示用；跟主線Boss的cycleDamage同一套邏輯
     stagesClearedToday: [], // 今天已經發過階段獎勵的階數（防止CAS重試/重複結算重複發獎，階段2會用到）
   };
 }
@@ -3977,6 +3998,7 @@ async function resolveGhostBossAttack(nickname, damage, comboTier){
       ? Math.min((boss.comboStreak||0) + 1, comboStreakCapCount)
       : 0;
     newBoss.hp = Math.max(0, boss.hp - damage);
+    newBoss.cycleDamage = (boss.cycleDamage||0) + damage;
     let stageCompletedAt = null;
     let fullyCleared = false;
     if(newBoss.hp <= 0){
@@ -4150,7 +4172,38 @@ async function useGhostDiceTalisman(){
   return resultDice;
 }
 
-// ---------- 骰子系統（階段三：資料結構 + 商店抽卡）----------
+// 用貢獻點直接兌換 1 個幽冥骰符（不用打Boss，純粹拿累積的貢獻點換）。
+// CAS 保護「扣貢獻點 + 發骰符」這整個讀-改-寫，理由跟 useGhostDiceTalisman 一樣：
+// 避免連點兩次時貢獻點被扣兩次，卻只拿到一個骰符。
+async function exchangeContribForGhostTalisman(){
+  const p = state.player;
+  ensureMaterials(p);
+  const cost = GHOST_TALISMAN_CONTRIB_COST;
+  if((p.materials.contrib||0) < cost){
+    showToast(tt(`貢獻點不足，需要 ${cost.toLocaleString()}`, `Not enough contribution points, need ${cost.toLocaleString()}`));
+    return null;
+  }
+  let applied;
+  try{
+    applied = await updatePlayerCAS(p.nickname, (player)=>{
+      ensureMaterials(player);
+      const have = player.materials.contrib||0;
+      if(have < cost) throw new Error('NOT_ENOUGH_CONTRIB');
+      player.materials.contrib = have - cost;
+      player.materials.ghostDiceTalisman = (player.materials.ghostDiceTalisman||0) + 1;
+    });
+  }catch(e){
+    showToast(tt('貢獻點不足或資料忙碌中，請重新整理後再試', 'Not enough contribution points, or data is busy — refresh and try again'));
+    return null;
+  }
+  if(!applied) return null;
+  state.player = applied;
+  showToast(tt(`✨ 兌換成功！花費 🏅${cost.toLocaleString()} 貢獻點，獲得 🔮 幽冥骰符 x1`, `✨ Exchanged! Spent 🏅${cost.toLocaleString()} contribution for 🔮 Ghost Dice Talisman x1`));
+  renderTab();
+  return applied;
+}
+
+
 // 這階段只做「擁有骰子」這件事：資料模型、玩家骰子欄位、抽卡機率與消耗。
 // 還沒接上真正的攻擊流程（面數字倍率、面效果疊加、相同號碼加成留到階段四），
 // 方便先獨立驗證抽卡機率分佈與資料是否正確，不受戰鬥邏輯干擾。
@@ -5062,6 +5115,11 @@ function renderDiceShop(body){
 // 每次呼叫 renderBoss 都令 bossRenderGen 遞增並記下自己的 myGen，
 // 等到真的要寫 DOM 前才比對 myGen 是否仍是最新，不是就直接丟棄。
 let bossRenderGen = 0;
+// 記住目前 #boss-subview 裡實際渲染的是哪個子分頁（'ghost'/'dice'），renderBoss 靠這個判斷
+// 「同一個子分頁重複渲染」（例如幽冥Boss攻擊後重繪）該不該跳過外層 innerHTML 整段重建——
+// 避免每次攻擊都清空重建導致捲動位置被重置、又讓還原捲動位置的邏輯永遠判斷成「首次渲染」。
+// 切到不同子分頁（或切回主線Boss）時才需要真的重建，讓分頁高亮跟著更新。
+let lastBossSubviewKind = null;
 function renderBoss(body){
   const p = state.player;
   ensureMaterials(p);
@@ -5085,17 +5143,26 @@ function renderBoss(body){
     });
   };
   if(state.bossView === 'ghost'){
-    body.innerHTML = `${bossNavHtml}<div id="boss-subview"></div>`;
-    bindBossNav();
+    const sameSubviewAlreadyRendered = !!document.getElementById('boss-subview') && lastBossSubviewKind === 'ghost';
+    if(!sameSubviewAlreadyRendered){
+      body.innerHTML = `${bossNavHtml}<div id="boss-subview"></div>`;
+      bindBossNav();
+      lastBossSubviewKind = 'ghost';
+    }
     renderGhostBoss(document.getElementById('boss-subview'));
     return;
   }
   if(state.bossView === 'dice'){
-    body.innerHTML = `${bossNavHtml}<div id="boss-subview"></div>`;
-    bindBossNav();
+    const sameSubviewAlreadyRendered = !!document.getElementById('boss-subview') && lastBossSubviewKind === 'dice';
+    if(!sameSubviewAlreadyRendered){
+      body.innerHTML = `${bossNavHtml}<div id="boss-subview"></div>`;
+      bindBossNav();
+      lastBossSubviewKind = 'dice';
+    }
     renderDiceShop(document.getElementById('boss-subview'));
     return;
   }
+  lastBossSubviewKind = null;
   const myGen = ++bossRenderGen;
   const bossAlreadyRendered = !!document.getElementById('boss-burst-btn');
   if(!bossAlreadyRendered){
@@ -5110,7 +5177,7 @@ function renderBoss(body){
         <h2>⚔️ ${tt(SEASON_LABEL_ZH, SEASON_LABEL_EN)} · ${tt('Boss 戰','Boss Battle')}</h2>
         <p class="sub">${tt(`第 ${boss.cycle} 輪　·　今日已擊殺 ${boss.killCount||0}/${BOSS_MAX_DAILY_KILLS} 次`, `Cycle ${boss.cycle} · Kills today ${boss.killCount||0}/${BOSS_MAX_DAILY_KILLS}`)}</p>
         <div style="text-align:center;">
-          <img src="${clearedMeta.img}" style="width:100%;max-width:340px;border-radius:14px;border:1px solid var(--gold);box-shadow:0 0 22px rgba(139,107,209,0.4);margin-bottom:10px;filter:grayscale(0.6) brightness(0.7);" alt="${clearedMeta.label}" />
+          <img src="${clearedMeta.img}" style="width:100%;border-radius:14px;border:1px solid var(--gold);box-shadow:0 0 22px rgba(139,107,209,0.4);margin-bottom:10px;filter:grayscale(0.6) brightness(0.7);" alt="${clearedMeta.label}" />
           <div style="font-family:'Cinzel Decorative',serif;color:var(--gold-bright);font-size:16px;">🎉 ${tt('今日擊殺上限已達成！','Daily kill limit reached!')}</div>
           <p class="sub" style="margin-top:8px;">${tt(`你今天已經擊殺了 ${boss.killCount||0} 隻 Boss，明天再來挑戰新一輪（更難）吧！`, `You've slain ${boss.killCount||0} Bosses today - come back tomorrow for a new, harder cycle!`)}</p>
         </div>
@@ -5189,7 +5256,7 @@ function renderBoss(body){
         </div>`;
       })()}
       <div style="text-align:center;">
-        <img id="boss-portrait-img" src="${meta.img}" style="width:100%;max-width:340px;border-radius:14px;border:1px solid var(--gold);box-shadow:0 0 22px rgba(139,107,209,0.4);margin-bottom:10px;" alt="${meta.label}" />
+        <img id="boss-portrait-img" class="boss-hero-img" src="${meta.img}" style="border-radius:14px;border:1px solid var(--gold);box-shadow:0 0 22px rgba(139,107,209,0.4);margin-bottom:10px;" alt="${meta.label}" />
         <div style="font-family:'Cinzel Decorative',serif;color:var(--gold-bright);font-size:16px;">${tt(meta.label, meta.labelEn)}</div>
         <p class="sub" style="margin-top:4px;">${tt(meta.desc, meta.descEn)}</p>
       </div>
@@ -5320,9 +5387,15 @@ function renderGhostBoss(body){
   (async ()=>{
     const boss = await ensureGhostBossState(p.nickname);
     const talismanCount = p.materials.ghostDiceTalisman||0;
+    const contribCount = p.materials.contrib||0;
+    const talismanExchangeCost = GHOST_TALISMAN_CONTRIB_COST;
     const talismanHtml = `<div style="border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:10px;background:rgba(139,107,209,0.06);">
       <div class="countdown">🔮 ${tt('幽冥骰符','Ghost Dice Talisman')}：<b style="color:var(--gold-bright);">×${talismanCount}</b>　<span style="color:var(--muted);">${tt('用了保底抽稀有以上骰子','Uses guarantee Rare+ quality')}</span></div>
       <button class="btn" id="ghost-talisman-use-btn" ${talismanCount < 1 ? 'disabled' : ''} style="flex-shrink:0;">${tt('使用','Use')}</button>
+    </div>
+    <div style="border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:10px;">
+      <div class="countdown">🏅 ${tt('貢獻點兌換','Exchange with Contribution')}：<b style="color:${contribCount>=talismanExchangeCost?'var(--gold-bright)':'var(--danger)'};">${contribCount.toLocaleString()}</b> / ${talismanExchangeCost.toLocaleString()}　<span style="color:var(--muted);">${tt(`🏅${talismanExchangeCost.toLocaleString()} 換 🔮×1`, `🏅${talismanExchangeCost.toLocaleString()} → 🔮×1`)}</span></div>
+      <button class="btn" id="ghost-talisman-exchange-btn" ${contribCount < talismanExchangeCost ? 'disabled' : ''} style="flex-shrink:0;">${tt('兌換','Exchange')}</button>
     </div>`;
 
     // 尚未解鎖今日資格：顯示入場按鈕，扣4張死神卡
@@ -5332,7 +5405,7 @@ function renderGhostBoss(body){
         <h2>👻 ${tt('幽冥活動 Boss','Ghost Event Boss')}</h2>
         <p class="sub">${tt(`第 ${boss.cycle} 輪　·　今日尚未解鎖`, `Cycle ${boss.cycle} · Not unlocked today`)}</p>
         <div style="text-align:center;">
-          <img src="${GHOST_BOSS_STAGE_META[0].img}" style="width:100%;max-width:340px;border-radius:14px;border:1px solid var(--gold);box-shadow:0 0 22px rgba(139,107,209,0.4);margin-bottom:10px;filter:grayscale(0.5) brightness(0.6);" alt="${GHOST_BOSS_STAGE_META[0].label}" />
+          <img class="boss-hero-img" src="${GHOST_BOSS_STAGE_META[0].img}" style="border-radius:14px;border:1px solid var(--gold);box-shadow:0 0 22px rgba(139,107,209,0.4);margin-bottom:10px;filter:grayscale(0.5) brightness(0.6);" alt="${GHOST_BOSS_STAGE_META[0].label}" />
           <p class="sub" style="margin:8px 0 14px;">${tt(`每天需要消耗 ${GHOST_BOSS_ENTRY_CARD_COST} 張「死神」卡才能解鎖今日挑戰資格，解鎖後當天可以一直打到全破或明天重置。`, `Spend ${GHOST_BOSS_ENTRY_CARD_COST} "Death" cards each day to unlock today's challenge - once unlocked you can keep attacking until you clear it or it resets tomorrow.`)}</p>
         </div>
         <div class="countdown" style="text-align:center;margin-bottom:12px;">${tt('持有死神卡','Death cards owned')}：<b style="color:${haveCards>=GHOST_BOSS_ENTRY_CARD_COST?'var(--gold-bright)':'var(--danger)'};">${haveCards} / ${GHOST_BOSS_ENTRY_CARD_COST}</b></div>
@@ -5353,6 +5426,11 @@ function renderGhostBoss(body){
         talismanBtn.disabled = true;
         try{ await useGhostDiceTalisman(); } finally { renderTab(); }
       };
+      const talismanExchangeBtn = document.getElementById('ghost-talisman-exchange-btn');
+      if(talismanExchangeBtn) talismanExchangeBtn.onclick = async ()=>{
+        talismanExchangeBtn.disabled = true;
+        try{ await exchangeContribForGhostTalisman(); } finally { renderTab(); }
+      };
       return;
     }
 
@@ -5363,7 +5441,7 @@ function renderGhostBoss(body){
         <h2>👻 ${tt('幽冥活動 Boss','Ghost Event Boss')}</h2>
         <p class="sub">${tt(`第 ${boss.cycle} 輪　·　今日已全破`, `Cycle ${boss.cycle} · Cleared today`)}</p>
         <div style="text-align:center;">
-          <img src="${kingMeta.img}" style="width:100%;max-width:340px;border-radius:14px;border:1px solid var(--gold);box-shadow:0 0 22px rgba(139,107,209,0.4);margin-bottom:10px;filter:grayscale(0.6) brightness(0.7);" alt="${kingMeta.label}" />
+          <img src="${kingMeta.img}" style="width:100%;border-radius:14px;border:1px solid var(--gold);box-shadow:0 0 22px rgba(139,107,209,0.4);margin-bottom:10px;filter:grayscale(0.6) brightness(0.7);" alt="${kingMeta.label}" />
           <div style="font-family:'Cinzel Decorative',serif;color:var(--gold-bright);font-size:16px;">🎉 ${tt('今日已全破 4 階段！','All 4 stages cleared today!')}</div>
           <p class="sub" style="margin-top:8px;">${tt('明天再來挑戰新一輪（更難）吧！', 'Come back tomorrow for a new, harder cycle!')}</p>
         </div>
@@ -5377,6 +5455,11 @@ function renderGhostBoss(body){
       if(talismanBtn2) talismanBtn2.onclick = async ()=>{
         talismanBtn2.disabled = true;
         try{ await useGhostDiceTalisman(); } finally { renderTab(); }
+      };
+      const talismanExchangeBtn2 = document.getElementById('ghost-talisman-exchange-btn');
+      if(talismanExchangeBtn2) talismanExchangeBtn2.onclick = async ()=>{
+        talismanExchangeBtn2.disabled = true;
+        try{ await exchangeContribForGhostTalisman(); } finally { renderTab(); }
       };
       return;
     }
@@ -5405,7 +5488,7 @@ function renderGhostBoss(body){
       <h2>👻 ${tt('幽冥活動 Boss','Ghost Event Boss')}</h2>
       <p class="sub">${tt(`第 ${boss.cycle} 輪　第 ${boss.stage}/4 階段　·　今日已解鎖`, `Cycle ${boss.cycle} · Stage ${boss.stage}/4 · Unlocked today`)}</p>
       <div style="text-align:center;">
-        <img id="ghost-boss-portrait-img" src="${meta.img}" style="width:100%;max-width:340px;border-radius:14px;border:1px solid var(--gold);box-shadow:0 0 22px rgba(139,107,209,0.4);margin-bottom:10px;" alt="${meta.label}" />
+        <img id="ghost-boss-portrait-img" class="boss-hero-img" src="${meta.img}" style="border-radius:14px;border:1px solid var(--gold);box-shadow:0 0 22px rgba(139,107,209,0.4);margin-bottom:10px;" alt="${meta.label}" />
         <div style="font-family:'Cinzel Decorative',serif;color:var(--gold-bright);font-size:16px;">${tt(meta.label, meta.labelEn)}</div>
         <p class="sub" style="margin-top:4px;">${tt(meta.desc, meta.descEn)}</p>
       </div>
@@ -5414,6 +5497,7 @@ function renderGhostBoss(body){
         <div id="ghost-boss-hp-fill" class="hp-bar-fill" style="width:${pct}%;background:linear-gradient(90deg, var(--violet), var(--gold));"></div>
       </div>
       <div class="countdown" style="text-align:center;margin-bottom:12px;">${Math.max(0,boss.hp).toLocaleString()} / ${boss.maxHp.toLocaleString()} HP</div>
+      <div class="countdown" style="margin-bottom:10px;">${tt('本輪已造成傷害','Damage this cycle')}：<b style="color:var(--gold-bright);">${(boss.cycleDamage||0).toLocaleString()}</b></div>
       ${(boss.comboStreak||0) > 0 ? `<div class="countdown" style="margin-bottom:10px;">🔥 ${tt('連擊中','Combo streak')}：<b style="color:var(--gold-bright);">×${boss.comboStreak}</b>　（${tt('下次攻擊加成','next hit bonus')} +${Math.round(Math.min((boss.comboStreak||0) * BOSS_COMBO_STREAK_BONUS_PER_HIT, BOSS_COMBO_STREAK_CAP) * 100)}%）</div>` : ''}
       ${talismanHtml}
       <div style="border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:10px;display:flex;flex-direction:column;gap:6px;">
@@ -5445,6 +5529,11 @@ function renderGhostBoss(body){
     if(talismanBtn3) talismanBtn3.onclick = async ()=>{
       talismanBtn3.disabled = true;
       try{ await useGhostDiceTalisman(); } finally { renderTab(); }
+    };
+    const talismanExchangeBtn3 = document.getElementById('ghost-talisman-exchange-btn');
+    if(talismanExchangeBtn3) talismanExchangeBtn3.onclick = async ()=>{
+      talismanExchangeBtn3.disabled = true;
+      try{ await exchangeContribForGhostTalisman(); } finally { renderTab(); }
     };
   })();
 }
@@ -5494,7 +5583,7 @@ async function doSeasonCardDraw(){
     showToast(tt(`✨ 抽到「${seasonCardName(card)}」！`, `✨ Drew "${seasonCardName(card)}"!`));
   }
 }
-async function doExchangeContrib(type){
+async function doExchangeContrib(){
   const p = state.player;
   ensureMaterials(p);
   const isComplete = SEASON_CARDS.every(c=>p.seasonCards[c.id]);
@@ -5504,17 +5593,13 @@ async function doExchangeContrib(type){
   if(isNaN(amount) || amount <= 0){ showToast(tt('請輸入有效的貢獻點數量','Please enter a valid contribution amount')); return; }
   if(amount > p.materials.contrib) amount = p.materials.contrib;
   if(amount <= 0){ showToast(tt('貢獻點不足','Not enough contribution points')); return; }
-  const rate = type === 'moon' ? SEASON_CONTRIB_EXCHANGE_RATE.moon : SEASON_CONTRIB_EXCHANGE_RATE.coins;
-  const gain = Math.floor(amount * rate);
+  const gain = Math.floor(amount * SEASON_CONTRIB_EXCHANGE_RATE.coins);
   if(gain <= 0){ showToast(tt('兌換數量太少，無法產生任何回饋','Amount too small to yield any reward')); return; }
   p.materials.contrib -= amount;
-  if(type === 'moon'){ p.materials.moon += gain; }
-  else { p.coins += gain; }
+  p.coins += gain;
   await savePlayer(p);
   render();
-  showToast(type === 'moon'
-    ? tt(`✨ 兌換成功！花費 🏅${amount} 獲得 🌙 日月之輝 x${gain}`, `✨ Exchanged! Spent 🏅${amount} for 🌙 Sun-Moon Brilliance x${gain}`)
-    : tt(`✨ 兌換成功！花費 🏅${amount} 獲得 💰 金幣 x${gain}`, `✨ Exchanged! Spent 🏅${amount} for 💰 Coins x${gain}`));
+  showToast(tt(`✨ 兌換成功！花費 🏅${amount} 獲得 💰 金幣 x${gain}`, `✨ Exchanged! Spent 🏅${amount} for 💰 Coins x${gain}`));
 }
 function renderSeason(body){
   const p = state.player;
@@ -5524,18 +5609,6 @@ function renderSeason(body){
     return;
   }
   let html = '';
-  const seasonSeeds = Object.values(SEED_TYPES).filter(s=>s.seasonOnly);
-  html += `<div class="panel"><h2>🌙 ${tt('賽季種子','Season Seeds')}</h2>
-    <p class="sub">${tt('到花園種植賽季限定種子，收成獲得「日月之輝」，用於點亮星盤解鎖樹。', 'Plant season-exclusive seeds in your garden to harvest "Sun-Moon Brilliance" for lighting up the Star Chart.')}</p>
-    <div class="countdown" style="margin-bottom:10px;">🌙 ${tt('日月之輝','Sun-Moon Brilliance')}：<b style="color:var(--gold-bright);">${p.materials.moon}</b></div>
-    <div style="display:flex;gap:14px;flex-wrap:wrap;">
-      ${seasonSeeds.map(s=>`<div style="text-align:center;width:100px;">
-        <img src="${s.image}" style="width:72px;height:72px;border-radius:50%;object-fit:cover;border:1px solid var(--gold);box-shadow:0 0 12px rgba(201,162,74,0.35);" alt="${seedName(s)}" />
-        <div style="font-family:'Cinzel',serif;font-size:11px;color:var(--gold-bright);margin-top:6px;">${seedName(s)}</div>
-        <div style="font-size:10px;color:var(--muted);">🌙 ${s.moonBrillianceMin}-${s.moonBrillianceMax}</div>
-      </div>`).join('')}
-    </div>
-  </div>`;
   const ownedCount = SEASON_CARDS.filter(c=>p.seasonCards[c.id]).length;
   const isComplete = ownedCount === SEASON_CARDS.length;
   const cardResult = state.seasonCardDrawResult;
@@ -5569,11 +5642,10 @@ function renderSeason(body){
       </div>
     </div>
     <div class="countdown" style="margin:12px 0 6px;">🏅 ${tt('剩餘貢獻點','Remaining Contribution')}：<b style="color:var(--gold-bright);">${p.materials.contrib}</b></div>
-    <p class="sub">${tt(`已集滿全部賽季卡，剩餘貢獻點可兌換 💰 金幣（1 貢獻點 = ${SEASON_CONTRIB_EXCHANGE_RATE.coins}）或 🌙 日月之輝（1 貢獻點 = ${SEASON_CONTRIB_EXCHANGE_RATE.moon}）。`, `All season cards collected — spend leftover contribution on 💰 Coins (1 Contribution = ${SEASON_CONTRIB_EXCHANGE_RATE.coins}) or 🌙 Sun-Moon Brilliance (1 Contribution = ${SEASON_CONTRIB_EXCHANGE_RATE.moon}).`)}</p>
+    <p class="sub">${tt(`已集滿全部賽季卡，剩餘貢獻點可兌換 💰 金幣（1 貢獻點 = ${SEASON_CONTRIB_EXCHANGE_RATE.coins}）。`, `All season cards collected — spend leftover contribution on 💰 Coins (1 Contribution = ${SEASON_CONTRIB_EXCHANGE_RATE.coins}).`)}</p>
     <div class="form-row" style="align-items:center;">
       <input type="number" id="season-contrib-exchange-amount" value="${p.materials.contrib}" min="1" max="${p.materials.contrib}" style="width:100px;" />
       <button class="btn small" id="season-exchange-coins-btn" ${p.materials.contrib <= 0 ? 'disabled' : ''}>${tt('兌換金幣','Exchange for Coins')}</button>
-      <button class="btn small" id="season-exchange-moon-btn" ${p.materials.contrib <= 0 ? 'disabled' : ''}>${tt('兌換日月之輝','Exchange for Sun-Moon Brilliance')}</button>
     </div>`;
   } else {
     html += `<button class="btn" id="season-card-draw-btn" ${p.materials.contrib < SEASON_CARD_DRAW_COST ? 'disabled' : ''}>${tt(`抽取賽季卡（🏅 ${SEASON_CARD_DRAW_COST}）`, `Draw Season Card (🏅 ${SEASON_CARD_DRAW_COST})`)}</button>`;
@@ -5590,9 +5662,7 @@ function renderSeason(body){
   const cardBtn = document.getElementById('season-card-draw-btn');
   if(cardBtn) cardBtn.onclick = doSeasonCardDraw;
   const exCoinsBtn = document.getElementById('season-exchange-coins-btn');
-  if(exCoinsBtn) exCoinsBtn.onclick = ()=>doExchangeContrib('coins');
-  const exMoonBtn = document.getElementById('season-exchange-moon-btn');
-  if(exMoonBtn) exMoonBtn.onclick = ()=>doExchangeContrib('moon');
+  if(exCoinsBtn) exCoinsBtn.onclick = ()=>doExchangeContrib();
   bindSeasonCardClicks(body);
   wireStarChart(body);
 }
@@ -5609,15 +5679,15 @@ function renderStarChartHtml(p){
     const unlocked = p.starChart.unlocked.includes(z.id);
     const cost = starChartNodeCost(p, z.element);
     const elLabel = STAR_CHART_ELEMENT_LABEL[z.element];
-    return `<div class="sc-node ${unlocked?'unlocked':'locked'}" data-zodiac="${z.id}" style="left:${x}%;top:${y}%;" title="${tt(z.label,z.labelEn)} · ${tt(elLabel.zh,elLabel.en)}${unlocked?'':` (${tt('消耗','Cost')} 🌙${cost})`}">
+    return `<div class="sc-node ${unlocked?'unlocked':'locked'}" data-zodiac="${z.id}" style="left:${x}%;top:${y}%;" title="${tt(z.label,z.labelEn)} · ${tt(elLabel.zh,elLabel.en)}${unlocked?'':` (${tt('消耗','Cost')} 🏅${cost})`}">
       <div class="sc-node-icon">${elLabel.icon}</div>
       <div class="sc-node-label">${tt(z.label,z.labelEn)}</div>
     </div>`;
   }).join('');
   return `<div class="panel">
     <h2>✦ ${tt('星盤解鎖樹','Star Chart Talent Tree')}</h2>
-    <p class="sub">${tt('消耗「日月之輝」一次性點亮 12 星座節點，各元素三連可疊加百分比加成，賽季結束將會重置。','Spend Sun-Moon Brilliance to permanently light each of the 12 zodiac nodes this season. Bonuses stack per element and reset when the season ends.')}</p>
-    <div class="countdown" style="margin-bottom:12px;">🌙 ${tt('日月之輝','Sun-Moon Brilliance')}：<b style="color:var(--gold-bright);">${p.materials.moon}</b></div>
+    <p class="sub">${tt('消耗「貢獻點」一次性點亮 12 星座節點，各元素三連可疊加百分比加成，賽季結束將會重置。','Spend Contribution Points to permanently light each of the 12 zodiac nodes this season. Bonuses stack per element and reset when the season ends.')}</p>
+    <div class="countdown" style="margin-bottom:12px;">🏅 ${tt('貢獻點','Contribution')}：<b style="color:var(--gold-bright);">${p.materials.contrib}</b></div>
     <div class="sc-wheel-box" style="position:relative;width:100%;max-width:480px;aspect-ratio:1/1;margin:0 auto;border-radius:50%;overflow:hidden;border:1px solid var(--line);">
       <img src="assets/star_wheel.jpg" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0.9;" alt="star chart" />
       ${nodesHtml}
@@ -5658,7 +5728,7 @@ function renderStarChartHtml(p){
               const idx = nodes.indexOf(n);
               const canUnlock = zodiacDone && !unlocked && idx === cnt;
               const cost = starChartPlanetNodeCost(p, key);
-              const lockTitle = !zodiacDone ? tt('需先點滿12星座','Requires all 12 zodiac nodes lit') : (unlocked?'':` (${tt('消耗','Cost')} 🌙${cost})`);
+              const lockTitle = !zodiacDone ? tt('需先點滿12星座','Requires all 12 zodiac nodes lit') : (unlocked?'':` (${tt('消耗','Cost')} 🏅${cost})`);
               return `<div class="sc-node ${unlocked?'unlocked':'locked'}" data-planet-node="${n.id}" style="position:static;transform:none;margin:0;width:64px;${canUnlock?'':unlocked?'':'opacity:0.5;'}" title="${tt(n.label,n.labelEn)}${lockTitle}">
                 <div class="sc-node-icon">${def.icon}</div>
                 <div class="sc-node-label">${tt(n.label,n.labelEn)}</div>
@@ -6776,21 +6846,6 @@ const SEED_TYPES = {
     cost:750, growMs: 24*60*60*1000, tierLevel:8,
     coinMin:1650, coinMax:2000, wither:false,
     upgradesTo: null,
-  },
-  // ---- 賽季限定種子（星象幻境）----
-  season_lily: {
-    key:'season_lily', nameZh:'星光鈴蘭', nameEn:'Star-Trail Lily', suitLabel:'星象幻境', icon:'🔔',
-    image:'assets/seed_lily.jpg',
-    cost:60, growMs: 4*60*60*1000, tierLevel:0, seasonOnly:true,
-    coinMin:0, coinMax:0, wither:false,
-    moonBrillianceMin:6, moonBrillianceMax:10,
-  },
-  season_sunflower: {
-    key:'season_sunflower', nameZh:'日蝕向日葵', nameEn:'Eclipse Sunflower', suitLabel:'星象幻境', icon:'🌻',
-    image:'assets/seed_sunflower.jpg',
-    cost:140, growMs: 10*60*60*1000, tierLevel:0, seasonOnly:true,
-    coinMin:0, coinMax:0, wither:false,
-    moonBrillianceMin:16, moonBrillianceMax:26,
   },
 };
 const DEFAULT_SEED_COSTS = {};
@@ -8313,12 +8368,6 @@ async function harvestPlot(plotIndex, opts){
     let coinGain = Math.floor(Math.random()*(seed.coinMax-seed.coinMin+1)) + seed.coinMin;
     coinGain = Math.round(coinGain * starChartCoinMultiplier(p) * starChartYieldMultiplier(p));
     p.coins = (p.coins||0) + coinGain;
-    let moonGain = 0;
-    if(seed.moonBrillianceMin){
-      moonGain = Math.floor(Math.random()*(seed.moonBrillianceMax-seed.moonBrillianceMin+1)) + seed.moonBrillianceMin;
-      moonGain = Math.round(moonGain * starChartYieldMultiplier(p));
-      p.materials.moon += moonGain;
-    }
     let bonusCard = null;
     if(seed.bonusCardChance && Math.random() < seed.bonusCardChance){
       const pool = DECK.filter(c=>seed.bonusCardRarities.includes(c.rarity));
@@ -8352,7 +8401,7 @@ async function harvestPlot(plotIndex, opts){
       if(!p.petActiveId) p.petActiveId = pet.id;
       bonusPet = pet;
     }
-    result = {withered:false, seedName: seedName(seed), coinGain, bonusCard, moonGain, materialDrop, bonusPet};
+    result = {withered:false, seedName: seedName(seed), coinGain, bonusCard, materialDrop, bonusPet};
     bumpQuest(p, 'harvest', 1);
     ensureStats(p).totalHarvests += 1;
   }
@@ -8369,7 +8418,6 @@ async function harvestOne(plotIndex){
     showToast(tt(`${result.seedName}已經枯萎了，白忙一場 🥀`, `${result.seedName} withered away - all for nothing 🥀`));
   } else {
     let msg = tt(`收成${result.seedName}，獲得 ✦${result.coinGain}`, `Harvested ${result.seedName} for ✦${result.coinGain}`);
-    if(result.moonGain) msg += tt(` + 🌙 日月之輝 x${result.moonGain}`, ` + 🌙 Sun-Moon Brilliance x${result.moonGain}`);
     if(result.bonusCard) msg += tt(` + 額外一張「${result.bonusCard.name}」！`, ` + a bonus "${result.bonusCard.name}"!`);
     if(result.materialDrop) msg += tt(` + ${result.materialDrop.icon} ${result.materialDrop.label} x${result.materialDrop.qty}`, ` + ${result.materialDrop.icon} ${result.materialDrop.label} x${result.materialDrop.qty}`);
     if(result.bonusPet) msg += tt(` + 🥚➡️🐾 額外孵化一隻${petRarityLabel(result.bonusPet.rarity)}寵物！`, ` + 🥚➡️🐾 bonus hatched a ${petRarityLabel(result.bonusPet.rarity)} pet!`);
@@ -8383,7 +8431,7 @@ async function harvestAllReady(){
   if(!p) return;
   const farm = ensureFarm(p);
   const now = Date.now();
-  let coinTotal = 0, harvestedCount = 0, witheredCount = 0, moonTotal = 0;
+  let coinTotal = 0, harvestedCount = 0, witheredCount = 0;
   const bonusCards = [];
   const bonusPets = [];
   const materialTotals = {};
@@ -8394,7 +8442,7 @@ async function harvestAllReady(){
     if(!result) continue;
     if(result.withered){ witheredCount++; }
     else{
-      harvestedCount++; coinTotal += result.coinGain; moonTotal += (result.moonGain||0);
+      harvestedCount++; coinTotal += result.coinGain;
       if(result.bonusCard) bonusCards.push(result.bonusCard.name);
       if(result.bonusPet) bonusPets.push(result.bonusPet);
       if(result.materialDrop){
@@ -8408,7 +8456,6 @@ async function harvestAllReady(){
   await savePlayer(p);
   let msg = '';
   if(harvestedCount>0) msg += tt(`收成 ${harvestedCount} 塊地，獲得 ✦${coinTotal}`, `Harvested ${harvestedCount} plot(s) for ✦${coinTotal}`);
-  if(moonTotal>0) msg += tt(` + 🌙 x${moonTotal}`, ` + 🌙 x${moonTotal}`);
   const materialParts = Object.values(materialTotals).map(m=>`${m.icon} ${m.label} x${m.qty}`);
   if(materialParts.length) msg += ` + ${materialParts.join('、')}`;
   if(bonusCards.length) msg += tt(`（額外獲得：${bonusCards.join('、')}）`, ` (bonus: ${bonusCards.join(', ')})`);
@@ -9564,6 +9611,7 @@ async function boot(){
   loadStarChartConfig().catch(()=>{});
   loadBossConfig().catch(()=>{});
   loadBossRoguelikeConfig().catch(()=>{});
+  loadGhostBossConfig().catch(()=>{});
   loadDiceConfig().catch(()=>{});
   loadExpeditionConfig().catch(()=>{});
   loadExpeditionRoguelikeConfig().catch(()=>{});
@@ -13160,7 +13208,6 @@ async function renderGM(body){
     <div class="farm-upgrade-title" style="margin-top:10px;">🏅 ${tt('集滿卡池後，貢獻點兌換比例','Contribution Exchange Rate (after full collection)')}</div>
     <div class="form-row">
       <div><label>${tt('1 貢獻點 = 多少金幣','1 Contribution = Coins')}</label><input type="number" id="gm-season-contrib-coins" value="${SEASON_CONTRIB_EXCHANGE_RATE.coins}" min="0" step="0.01" style="width:90px;" /></div>
-      <div><label>${tt('1 貢獻點 = 多少日月之輝','1 Contribution = Sun-Moon Brilliance')}</label><input type="number" id="gm-season-contrib-moon" value="${SEASON_CONTRIB_EXCHANGE_RATE.moon}" min="0" step="0.01" style="width:90px;" /></div>
     </div>
     <div class="form-row" style="margin-top:10px;">
       <button class="btn small" id="gm-season-save-btn">${tt('儲存賽季設定','Save Season Settings')}</button>
@@ -13170,7 +13217,7 @@ async function renderGM(body){
 
   html += `<div class="panel">
     <h2>🌌 ${tt('星盤解鎖樹設定','Star Chart Settings')}</h2>
-    <div class="farm-upgrade-title">${tt('各元素節點解鎖成本（同元素第1/2/3個節點依序消耗，日月之輝）','Unlock cost per element node (1st/2nd/3rd within the same element, Sun-Moon Brilliance)')}</div>
+    <div class="farm-upgrade-title">${tt('各元素節點解鎖成本（同元素第1/2/3個節點依序消耗，貢獻點）','Unlock cost per element node (1st/2nd/3rd within the same element, Contribution Points)')}</div>
     <div class="form-row">
       <div><label>${tt('第1個','1st')}</label><input type="number" id="gm-sc-cost-0" value="${STAR_CHART_COST_TIERS[0]}" min="0" style="width:80px;" /></div>
       <div><label>${tt('第2個','2nd')}</label><input type="number" id="gm-sc-cost-1" value="${STAR_CHART_COST_TIERS[1]}" min="0" style="width:80px;" /></div>
@@ -13826,12 +13873,11 @@ async function renderGM(body){
     const cardCost = parseFloat(document.getElementById('gm-season-card-cost').value);
     if(isNaN(cardCost) || cardCost < 0){ showToast(tt('請輸入有效的非負數字','Please enter a valid non-negative number')); return; }
     const contribCoinsRate = parseFloat(document.getElementById('gm-season-contrib-coins').value);
-    const contribMoonRate = parseFloat(document.getElementById('gm-season-contrib-moon').value);
-    if(isNaN(contribCoinsRate) || contribCoinsRate < 0 || isNaN(contribMoonRate) || contribMoonRate < 0){
+    if(isNaN(contribCoinsRate) || contribCoinsRate < 0){
       showToast(tt('請輸入有效的非負數字','Please enter a valid non-negative number')); return;
     }
     SEASON_CARD_DRAW_COST = cardCost;
-    SEASON_CONTRIB_EXCHANGE_RATE = {coins: contribCoinsRate, moon: contribMoonRate};
+    SEASON_CONTRIB_EXCHANGE_RATE = {coins: contribCoinsRate};
     await saveSeasonCardDrawCost();
     await saveSeasonContribExchangeRate();
     showToast(tt('賽季抽卡設定已更新，即時對所有玩家生效 ⚡','Season draw settings updated, effective immediately for all players ⚡'));
