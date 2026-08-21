@@ -1344,6 +1344,7 @@ function ensureMaterials(p){
   if(typeof p.materials.moon !== 'number') p.materials.moon = 0;
   if(typeof p.materials.contrib !== 'number') p.materials.contrib = 0;
   if(typeof p.materials.diceEssence !== 'number') p.materials.diceEssence = 0; // 骰子精華：拆解骰子取得，用於強化骰子
+  if(typeof p.materials.ghostDiceTalisman !== 'number') p.materials.ghostDiceTalisman = 0; // 幽冥骰符：幽冥活動Boss破階獎勵，用了保底抽稀有以上骰子
   if(!p.seasonCards) p.seasonCards = {};
   if(!p.starChart) p.starChart = {unlocked:[]};
   if(!Array.isArray(p.unlockedAvatars)) p.unlockedAvatars = [];
@@ -2737,13 +2738,18 @@ const BOSS_STAGE_META = [
   {label:'終焉蛇神', labelEn:'Doomsday Serpent God', img:'assets/boss_stage3.jpg', desc:'完全體形態，操控星辰與毒素，擁有毀滅性的力量。', descEn:'Final form - commands the stars and venom, wields devastating power.'},
 ];
 const DEFAULT_BOSS_STAGE_HP = [8000, 15000, 25000];
-const DEFAULT_BOSS_DIFFICULTY_MULT = 1.25;
+const DEFAULT_BOSS_DIFFICULTY_MULT = 1.20;
 const DEFAULT_BOSS_COIN_COST = 100; // Boss 攻擊消耗的金幣數
 const DEFAULT_BOSS_BURST_DAMAGE = 500;
 const DEFAULT_BOSS_CONTRIB_RATE = 0.1; // 貢獻點 = 實際造成傷害 × 此比例（武器/飾品增加的傷害會同步反映在貢獻點上）
 const DEFAULT_BOSS_BASE_REWARD = {coins: 200};
 const DEFAULT_BOSS_BONUS_POOL = {coins: 5000};
 const DEFAULT_BOSS_REWARD_MULT = 1.15; // 獎勵倍率：每輪(cycle)疊加一次，可與血量難度倍率設不同數值
+// 🌀 2026-08：拿掉「每日只能擊敗一次」，改成「每日最多可擊殺 N 次，打死立刻重生」；
+// 重生時有機率套用詞綴（數字強化／爆擊強化），符合條件的攻擊會額外造成加成傷害。
+const DEFAULT_BOSS_MAX_DAILY_KILLS = 3;   // 每日最多可擊殺次數，用完鎖到隔天 00:00
+const DEFAULT_BOSS_AFFIX_CHANCE = 0.15;   // 重生時套用詞綴的機率（其餘為普通 Boss）
+const DEFAULT_BOSS_AFFIX_BONUS_PCT = 0.50; // 符合詞綴條件時，傷害額外加成的比例（不符合條件傷害維持正常，不會被打折）
 
 let BOSS_STAGE_HP = [...DEFAULT_BOSS_STAGE_HP];
 let BOSS_DIFFICULTY_MULT = DEFAULT_BOSS_DIFFICULTY_MULT;
@@ -2753,6 +2759,9 @@ let BOSS_CONTRIB_RATE = DEFAULT_BOSS_CONTRIB_RATE;
 let BOSS_BASE_REWARD = {...DEFAULT_BOSS_BASE_REWARD};
 let BOSS_BONUS_POOL = {...DEFAULT_BOSS_BONUS_POOL};
 let BOSS_REWARD_MULT = DEFAULT_BOSS_REWARD_MULT;
+let BOSS_MAX_DAILY_KILLS = DEFAULT_BOSS_MAX_DAILY_KILLS;
+let BOSS_AFFIX_CHANCE = DEFAULT_BOSS_AFFIX_CHANCE;
+let BOSS_AFFIX_BONUS_PCT = DEFAULT_BOSS_AFFIX_BONUS_PCT;
 
 async function loadBossConfig(){
   try{
@@ -2772,6 +2781,9 @@ async function loadBossConfig(){
       if(s.baseReward) BOSS_BASE_REWARD = s.baseReward;
       if(s.bonusPool) BOSS_BONUS_POOL = s.bonusPool;
       if(typeof s.rewardMult === 'number' && s.rewardMult > 0) BOSS_REWARD_MULT = s.rewardMult;
+      if(typeof s.maxDailyKills === 'number' && s.maxDailyKills >= 1) BOSS_MAX_DAILY_KILLS = Math.round(s.maxDailyKills);
+      if(typeof s.affixChance === 'number' && s.affixChance >= 0) BOSS_AFFIX_CHANCE = s.affixChance;
+      if(typeof s.affixBonusPct === 'number' && s.affixBonusPct >= 0) BOSS_AFFIX_BONUS_PCT = s.affixBonusPct;
     }
   }catch(e){ /* keep defaults */ }
 }
@@ -2780,7 +2792,26 @@ async function saveBossConfig(){
     stageHp: BOSS_STAGE_HP, difficultyMult: BOSS_DIFFICULTY_MULT, coinCost: BOSS_COIN_COST,
     burstDamage: BOSS_BURST_DAMAGE, contribRate: BOSS_CONTRIB_RATE,
     baseReward: BOSS_BASE_REWARD, bonusPool: BOSS_BONUS_POOL, rewardMult: BOSS_REWARD_MULT,
+    maxDailyKills: BOSS_MAX_DAILY_KILLS, affixChance: BOSS_AFFIX_CHANCE, affixBonusPct: BOSS_AFFIX_BONUS_PCT,
   }));
+}
+// 🎯 Boss 詞綴：重生時機率套用，只在該隻 Boss（同一個 cycle）存活期間生效，打死後
+// 下一隻重新判定。目前兩種，都是「符合條件＝額外加成傷害」，不符合條件傷害維持
+// 正常（不會被打折）：
+//  - weakness_number：這次攻擊「至少 1 顆骰子」擲出指定數字，觸發額外加成傷害
+//  - crit_only：這次攻擊觸發暴擊時，觸發額外加成傷害（暴擊更痛）
+// 判定以「整次攻擊」為單位（3 顆骰子同時擲出算一次攻擊），不拆成每顆骰子各自結算，
+// 這樣才能跟連擊/組合/事件等既有的整體傷害倍率機制相容，不用重寫傷害公式。
+function rollBossAffix(){
+  if(Math.random() >= BOSS_AFFIX_CHANCE) return null;
+  if(Math.random() < 0.5) return {type:'weakness_number', num: 1 + Math.floor(Math.random()*6)};
+  return {type:'crit_only'};
+}
+function bossAffixLabel(affix){
+  if(!affix) return null;
+  if(affix.type === 'weakness_number') return {icon:'🔢', zh:`數字強化：${affix.num}`, en:`Number Boost: ${affix.num}`, descZh:`骰出 ${affix.num} 時，這次攻擊傷害額外 +${Math.round(BOSS_AFFIX_BONUS_PCT*100)}%`, descEn:`Rolling a ${affix.num} gives this attack an extra +${Math.round(BOSS_AFFIX_BONUS_PCT*100)}% damage`};
+  if(affix.type === 'crit_only') return {icon:'💥', zh:'爆擊強化', en:'Crit Boost', descZh:`觸發暴擊時，這次攻擊傷害額外 +${Math.round(BOSS_AFFIX_BONUS_PCT*100)}%`, descEn:`Landing a critical hit gives this attack an extra +${Math.round(BOSS_AFFIX_BONUS_PCT*100)}% damage`};
+  return null;
 }
 // ---------- Boss 戰 Roguelike 玩法擴充 ----------
 // 連擊加成、小怪都已接上實際攻擊流程，見 resolveBossAttack / performBossAttack：
@@ -3014,7 +3045,7 @@ function bossTodayStr(){
 }
 // 方案A：擊敗才升輪，沒擊敗就重打同一輪。cycle 預設 1（第一次挑戰／換季），
 // 呼叫端（ensureBossState）會依「昨天是否擊敗」決定要傳入 cycle+1 還是原本的 cycle。
-function bossFreshState(cycle){
+function bossFreshState(cycle, killCount){
   cycle = cycle || 1;
   return {
     seasonId: CURRENT_SEASON_ID,
@@ -3028,6 +3059,9 @@ function bossFreshState(cycle){
     minion: null,   // 👹 目前存活的小怪：{typeId, hp, maxHp}，已接上 resolveBossAttack 的攻擊流程
     activeEvent: null, // ✨ 目前生效中的隨機事件：{id, hitsLeft, value}，換階/換輪時可能重抽（見 maybeTriggerBossEvent）
     pendingChest: false, // 🎁 是否有待開啟的寶箱（玩家需先 3 選 1 才能繼續攻擊，見 resolveBossChestChoice）
+    killCount: killCount || 0, // 🌀 今日已擊殺次數，達到 BOSS_MAX_DAILY_KILLS 才鎖到隔天（見 clearedToday）
+    clearedToday: false,
+    activeAffix: rollBossAffix(), // 🎯 這隻 Boss（本 cycle）是否帶詞綴，見 rollBossAffix/bossAffixLabel
   };
 }
 // 注意：這裡不再吞掉讀取失敗（網路抖動、API 錯誤等）。storage.get() 本身在
@@ -3109,7 +3143,7 @@ async function ensureBossState(nickname, attempt){
 // 這裡刻意不去讀 professionItems，Boss 戰的傷害完全由骰子決定。
 // 注意：這裡呼叫的骰子相關 function（ensureDiceInventory / DICE_FACE_MULT 等）
 // 在檔案稍後才定義，但因為都是 function 宣告會被提升（hoisted），提前呼叫沒有問題。
-function rollDiceAttack(p, activeEvent, comboStreak){
+function rollDiceAttack(p, activeEvent, comboStreak, activeAffix){
   ensureDiceInventory(p);
   const equippedIds = p.diceSlots.filter(id => id && p.dice[id]);
   const rolls = equippedIds.map(id => {
@@ -3187,6 +3221,17 @@ function rollDiceAttack(p, activeEvent, comboStreak){
       eventApplied = {id:'fog'};
     }
   }
+  // 🎯 Boss 詞綴判定：以「整次攻擊」為單位——數字強化看這次擲出的骰面裡有沒有指定
+  // 數字，爆擊強化看這次攻擊有沒有觸發暴擊；符合條件時，最終傷害額外 +BOSS_AFFIX_BONUS_PCT，
+  // 不符合條件傷害維持正常（不打折），套用在其他加成都算完之後，是最後一道倍率。
+  let affixResult = null;
+  if(activeAffix){
+    let met = false;
+    if(activeAffix.type === 'weakness_number') met = rolls.some(r => r.face.num === activeAffix.num);
+    else if(activeAffix.type === 'crit_only') met = isCrit;
+    if(met) totalDamage *= (1 + BOSS_AFFIX_BONUS_PCT);
+    affixResult = {type: activeAffix.type, met};
+  }
   return {
     damage: Math.max(1, Math.round(totalDamage * starChartSunDamageMultiplier(p))), // ☀️ 星盤太陽節點：對最終傷害套倍率
     rolls, atkBonus, critRateBonus, critDmgBonus, isCrit, allWild,
@@ -3194,7 +3239,7 @@ function rollDiceAttack(p, activeEvent, comboStreak){
     comboTier: combo.tier, sameNumber: combo.tier === 'triple', // sameNumber 保留給舊程式相容，等同「豹子」
     qualityComboTier: qualityCombo.tier, // 🔷 品質對子/豹子（跟 comboTier 各自獨立），供 UI 顯示徽章用
     comboStreakUsed: comboStreak||0, comboStreakBonus,
-    eventApplied,
+    eventApplied, affixResult,
   };
 }
 
@@ -3297,9 +3342,18 @@ async function resolveBossAttack(nickname, damage, comboTier){
         newBoss.hp = newBoss.maxHp;
         eventTriggered = maybeTriggerBossEvent(newBoss); // 詛咒會就地調整剛設好的 maxHp/hp
       } else {
+        // 🌀 全破三階＝擊殺一次。今日擊殺次數 +1；還沒到每日上限就立刻在原地重生下一隻
+        // （新 cycle、階段重置回第1階、機率重抽詞綴），達到上限才鎖到隔天 00:00。
         cycleCompleteFor = newBoss.cycle;
-        newBoss.hp = 0;
-        newBoss.clearedToday = true; // 今日已擊敗 Boss（三階段全破），鎖定攻擊直到隔日重置（見 ensureBossState 的 resetDate 判斷）
+        const killCount = (boss.killCount||0) + 1;
+        if(killCount >= BOSS_MAX_DAILY_KILLS){
+          newBoss.hp = 0;
+          newBoss.killCount = killCount;
+          newBoss.clearedToday = true; // 今日已達擊殺上限，鎖定攻擊直到隔日重置（見 ensureBossState 的 resetDate 判斷）
+        } else {
+          const fresh = bossFreshState(newBoss.cycle + 1, killCount);
+          Object.assign(newBoss, fresh);
+        }
       }
     }
     const applied = await savePlayerBossStateCAS(nickname, updatedAt, newBoss);
@@ -3600,10 +3654,10 @@ async function performBossAttack(){
   // 動畫只負責把它「揭曉」出來。
   const currentBoss = await ensureBossState(p.nickname);
   if(currentBoss.clearedToday){
-    showToast(tt('今日已擊敗 Boss，請明天再來挑戰新一輪！', "You've already defeated today's Boss - come back tomorrow for a new cycle!"));
+    showToast(tt(`今日已達擊殺上限（${BOSS_MAX_DAILY_KILLS} 次），請明天再來挑戰！`, `You've reached today's kill limit (${BOSS_MAX_DAILY_KILLS}) - come back tomorrow!`));
     return;
   }
-  const burst = rollDiceAttack(p, currentBoss.activeEvent, currentBoss.comboStreak||0);
+  const burst = rollDiceAttack(p, currentBoss.activeEvent, currentBoss.comboStreak||0, currentBoss.activeAffix);
   await playDiceRollAnimation(equippedIds.map(id => p.dice[id]), burst);
 
   if(!burst.coinRefunded){
@@ -3659,7 +3713,11 @@ async function performBossAttack(){
   let defeatMsg = '';
   if(cycleCompleteFor){
     const reward = await settleBossReward(p.nickname, cycleCompleteFor);
-    defeatMsg = tt(`🎉 你擊敗了「終焉蛇神」！獲得 ✦${reward?reward.coins:0} 金幣、💠${reward?reward.essence:0} 骰子精華，Boss 已被擊退，明天再來挑戰新一輪（更難）！`, `🎉 You defeated the Doomsday Serpent God! Gained ✦${reward?reward.coins:0} coins and 💠${reward?reward.essence:0} Dice Essence - come back tomorrow for a new (harder) cycle!`);
+    if(newBoss.clearedToday){
+      defeatMsg = tt(`🎉 你擊敗了「終焉蛇神」！獲得 ✦${reward?reward.coins:0} 金幣、💠${reward?reward.essence:0} 骰子精華，今日已達擊殺上限（${newBoss.killCount}/${BOSS_MAX_DAILY_KILLS}），明天再來挑戰新一輪（更難）！`, `🎉 You defeated the Doomsday Serpent God! Gained ✦${reward?reward.coins:0} coins and 💠${reward?reward.essence:0} Dice Essence. You've reached today's kill limit (${newBoss.killCount}/${BOSS_MAX_DAILY_KILLS}) - come back tomorrow for a new (harder) cycle!`);
+    } else {
+      defeatMsg = tt(`🎉 你擊敗了「終焉蛇神」！獲得 ✦${reward?reward.coins:0} 金幣、💠${reward?reward.essence:0} 骰子精華，今日已擊殺 ${newBoss.killCount}/${BOSS_MAX_DAILY_KILLS} 次，Boss 立刻重生了，繼續挑戰更難的一輪！`, `🎉 You defeated the Doomsday Serpent God! Gained ✦${reward?reward.coins:0} coins and 💠${reward?reward.essence:0} Dice Essence. Kills today: ${newBoss.killCount}/${BOSS_MAX_DAILY_KILLS} - the Boss respawned immediately, tougher than before!`);
+    }
     if(reward && reward.player) state.player = reward.player;
   } else if(newBoss.stage > prevBoss.stage){
     // 💠 每破一階（非全破）額外發放骰子精華，跟金幣/事件獎勵各自獨立走 CAS
@@ -3719,6 +3777,7 @@ async function performBossAttack(){
     else if(burst.qualityComboTier === 'pair') bonusTags.push(tt(`🔷品質對子×${DICE_QUALITY_COMBO_MULT.pair}`, `🔷Quality Pair×${DICE_QUALITY_COMBO_MULT.pair}`));
     if(burst.comboStreakBonus > 0) bonusTags.push(tt(`🔥連擊+${Math.round(burst.comboStreakBonus*100)}%`, `🔥Streak+${Math.round(burst.comboStreakBonus*100)}%`));
     if(burst.isCrit) bonusTags.push(tt('💥暴擊','💥Crit'));
+    if(burst.affixResult) bonusTags.push(burst.affixResult.met ? tt(`🎯詞綴強化+${Math.round(BOSS_AFFIX_BONUS_PCT*100)}%`, `🎯Affix Boost+${Math.round(BOSS_AFFIX_BONUS_PCT*100)}%`) : tt('⚪未觸發強化','⚪Boost not triggered'));
     if(burst.coinRefunded) bonusTags.push(tt('♻️金幣未消耗','♻️Coin refunded'));
     const bonusStr = bonusTags.length ? `（${bonusTags.join('、')}）` : '';
     showToast(tt(`🎲 擲出 ${diceTag}，造成 ${burst.damage.toLocaleString()} 傷害！${bonusStr}　貢獻點 +${contribGain}`, `🎲 Rolled ${diceTag}, dealt ${burst.damage.toLocaleString()} damage!${bonusStr}  Contribution +${contribGain}`) + minionMsgPart + eventMsgPart);
@@ -3727,6 +3786,368 @@ async function performBossAttack(){
 
 async function doBossBurst(){
   await performBossAttack();
+}
+
+// ---------- 幽冥活動 Boss（階段1：資料層 + 戰鬥邏輯，尚未接 UI/獎勵道具）----------
+// 設計依據跟玩家的討論定案：
+//   入場：每天用 4 張死神卡（major_13）解鎖當日挑戰資格，解鎖後當天可一直打，
+//        不像主線Boss有「每日最多擊殺N次」，這隻打完4階當天就結束、不重生。
+//   攻擊：沿用主線Boss的骰子攻擊機制（rollDiceAttack 完全共用），每次消耗 100 金幣。
+//   進度：每人自己一份（比照主線Boss，不是全服共用血量），CAS讀寫同一套模式。
+//   難度：全破4階＝1輪(cycle)，隔天沒破持續同一輪重打，破了cycle+1、隔天更難。
+//        血量/獎勵倍率跟主線Boss數值完全分開（獨立一組 config，GM可分開調），
+//        不會互相影響。
+//   範圍：這階段先不做小怪/隨機事件/詞綴（比照跟玩家講好的「先做乾淨版本」），
+//        獎勵道具「幽冥骰符」的發放與使用邏輯留給階段2。
+
+const GHOST_BOSS_STAGE_META = [
+  {label:'紫焰戰魂', labelEn:'Violet Flame Warsoul',   img:'assets/ghost_boss_stage1.png', desc:'紫色鬼火纏身、持劍的亡靈武將。', descEn:'A undead warrior wreathed in violet ghostfire, wielding a blade.'},
+  {label:'幽弦怨姬', labelEn:'Spectral Strings Wraith', img:'assets/ghost_boss_stage2.png', desc:'彈奏古琴、操縱亡魂的女鬼。', descEn:'A female ghost who plays a haunted zither and commands wandering spirits.'},
+  {label:'鎮魂巨煞', labelEn:'Soul-Binding Colossus',   img:'assets/ghost_boss_stage3.png', desc:'背負巨鐘、由怨靈組成的巨獸。', descEn:'A colossus of bound grudge-spirits, carrying a great temple bell.'},
+  {label:'幽冥鬼王', labelEn:'Netherworld Ghost King',  img:'assets/ghost_boss_stage4.png', desc:'綠焰鎧甲、鎖鏈法器的鬼王，全破後才算通關。', descEn:'The Ghost King in green-flame armor wielding chained relics - defeating him clears the run.'},
+];
+const GHOST_BOSS_ENTRY_CARD_ID = 'major_13';   // 死神卡（Death），入場券素材
+const DEFAULT_GHOST_BOSS_ENTRY_CARD_COST = 4;  // 入場需要消耗的張數
+const DEFAULT_GHOST_BOSS_STAGE_HP = [6000, 12000, 20000, 30000]; // 4階基礎血量（cycle=1），GM可調
+const DEFAULT_GHOST_BOSS_DIFFICULTY_MULT = 1.20; // 每輪(cycle)血量複利成長倍率，跟主線Boss數值分開設定
+const DEFAULT_GHOST_BOSS_COIN_COST = 100; // 每次攻擊消耗金幣（GM可調）
+
+let GHOST_BOSS_ENTRY_CARD_COST = DEFAULT_GHOST_BOSS_ENTRY_CARD_COST;
+let GHOST_BOSS_STAGE_HP = [...DEFAULT_GHOST_BOSS_STAGE_HP];
+let GHOST_BOSS_DIFFICULTY_MULT = DEFAULT_GHOST_BOSS_DIFFICULTY_MULT;
+let GHOST_BOSS_COIN_COST = DEFAULT_GHOST_BOSS_COIN_COST;
+
+// GM 後台設定讀寫，跟主線Boss的 loadBossConfig/saveBossConfig 同一套寫法，
+// 但存在自己獨立的 seasonKey，不會互相覆蓋。
+async function loadGhostBossConfig(){
+  try{
+    const r = await storage.get(seasonKey('ghost_boss_settings'));
+    if(r){
+      const s = JSON.parse(r.value);
+      if(Array.isArray(s.stageHp) && s.stageHp.length===4) GHOST_BOSS_STAGE_HP = s.stageHp;
+      if(typeof s.difficultyMult === 'number') GHOST_BOSS_DIFFICULTY_MULT = s.difficultyMult;
+      if(typeof s.coinCost === 'number') GHOST_BOSS_COIN_COST = s.coinCost;
+      if(typeof s.entryCardCost === 'number') GHOST_BOSS_ENTRY_CARD_COST = s.entryCardCost;
+      if(s.talismanRates && typeof s.talismanRates.rare === 'number') GHOST_DICE_TALISMAN_RATES = s.talismanRates;
+    }
+  }catch(e){ console.warn('loadGhostBossConfig failed', e); }
+}
+async function saveGhostBossConfig(){
+  await storage.set(seasonKey('ghost_boss_settings'), JSON.stringify({
+    stageHp: GHOST_BOSS_STAGE_HP,
+    difficultyMult: GHOST_BOSS_DIFFICULTY_MULT,
+    coinCost: GHOST_BOSS_COIN_COST,
+    entryCardCost: GHOST_BOSS_ENTRY_CARD_COST,
+    talismanRates: GHOST_DICE_TALISMAN_RATES,
+  }));
+}
+
+function ghostBossStageMaxHp(stage, cycle){
+  const base = GHOST_BOSS_STAGE_HP[stage-1] ?? GHOST_BOSS_STAGE_HP[GHOST_BOSS_STAGE_HP.length-1];
+  return Math.round(base * Math.pow(GHOST_BOSS_DIFFICULTY_MULT, (cycle||1) - 1));
+}
+
+// ---------- 單人進度：每位玩家一份獨立存檔，跟主線Boss完全分開的 key namespace ----------
+function ghostBossSoloKey(nickname){
+  return `ghostboss:solo:${CURRENT_SEASON_ID}:${nickname}`;
+}
+// 沿用 bossTodayStr（同一天的定義完全一樣，不需要另開一份）。
+
+function ghostBossFreshState(cycle){
+  cycle = cycle || 1;
+  return {
+    seasonId: CURRENT_SEASON_ID,
+    resetDate: bossTodayStr(),
+    cycle,
+    stage: 1,
+    hp: ghostBossStageMaxHp(1, cycle),
+    maxHp: ghostBossStageMaxHp(1, cycle),
+    unlockedToday: false, // 今天是否已花4張死神卡解鎖挑戰資格
+    clearedToday: false,  // 今天是否已全破4階（全破後鎖到隔天，不會重生重打）
+    comboStreak: 0, // 🔥 連續組合命中次數（對子/豹子），沒接住就歸零；跟主線Boss共用同一套連擊公式（BOSS_COMBO_STREAK_BONUS_PER_HIT/CAP）
+    stagesClearedToday: [], // 今天已經發過階段獎勵的階數（防止CAS重試/重複結算重複發獎，階段2會用到）
+  };
+}
+
+async function loadPlayerGhostBossStateRaw(nickname){
+  const res = await fetch(
+    `${SUPABASE_URL}/rest/v1/kv_store?key=eq.${encodeURIComponent(ghostBossSoloKey(nickname))}&select=value,updated_at`,
+    {headers: SB_HEADERS}
+  );
+  if(!res.ok) throw new Error('load ghost boss state failed: ' + res.status);
+  const rows = await res.json();
+  if(!rows || rows.length === 0) return {state: null, raw: null, updatedAt: null};
+  const row = rows[0];
+  return {state: JSON.parse(row.value), raw: row.value, updatedAt: row.updated_at};
+}
+async function savePlayerGhostBossState(nickname, s){
+  await storage.set(ghostBossSoloKey(nickname), JSON.stringify(s));
+}
+async function savePlayerGhostBossStateCAS(nickname, prevUpdatedAt, newState){
+  const filter = prevUpdatedAt
+    ? `updated_at=eq.${encodeURIComponent(prevUpdatedAt)}`
+    : `updated_at=is.null`;
+  const res = await fetch(
+    `${SUPABASE_URL}/rest/v1/kv_store?key=eq.${encodeURIComponent(ghostBossSoloKey(nickname))}&${filter}`,
+    {
+      method: 'PATCH',
+      headers: {...SB_HEADERS, 'Content-Type': 'application/json', Prefer: 'return=representation'},
+      body: JSON.stringify({value: JSON.stringify(newState), updated_at: new Date().toISOString()}),
+    }
+  );
+  if(!res.ok) throw new Error('ghost boss state CAS update failed: ' + res.status);
+  const rows = await res.json();
+  return Array.isArray(rows) && rows.length > 0;
+}
+
+// 確保這位玩家的幽冥Boss進度存在且是「今天」的。跨天：擊敗了(clearedToday)就
+// cycle+1(更難)，沒擊敗就維持原cycle重打；換季或第一次挑戰則從 cycle 1 開始。
+// 注意：這裡只重置「今天的進度」，不會自動解鎖（unlockedToday 永遠從 false 開始），
+// 玩家仍要每天花4張死神卡才能解鎖攻擊，跟主線Boss最大的不同就在這裡。
+async function ensureGhostBossState(nickname, attempt){
+  attempt = attempt || 0;
+  if(attempt >= 8) throw new Error('ensureGhostBossState contention exceeded retries');
+  const {state: s, raw, updatedAt} = await loadPlayerGhostBossStateRaw(nickname);
+  const needsReset = !s || s.seasonId !== CURRENT_SEASON_ID || s.resetDate !== bossTodayStr();
+  if(needsReset){
+    const sameSeasonRollover = s && s.seasonId === CURRENT_SEASON_ID;
+    const nextCycle = sameSeasonRollover ? (s.clearedToday ? (s.cycle||1) + 1 : (s.cycle||1)) : 1;
+    const fresh = ghostBossFreshState(nextCycle);
+    if(raw){
+      const applied = await savePlayerGhostBossStateCAS(nickname, updatedAt, fresh);
+      if(applied) return fresh;
+      return ensureGhostBossState(nickname, attempt + 1);
+    }
+    await savePlayerGhostBossState(nickname, fresh);
+    return fresh;
+  }
+  return s;
+}
+
+// 入場：消耗玩家庫存的 4 張死神卡，解鎖今天的挑戰資格。分兩步、各自 CAS：
+//   1. 先確保今天的Boss狀態存在（ensureGhostBossState，可能剛好跨天重置）
+//   2. 扣卡（玩家資料 CAS）成功後，才把 unlockedToday 標記寫回Boss狀態（Boss狀態 CAS）
+// 兩步分開走各自的 CAS，理由跟其他發獎函式一致：玩家資料和Boss狀態是兩張不同的
+// kv_store row，沒辦法用同一次 CAS 一起原子寫入，只能先扣資源成功後再標記解鎖。
+// 如果卡片不夠，直接回傳 {ok:false, reason:'not_enough_cards'}，不觸碰任何存檔。
+async function unlockGhostBossToday(nickname){
+  const boss = await ensureGhostBossState(nickname);
+  if(boss.unlockedToday) return {ok:true, alreadyUnlocked:true, boss};
+  const player = await updatePlayerCAS(nickname, (p)=>{
+    const have = p.cards[GHOST_BOSS_ENTRY_CARD_ID] || 0;
+    if(have < GHOST_BOSS_ENTRY_CARD_COST){
+      throw new Error('NOT_ENOUGH_ENTRY_CARDS');
+    }
+    p.cards[GHOST_BOSS_ENTRY_CARD_ID] = have - GHOST_BOSS_ENTRY_CARD_COST;
+  }).catch(e=>{
+    if(e && e.message === 'NOT_ENOUGH_ENTRY_CARDS') return null;
+    throw e;
+  });
+  if(!player) return {ok:false, reason:'not_enough_cards'};
+  for(let attempt = 0; attempt < 8; attempt++){
+    const {state: current, raw, updatedAt} = await loadPlayerGhostBossStateRaw(nickname);
+    if(!current || !raw){ await ensureGhostBossState(nickname); continue; }
+    if(current.unlockedToday) return {ok:true, alreadyUnlocked:true, boss:current, player};
+    const newBoss = {...current, unlockedToday: true};
+    const applied = await savePlayerGhostBossStateCAS(nickname, updatedAt, newBoss);
+    if(applied) return {ok:true, alreadyUnlocked:false, boss:newBoss, player};
+  }
+  throw new Error('unlockGhostBossToday contention exceeded retries');
+}
+
+// 攻擊結算：CAS讀-改-寫迴圈，跟主線Boss的 resolveBossAttack 結構一樣，但沒有
+// 小怪/事件/詞綴這些roguelike機制（先做乾淨版本），但連擊streak有做，跟主線Boss
+// 共用同一套公式（BOSS_COMBO_STREAK_BONUS_PER_HIT/CAP）。4階打完（stage
+// 從4破到0血）就整個鎖到隔天，不像主線Boss會原地重生下一隻。
+// 回傳 stageCompletedAt：這次攻擊若剛好破了某一階，記下「破的是第幾階」，
+// 給呼叫端（階段2）拿去發「幽冥骰符」獎勵用（每破1階發1個）。
+async function resolveGhostBossAttack(nickname, damage, comboTier){
+  for(let attempt = 0; attempt < 8; attempt++){
+    const {state: boss, raw, updatedAt} = await loadPlayerGhostBossStateRaw(nickname);
+    if(!boss || !raw){ await ensureGhostBossState(nickname); continue; }
+    if(boss.hp <= 0 || boss.clearedToday) continue; // 保底重試，理論上呼叫端會先擋掉這個狀態
+    const newBoss = {...boss};
+    // 🔥 連擊：這次攻擊若開出對子/豹子（comboTier非null）就累加連擊數，沒開出則歸零重來。
+    // 跟主線Boss共用同一套封頂公式（BOSS_COMBO_STREAK_BONUS_PER_HIT/CAP），傷害本身已經
+    // 在呼叫端 rollDiceAttack 用「攻擊前」的 streak 值算好套用了，這裡只更新給下一次用的值。
+    const comboStreakCapCount = BOSS_COMBO_STREAK_BONUS_PER_HIT > 0
+      ? Math.ceil(BOSS_COMBO_STREAK_CAP / BOSS_COMBO_STREAK_BONUS_PER_HIT)
+      : Infinity;
+    newBoss.comboStreak = (comboTier === 'pair' || comboTier === 'triple')
+      ? Math.min((boss.comboStreak||0) + 1, comboStreakCapCount)
+      : 0;
+    newBoss.hp = Math.max(0, boss.hp - damage);
+    let stageCompletedAt = null;
+    let fullyCleared = false;
+    if(newBoss.hp <= 0){
+      stageCompletedAt = newBoss.stage;
+      if(newBoss.stage < GHOST_BOSS_STAGE_META.length){
+        newBoss.stage += 1;
+        newBoss.maxHp = ghostBossStageMaxHp(newBoss.stage, newBoss.cycle);
+        newBoss.hp = newBoss.maxHp;
+      } else {
+        // 第4階（幽冥鬼王）被打死＝全破，今天結束，鎖到隔天重置（cycle+1）
+        fullyCleared = true;
+        newBoss.clearedToday = true;
+      }
+    }
+    const applied = await savePlayerGhostBossStateCAS(nickname, updatedAt, newBoss);
+    if(applied) return {prevBoss: boss, newBoss, stageCompletedAt, fullyCleared};
+  }
+  throw new Error('ghost boss state contention exceeded retries');
+}
+
+// 攻擊入口：先檢查裝備骰子/金幣/是否已解鎖今天資格，通過才真正結算。骰子攻擊
+// 傷害計算完全共用 rollDiceAttack（不重寫），只是不傳入主線Boss的事件/連擊
+// streak/詞綴（傳 null/0/null），這隻Boss這階段先不做那些機制。
+// 這階段先不接獎勵發放（幽冥骰符）和 UI 渲染，回傳完整結果方便先用 console 驗證
+// 規則對不對，階段2/3會接上去。
+async function performGhostBossAttack(){
+  const p = state.player;
+  ensureMaterials(p);
+  ensureDiceInventory(p);
+  const equippedIds = p.diceSlots.filter(id => id && p.dice[id]);
+  if(equippedIds.length === 0){
+    showToast(tt('請先到「骰子」分頁裝備至少 1 顆骰子', 'Equip at least 1 die in the Dice tab first'));
+    return null;
+  }
+  const boss = await ensureGhostBossState(p.nickname);
+  if(!boss.unlockedToday){
+    showToast(tt(`尚未解鎖今日挑戰，需要 ${GHOST_BOSS_ENTRY_CARD_COST} 張死神卡`, `Not unlocked today - need ${GHOST_BOSS_ENTRY_CARD_COST} Death cards`));
+    return null;
+  }
+  if(boss.clearedToday){
+    showToast(tt('今日已全破，明天再來挑戰更難的一輪！', 'Already cleared today - come back tomorrow for a tougher round!'));
+    return null;
+  }
+  const cost = GHOST_BOSS_COIN_COST;
+  if(p.coins < cost){
+    showToast(tt(`金幣不足，需要 ${cost}`, `Not enough coins, need ${cost}`));
+    return null;
+  }
+  const burst = rollDiceAttack(p, null, boss.comboStreak||0, null);
+  await playDiceRollAnimation(equippedIds.map(id => p.dice[id]), burst, 'ghost-dice-roll-anim', 'ghost-boss-burst-btn');
+  if(!burst.coinRefunded){
+    p.coins -= cost;
+  }
+  const contribGain = Math.round(burst.damage * BOSS_CONTRIB_RATE * (1 + (burst.contribBonusPct||0)) * starChartContribMultiplier(p));
+  p.materials.contrib += contribGain;
+  bumpQuest(p, 'boss_attack', 1);
+  await savePlayer(p);
+
+  let result;
+  try{
+    result = await resolveGhostBossAttack(p.nickname, burst.damage, burst.comboTier);
+  }catch(e){
+    showToast(tt('幽冥Boss狀態忙碌中，請稍後再試', 'Ghost boss state is busy, try again shortly'));
+    return null;
+  }
+  const { prevBoss, newBoss } = result;
+  // 🔊 打擊感：跟主線Boss同一套「殘影追趕」動畫，只在同一階段/同一輪內才播，
+  // 破階/全破/隔天重置時血量池整個換掉了，套動畫在上面只會很奇怪，直接跳過。
+  state.ghostBossHpAnim = (newBoss.stage === prevBoss.stage && newBoss.cycle === prevBoss.cycle) ? {
+    fromPct: Math.max(0, Math.min(100, (prevBoss.hp/prevBoss.maxHp)*100)),
+    stage: newBoss.stage,
+    cycle: newBoss.cycle,
+    crit: burst.isCrit,
+  } : null;
+
+  // 每破1階（不管是不是全破的那一階）都發1個「幽冥骰符」——resolveGhostBossAttack
+  // 的 CAS 迴圈保證了同一次階段轉換只有一次成功寫入，所以這裡收到 stageCompletedAt
+  // 非null時發獎，不會因為CAS重試而重複發放。
+  let stageReward = null;
+  if(result.stageCompletedAt !== null){
+    stageReward = await grantGhostBossStageReward(p.nickname);
+    if(stageReward && stageReward.player) state.player = stageReward.player;
+  }
+
+  let msg;
+  if(result.fullyCleared){
+    msg = tt(
+      `🎉 你擊敗了「幽冥鬼王」，全破本輪！獲得 幽冥骰符 +1（今日共集滿4個），明天再來挑戰更難的一輪！`,
+      `🎉 You defeated the Netherworld Ghost King and cleared the run! Gained Ghost Dice Talisman +1 (4 collected today). Come back tomorrow for a tougher round!`
+    );
+  } else if(result.stageCompletedAt !== null){
+    const clearedMeta = GHOST_BOSS_STAGE_META[result.stageCompletedAt-1];
+    const nextMeta = GHOST_BOSS_STAGE_META[result.newBoss.stage-1];
+    msg = tt(
+      `⚔️「${clearedMeta.label}」被擊破！獲得 幽冥骰符 +1，Boss 進入「${nextMeta.label}」！`,
+      `⚔️ "${clearedMeta.labelEn}" defeated! Gained Ghost Dice Talisman +1. The Boss enters "${nextMeta.labelEn}"!`
+    );
+  } else {
+    const diceTag = burst.rolls.map(r => r.face.num).join('·');
+    const bonusTags = [];
+    if(burst.comboTier === 'triple') bonusTags.push(tt('🎯豹子×2','🎯Triple×2'));
+    else if(burst.comboTier === 'pair') bonusTags.push(tt(`✌️對子×${DICE_COMBO_MULT.pair}`, `✌️Pair×${DICE_COMBO_MULT.pair}`));
+    if(burst.comboStreakBonus > 0) bonusTags.push(tt(`🔥連擊+${Math.round(burst.comboStreakBonus*100)}%`, `🔥Streak+${Math.round(burst.comboStreakBonus*100)}%`));
+    if(burst.isCrit) bonusTags.push(tt('💥暴擊','💥Crit'));
+    const bonusStr = bonusTags.length ? `（${bonusTags.join('、')}）` : '';
+    msg = tt(`🎲 擲出 ${diceTag}，造成 ${burst.damage.toLocaleString()} 傷害！${bonusStr}`, `🎲 Rolled ${diceTag}, dealt ${burst.damage.toLocaleString()} damage!${bonusStr}`);
+  }
+  showToast(msg);
+  state.ghostBossLastAttack = {damage: burst.damage, contrib: contribGain, rolls: burst.rolls, comboTier: burst.comboTier, qualityComboTier: burst.qualityComboTier, allWild: burst.allWild, isCrit: burst.isCrit, comboStreakBonus: burst.comboStreakBonus, comboStreakAfter: newBoss.comboStreak};
+  renderTab();
+  updateHeaderCoins();
+  return {burst, contribGain, stageReward, ...result};
+}
+
+// 破階獎勵：每破1階發1個「幽冥骰符」，跟主線Boss的 grantBossStageEssence 同一套
+// CAS 寫法，各自獨立不影響上面已經寫入的骰子攻擊結果（p.coins/materials.contrib）。
+async function grantGhostBossStageReward(nickname){
+  const applied = await updatePlayerCAS(nickname, (player)=>{
+    ensureMaterials(player);
+    player.materials.ghostDiceTalisman = (player.materials.ghostDiceTalisman||0) + 1;
+  });
+  if(!applied) return null;
+  return {count: 1, player: applied};
+}
+
+// ---------- 幽冥骰符：消耗品，用了直接抽1顆骰子，保底稀有以上 ----------
+// 品質只在「稀有／史詩」之間抽（不會抽到普通），機率GM可調，預設稀有70%／史詩30%。
+// 骰子本身的生成（面數字/效果面數量/基礎攻擊力）完全共用 rollNewDice，跟一般抽骰
+// 拿到的骰子在資料結構上沒有任何差異，只是品質保底比較高。
+const DEFAULT_GHOST_DICE_TALISMAN_RATES = {rare:0.70, epic:0.30};
+let GHOST_DICE_TALISMAN_RATES = {...DEFAULT_GHOST_DICE_TALISMAN_RATES};
+
+function rollGhostDiceTalismanQuality(){
+  const r = Math.random();
+  return r < GHOST_DICE_TALISMAN_RATES.rare ? 'rare' : 'epic';
+}
+
+// 使用幽冥骰符：CAS 保護「扣道具 + 產生骰子」這整個讀-改-寫，跟 doDiceGacha 同一套
+// 防手滑寫法，避免連點兩次時道具被扣兩次卻只拿到一顆骰子。
+async function useGhostDiceTalisman(){
+  const p = state.player;
+  ensureMaterials(p);
+  ensureDiceInventory(p);
+  if((p.materials.ghostDiceTalisman||0) < 1){
+    showToast(tt('沒有幽冥骰符可以使用', 'No Ghost Dice Talisman to use'));
+    return null;
+  }
+  let resultDice = null;
+  let applied;
+  try{
+    applied = await updatePlayerCAS(p.nickname, (player)=>{
+      ensureMaterials(player);
+      ensureDiceInventory(player);
+      const have = player.materials.ghostDiceTalisman||0;
+      if(have < 1) throw new Error('NO_GHOST_DICE_TALISMAN');
+      player.materials.ghostDiceTalisman = have - 1;
+      const dice = rollNewDice(rollGhostDiceTalismanQuality());
+      player.dice[dice.id] = dice;
+      resultDice = dice;
+    });
+  }catch(e){
+    showToast(tt('道具不足或資料忙碌中，請重新整理後再試', 'Not enough talismans, or data is busy — refresh and try again'));
+    return null;
+  }
+  if(!applied || !resultDice) return null;
+  state.player = applied;
+  const meta = DICE_QUALITY_META[resultDice.quality];
+  showToast(tt(`🔮 幽冥骰符化為一顆「${meta.label}」骰子！`, `🔮 The Ghost Dice Talisman became a ${meta.labelEn} die!`));
+  renderTab();
+  updateHeaderCoins();
+  return resultDice;
 }
 
 // ---------- 骰子系統（階段三：資料結構 + 商店抽卡）----------
@@ -4655,6 +5076,7 @@ function renderBoss(body){
   if(!state.bossView) state.bossView = 'battle';
   const bossNavHtml = `<div class="tabs" style="margin:0 0 14px;">
     <div class="tab ${state.bossView==='battle'?'active':''}" data-boss-view="battle">⚔️ ${tt('Boss 戰','Battle')}</div>
+    <div class="tab ${state.bossView==='ghost'?'active':''}" data-boss-view="ghost">👻 ${tt('幽冥Boss','Ghost Boss')}</div>
     <div class="tab ${state.bossView==='dice'?'active':''}" data-boss-view="dice">🎲 ${tt('骰子','Dice')}</div>
   </div>`;
   const bindBossNav = ()=>{
@@ -4662,6 +5084,12 @@ function renderBoss(body){
       el.onclick = ()=>{ state.bossView = el.dataset.bossView; renderTab(); };
     });
   };
+  if(state.bossView === 'ghost'){
+    body.innerHTML = `${bossNavHtml}<div id="boss-subview"></div>`;
+    bindBossNav();
+    renderGhostBoss(document.getElementById('boss-subview'));
+    return;
+  }
   if(state.bossView === 'dice'){
     body.innerHTML = `${bossNavHtml}<div id="boss-subview"></div>`;
     bindBossNav();
@@ -4680,11 +5108,11 @@ function renderBoss(body){
       const clearedMeta = BOSS_STAGE_META[2];
       const html = `<div class="panel">
         <h2>⚔️ ${tt(SEASON_LABEL_ZH, SEASON_LABEL_EN)} · ${tt('Boss 戰','Boss Battle')}</h2>
-        <p class="sub">${tt(`第 ${boss.cycle} 輪　·　今日已擊敗`, `Cycle ${boss.cycle} · Defeated for today`)}</p>
+        <p class="sub">${tt(`第 ${boss.cycle} 輪　·　今日已擊殺 ${boss.killCount||0}/${BOSS_MAX_DAILY_KILLS} 次`, `Cycle ${boss.cycle} · Kills today ${boss.killCount||0}/${BOSS_MAX_DAILY_KILLS}`)}</p>
         <div style="text-align:center;">
           <img src="${clearedMeta.img}" style="width:100%;max-width:340px;border-radius:14px;border:1px solid var(--gold);box-shadow:0 0 22px rgba(139,107,209,0.4);margin-bottom:10px;filter:grayscale(0.6) brightness(0.7);" alt="${clearedMeta.label}" />
-          <div style="font-family:'Cinzel Decorative',serif;color:var(--gold-bright);font-size:16px;">🎉 ${tt('已擊敗！','Defeated!')}</div>
-          <p class="sub" style="margin-top:8px;">${tt('你今天已經擊敗了 Boss，明天再來挑戰新一輪（更難）吧！','You have already defeated the Boss today - come back tomorrow for a new, harder cycle!')}</p>
+          <div style="font-family:'Cinzel Decorative',serif;color:var(--gold-bright);font-size:16px;">🎉 ${tt('今日擊殺上限已達成！','Daily kill limit reached!')}</div>
+          <p class="sub" style="margin-top:8px;">${tt(`你今天已經擊殺了 ${boss.killCount||0} 隻 Boss，明天再來挑戰新一輪（更難）吧！`, `You've slain ${boss.killCount||0} Bosses today - come back tomorrow for a new, harder cycle!`)}</p>
         </div>
       </div>`;
       if(myGen !== bossRenderGen) return;
@@ -4751,7 +5179,15 @@ function renderBoss(body){
     const pct = Math.max(0, Math.min(100, (boss.hp/boss.maxHp)*100));
     let html = `<div class="panel">
       <h2>⚔️ ${tt(SEASON_LABEL_ZH, SEASON_LABEL_EN)} · ${tt('Boss 戰','Boss Battle')}</h2>
-      <p class="sub">${tt(`第 ${boss.cycle} 輪　第 ${boss.stage}/3 階段　·　每日 00:00 重置`, `Cycle ${boss.cycle} · Stage ${boss.stage}/3 · Resets daily at 00:00`)}</p>
+      <p class="sub">${tt(`第 ${boss.cycle} 輪　第 ${boss.stage}/3 階段　·　今日已擊殺 ${boss.killCount||0}/${BOSS_MAX_DAILY_KILLS} 次　·　每日 00:00 重置`, `Cycle ${boss.cycle} · Stage ${boss.stage}/3 · Kills today ${boss.killCount||0}/${BOSS_MAX_DAILY_KILLS} · Resets daily at 00:00`)}</p>
+      ${(()=>{
+        const affixMeta = bossAffixLabel(boss.activeAffix);
+        if(!affixMeta) return '';
+        return `<div style="border:1px solid var(--danger);border-radius:10px;padding:10px 12px;margin-bottom:10px;background:rgba(193,91,91,0.10);text-align:center;">
+          <div class="countdown">${affixMeta.icon} ${tt('特殊詞綴','Boss Affix')}：<b style="color:#ff8080;">${tt(affixMeta.zh, affixMeta.en)}</b></div>
+          <div class="countdown" style="margin-top:2px;color:var(--muted);">${tt(affixMeta.descZh, affixMeta.descEn)}</div>
+        </div>`;
+      })()}
       <div style="text-align:center;">
         <img id="boss-portrait-img" src="${meta.img}" style="width:100%;max-width:340px;border-radius:14px;border:1px solid var(--gold);box-shadow:0 0 22px rgba(139,107,209,0.4);margin-bottom:10px;" alt="${meta.label}" />
         <div style="font-family:'Cinzel Decorative',serif;color:var(--gold-bright);font-size:16px;">${tt(meta.label, meta.labelEn)}</div>
@@ -4860,6 +5296,178 @@ function renderBoss(body){
       };
     }
   })();
+}
+
+// ---------- 幽冥活動 Boss（階段3：UI）----------
+// 面板結構、CAS重試防閃爍（ghostBossRenderGen）、擲骰動畫、殘影血條，全部比照
+// renderBoss，只是換上獨立的資料源（ensureGhostBossState / GHOST_BOSS_* 常數）
+// 和獨立的 DOM id（避免跟主線Boss面板的 id 衝突，兩個面板可能在切分頁時短暫並存
+// 於記憶體中的 state，但不會同時出現在畫面上）。
+let ghostBossRenderGen = 0;
+function renderGhostBoss(body){
+  const p = state.player;
+  ensureMaterials(p);
+  ensureDiceInventory(p);
+  if(!SEASON_ACTIVE){
+    body.innerHTML = `<div class="panel"><h2>${tt('幽冥活動 Boss','Ghost Event Boss')}</h2><p class="sub">${tt('目前沒有進行中的賽季。','No season is currently active.')}</p></div>`;
+    return;
+  }
+  const myGen = ++ghostBossRenderGen;
+  const alreadyRendered = !!document.getElementById('ghost-boss-burst-btn') || !!document.getElementById('ghost-boss-unlock-btn');
+  if(!alreadyRendered){
+    body.innerHTML = `<div class="panel"><p class="sub">${tt('讀取戰況中…','Loading battle status…')}</p></div>`;
+  }
+  (async ()=>{
+    const boss = await ensureGhostBossState(p.nickname);
+    const talismanCount = p.materials.ghostDiceTalisman||0;
+    const talismanHtml = `<div style="border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:10px;background:rgba(139,107,209,0.06);">
+      <div class="countdown">🔮 ${tt('幽冥骰符','Ghost Dice Talisman')}：<b style="color:var(--gold-bright);">×${talismanCount}</b>　<span style="color:var(--muted);">${tt('用了保底抽稀有以上骰子','Uses guarantee Rare+ quality')}</span></div>
+      <button class="btn" id="ghost-talisman-use-btn" ${talismanCount < 1 ? 'disabled' : ''} style="flex-shrink:0;">${tt('使用','Use')}</button>
+    </div>`;
+
+    // 尚未解鎖今日資格：顯示入場按鈕，扣4張死神卡
+    if(!boss.unlockedToday){
+      const haveCards = p.cards[GHOST_BOSS_ENTRY_CARD_ID] || 0;
+      const html = `<div class="panel">
+        <h2>👻 ${tt('幽冥活動 Boss','Ghost Event Boss')}</h2>
+        <p class="sub">${tt(`第 ${boss.cycle} 輪　·　今日尚未解鎖`, `Cycle ${boss.cycle} · Not unlocked today`)}</p>
+        <div style="text-align:center;">
+          <img src="${GHOST_BOSS_STAGE_META[0].img}" style="width:100%;max-width:340px;border-radius:14px;border:1px solid var(--gold);box-shadow:0 0 22px rgba(139,107,209,0.4);margin-bottom:10px;filter:grayscale(0.5) brightness(0.6);" alt="${GHOST_BOSS_STAGE_META[0].label}" />
+          <p class="sub" style="margin:8px 0 14px;">${tt(`每天需要消耗 ${GHOST_BOSS_ENTRY_CARD_COST} 張「死神」卡才能解鎖今日挑戰資格，解鎖後當天可以一直打到全破或明天重置。`, `Spend ${GHOST_BOSS_ENTRY_CARD_COST} "Death" cards each day to unlock today's challenge - once unlocked you can keep attacking until you clear it or it resets tomorrow.`)}</p>
+        </div>
+        <div class="countdown" style="text-align:center;margin-bottom:12px;">${tt('持有死神卡','Death cards owned')}：<b style="color:${haveCards>=GHOST_BOSS_ENTRY_CARD_COST?'var(--gold-bright)':'var(--danger)'};">${haveCards} / ${GHOST_BOSS_ENTRY_CARD_COST}</b></div>
+        ${talismanHtml}
+        <button class="btn" id="ghost-boss-unlock-btn" ${haveCards < GHOST_BOSS_ENTRY_CARD_COST ? 'disabled' : ''}>${tt(`🥀 解鎖今日挑戰（消耗死神卡×${GHOST_BOSS_ENTRY_CARD_COST}）`, `🥀 Unlock Today (Death Cards×${GHOST_BOSS_ENTRY_CARD_COST})`)}</button>
+      </div>`;
+      if(myGen !== ghostBossRenderGen) return;
+      const scrollY = window.scrollY;
+      body.innerHTML = html;
+      if(alreadyRendered) window.scrollTo(0, scrollY);
+      const unlockBtn = document.getElementById('ghost-boss-unlock-btn');
+      if(unlockBtn) unlockBtn.onclick = async ()=>{
+        unlockBtn.disabled = true;
+        try{ await doGhostBossUnlock(); } finally { renderTab(); }
+      };
+      const talismanBtn = document.getElementById('ghost-talisman-use-btn');
+      if(talismanBtn) talismanBtn.onclick = async ()=>{
+        talismanBtn.disabled = true;
+        try{ await useGhostDiceTalisman(); } finally { renderTab(); }
+      };
+      return;
+    }
+
+    // 今日已全破：鎖到隔天，顯示戰果
+    if(boss.clearedToday){
+      const kingMeta = GHOST_BOSS_STAGE_META[GHOST_BOSS_STAGE_META.length-1];
+      const html = `<div class="panel">
+        <h2>👻 ${tt('幽冥活動 Boss','Ghost Event Boss')}</h2>
+        <p class="sub">${tt(`第 ${boss.cycle} 輪　·　今日已全破`, `Cycle ${boss.cycle} · Cleared today`)}</p>
+        <div style="text-align:center;">
+          <img src="${kingMeta.img}" style="width:100%;max-width:340px;border-radius:14px;border:1px solid var(--gold);box-shadow:0 0 22px rgba(139,107,209,0.4);margin-bottom:10px;filter:grayscale(0.6) brightness(0.7);" alt="${kingMeta.label}" />
+          <div style="font-family:'Cinzel Decorative',serif;color:var(--gold-bright);font-size:16px;">🎉 ${tt('今日已全破 4 階段！','All 4 stages cleared today!')}</div>
+          <p class="sub" style="margin-top:8px;">${tt('明天再來挑戰新一輪（更難）吧！', 'Come back tomorrow for a new, harder cycle!')}</p>
+        </div>
+        ${talismanHtml}
+      </div>`;
+      if(myGen !== ghostBossRenderGen) return;
+      const scrollY2 = window.scrollY;
+      body.innerHTML = html;
+      if(alreadyRendered) window.scrollTo(0, scrollY2);
+      const talismanBtn2 = document.getElementById('ghost-talisman-use-btn');
+      if(talismanBtn2) talismanBtn2.onclick = async ()=>{
+        talismanBtn2.disabled = true;
+        try{ await useGhostDiceTalisman(); } finally { renderTab(); }
+      };
+      return;
+    }
+
+    // 戰鬥中：4階進度條，跟主線Boss同一套視覺語言
+    const meta = GHOST_BOSS_STAGE_META[boss.stage-1];
+    const pct = Math.max(0, Math.min(100, (boss.hp/boss.maxHp)*100));
+    const equipped = p.diceSlots.map(id => id ? p.dice[id] : null);
+    const equippedCount = equipped.filter(Boolean).length;
+    const slotsHtml = equipped.map((dice, i) => {
+      if(!dice){
+        return `<span class="dice-slot-chip" style="border-style:dashed;color:var(--muted);">${tt(`骰${i+1}：未裝備`, `Die ${i+1}: empty`)}</span>`;
+      }
+      const dMeta = DICE_QUALITY_META[dice.quality];
+      return `<span class="dice-slot-chip" style="border-color:${dMeta.color};color:${dMeta.color};">
+        <span class="dice-slot-swatch" style="background:${dMeta.color};"></span>
+        ${tt(dMeta.label, dMeta.labelEn)} · ${tt('基礎','ATK')}${dice.baseAttack}
+      </span>`;
+    }).join('');
+    const lastRoll = state.ghostBossLastAttack;
+    const lastRollComboHtml = lastRoll && lastRoll.comboTier === 'triple' ? tt('　🎯豹子×2','　🎯Triple×2')
+      : lastRoll && lastRoll.comboTier === 'pair' ? tt(`　✌️對子×${DICE_COMBO_MULT.pair}`, `　✌️Pair×${DICE_COMBO_MULT.pair}`) : '';
+    const lastRollStreakHtml = lastRoll && lastRoll.comboStreakBonus > 0 ? tt(`　🔥連擊+${Math.round(lastRoll.comboStreakBonus*100)}%`, `　🔥Streak+${Math.round(lastRoll.comboStreakBonus*100)}%`) : '';
+    const lastRollHtml = (lastRoll && lastRoll.rolls) ? `<div class="countdown" style="margin-top:6px;">${tt('上次擲骰','Last roll')}：${lastRoll.rolls.map(r=>r.face.num).join(' · ')}${lastRollComboHtml}${lastRollStreakHtml}${lastRoll.isCrit ? tt('　💥暴擊','　💥Crit') : ''}</div>` : '';
+    const html = `<div class="panel">
+      <h2>👻 ${tt('幽冥活動 Boss','Ghost Event Boss')}</h2>
+      <p class="sub">${tt(`第 ${boss.cycle} 輪　第 ${boss.stage}/4 階段　·　今日已解鎖`, `Cycle ${boss.cycle} · Stage ${boss.stage}/4 · Unlocked today`)}</p>
+      <div style="text-align:center;">
+        <img id="ghost-boss-portrait-img" src="${meta.img}" style="width:100%;max-width:340px;border-radius:14px;border:1px solid var(--gold);box-shadow:0 0 22px rgba(139,107,209,0.4);margin-bottom:10px;" alt="${meta.label}" />
+        <div style="font-family:'Cinzel Decorative',serif;color:var(--gold-bright);font-size:16px;">${tt(meta.label, meta.labelEn)}</div>
+        <p class="sub" style="margin-top:4px;">${tt(meta.desc, meta.descEn)}</p>
+      </div>
+      <div id="ghost-boss-hp-track" style="position:relative;background:var(--bg-panel-raised, rgba(255,255,255,0.06));border-radius:999px;height:18px;overflow:hidden;border:1px solid var(--line);margin:12px 0 4px;">
+        <div id="ghost-boss-hp-ghost" class="hp-bar-ghost" style="width:${pct}%;"></div>
+        <div id="ghost-boss-hp-fill" class="hp-bar-fill" style="width:${pct}%;background:linear-gradient(90deg, var(--violet), var(--gold));"></div>
+      </div>
+      <div class="countdown" style="text-align:center;margin-bottom:12px;">${Math.max(0,boss.hp).toLocaleString()} / ${boss.maxHp.toLocaleString()} HP</div>
+      ${(boss.comboStreak||0) > 0 ? `<div class="countdown" style="margin-bottom:10px;">🔥 ${tt('連擊中','Combo streak')}：<b style="color:var(--gold-bright);">×${boss.comboStreak}</b>　（${tt('下次攻擊加成','next hit bonus')} +${Math.round(Math.min((boss.comboStreak||0) * BOSS_COMBO_STREAK_BONUS_PER_HIT, BOSS_COMBO_STREAK_CAP) * 100)}%）</div>` : ''}
+      ${talismanHtml}
+      <div style="border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:10px;display:flex;flex-direction:column;gap:6px;">
+        <div class="countdown">🎲 ${tt('已裝備骰子','Equipped dice')}：</div>
+        <div>${slotsHtml}</div>
+        ${equippedCount===0 ? `<div class="countdown" style="color:var(--danger);">${tt('尚未裝備骰子，請先到「骰子」分頁裝備','No dice equipped — equip in the Dice tab first')}</div>` : ''}
+        ${lastRollHtml}
+      </div>
+      <div id="ghost-dice-roll-anim" class="dice-roll-anim" style="${state.ghostBossLastAttack && state.ghostBossLastAttack.rolls ? '' : 'display:none;'}">${state.ghostBossLastAttack && state.ghostBossLastAttack.rolls ? renderSettledDiceHtml(state.ghostBossLastAttack.rolls, state.ghostBossLastAttack.comboTier, state.ghostBossLastAttack.qualityComboTier, state.ghostBossLastAttack.allWild, state.ghostBossLastAttack.isCrit) : ''}</div>
+      <button class="btn" id="ghost-boss-burst-btn" ${(p.coins < GHOST_BOSS_COIN_COST) ? 'disabled' : ''}>${tt(`🎲 擲骰攻擊（消耗✦${GHOST_BOSS_COIN_COST}）`, `🎲 Dice Attack (✦${GHOST_BOSS_COIN_COST})`)}</button>
+    </div>`;
+    if(myGen !== ghostBossRenderGen) return;
+    const scrollY3 = window.scrollY;
+    body.innerHTML = html;
+    if(alreadyRendered) window.scrollTo(0, scrollY3);
+    if(state.ghostBossHpAnim && state.ghostBossHpAnim.stage === boss.stage && state.ghostBossHpAnim.cycle === boss.cycle){
+      animateHpGhostBar('ghost-boss-hp-fill', 'ghost-boss-hp-ghost', state.ghostBossHpAnim.fromPct, pct);
+      playHitImpactFx({portraitId:'ghost-boss-portrait-img', trackId:'ghost-boss-hp-track', crit: state.ghostBossHpAnim.crit});
+    }
+    state.ghostBossHpAnim = null;
+    const btn = document.getElementById('ghost-boss-burst-btn');
+    if(btn){
+      btn.onclick = async ()=>{
+        btn.disabled = true;
+        try{ await performGhostBossAttack(); } finally { renderTab(); }
+      };
+    }
+    const talismanBtn3 = document.getElementById('ghost-talisman-use-btn');
+    if(talismanBtn3) talismanBtn3.onclick = async ()=>{
+      talismanBtn3.disabled = true;
+      try{ await useGhostDiceTalisman(); } finally { renderTab(); }
+    };
+  })();
+}
+
+// 入場按鈕：呼叫 unlockGhostBossToday，處理卡片不足的情況並顯示訊息。
+async function doGhostBossUnlock(){
+  const p = state.player;
+  let result;
+  try{
+    result = await unlockGhostBossToday(p.nickname);
+  }catch(e){
+    showToast(tt('資料忙碌中，請稍後再試', 'Data is busy, try again shortly'));
+    return;
+  }
+  if(!result.ok){
+    showToast(tt(`死神卡不足，需要 ${GHOST_BOSS_ENTRY_CARD_COST} 張`, `Not enough Death cards - need ${GHOST_BOSS_ENTRY_CARD_COST}`));
+    return;
+  }
+  if(result.player) state.player = result.player;
+  showToast(result.alreadyUnlocked
+    ? tt('今日已解鎖過了', 'Already unlocked today')
+    : tt('🥀 解鎖成功！幽冥活動 Boss 挑戰開始', '🥀 Unlocked! The Ghost Event Boss challenge begins'));
+  updateHeaderCoins();
 }
 
 async function doSeasonCardDraw(){
@@ -8435,6 +9043,7 @@ function toggleLang(){
 const BGM_TRACKS = {
   default: 'bgm.mp3',          // 一般頁面用的預設音樂
   boss: 'bgm-boss.mp3',        // Boss 戰：刺激一點的
+  ghostboss: 'bgm-ghostboss.mp3', // 幽冥活動Boss：獨立音樂，跟主線Boss(boss)分開，可自行換成別的檔名
   farm: 'bgm-farm.mp3',        // 花園農場：放鬆一點的
   expedition: 'bgm-expedition.mp3', // 遠征：專屬音樂
 };
@@ -10825,7 +11434,7 @@ function updateHeaderCoins(){
 
 function renderTab(){
   const body = document.getElementById('tab-body');
-  updateBgmForTab(state.tab);
+  updateBgmForTab(state.tab === 'boss' && state.bossView === 'ghost' ? 'ghostboss' : state.tab);
   renderToken++;
   if(state.tab === 'home') return renderHome(body);
   if(state.tab === 'resonance') return renderResonance(body);
@@ -12591,6 +13200,13 @@ async function renderGM(body){
     <div class="form-row">
       <div><label>${tt('每輪難度倍率','Difficulty mult / cycle')}</label><input type="number" id="gm-boss-diff" value="${BOSS_DIFFICULTY_MULT}" min="1" step="0.05" style="width:90px;" /></div>
     </div>
+    <div class="farm-upgrade-title" style="margin-top:10px;">${tt('每日擊殺上限 × 特殊詞綴','Daily Kills × Boss Affix')}</div>
+    <p class="sub">${tt('打死立刻重生，直到達到每日擊殺上限才鎖到隔天；重生時有機率套用詞綴（數字強化／爆擊強化），符合條件的攻擊會額外造成加成傷害，不符合條件的攻擊維持正常傷害（不會被打折）。', 'Killing the Boss respawns it immediately until the daily kill limit is reached, then it locks until tomorrow. Respawns have a chance to gain an affix (number boost / crit boost) — attacks that meet the condition deal bonus damage; attacks that don\'t still deal normal damage (never reduced).')}</p>
+    <div class="form-row">
+      <div><label>${tt('每日擊殺上限','Max kills / day')}</label><input type="number" id="gm-boss-max-kills" value="${BOSS_MAX_DAILY_KILLS}" min="1" style="width:80px;" /></div>
+      <div><label>${tt('詞綴出現機率 %','Affix chance %')}</label><input type="number" id="gm-boss-affix-chance" value="${Math.round(BOSS_AFFIX_CHANCE*100)}" min="0" max="100" step="1" style="width:90px;" /></div>
+      <div><label>${tt('詞綴命中加成傷害 %','Affix bonus dmg %')}</label><input type="number" id="gm-boss-affix-floor" value="${Math.round(BOSS_AFFIX_BONUS_PCT*100)}" min="0" max="500" step="1" style="width:90px;" /></div>
+    </div>
     <div class="farm-upgrade-title" style="margin-top:10px;">${tt('星象爆發設定','Astral Burst Settings')}</div>
     <div class="form-row">
       <div><label>${tt('消耗金幣','Coin cost')}</label><input type="number" id="gm-boss-cost" value="${BOSS_COIN_COST}" min="0" style="width:80px;" /></div>
@@ -12675,17 +13291,17 @@ async function renderGM(body){
         </div>`;
         }).join('')}
       </div>`;
-      // Lv.6 以後的直接展開顯示；Lv.1-5（unlockLevel < 6）收進摺疊區塊，預設收合，避免洗版
-      const lowTier = EXPEDITION_QUESTS.filter(q=>q.unlockLevel < 6);
-      const highTier = EXPEDITION_QUESTS.filter(q=>q.unlockLevel >= 6);
+      // 只有 ID 7（目前最高階）預設展開；其餘全部收進摺疊區塊，預設收合，避免洗版
+      const restTier = EXPEDITION_QUESTS.filter(q=>q.id !== 7);
+      const idSevenTier = EXPEDITION_QUESTS.filter(q=>q.id === 7);
       let out = '';
-      if(lowTier.length){
+      if(restTier.length){
         out += `<details style="margin-bottom:10px;">
-          <summary style="cursor:pointer;color:var(--muted);font-family:'Cinzel',serif;font-size:13px;padding:6px 0;">${tt(`低等級遠征設定（Lv.1-5，共 ${lowTier.length} 階，點擊展開）`, `Low-level expeditions (Lv.1-5, ${lowTier.length} tiers, click to expand)`)}</summary>
-          ${lowTier.map(renderTierBox).join('')}
+          <summary style="cursor:pointer;color:var(--muted);font-family:'Cinzel',serif;font-size:13px;padding:6px 0;">${tt(`其餘遠征設定（ID 1-6，共 ${restTier.length} 階，點擊展開）`, `Other expeditions (ID 1-6, ${restTier.length} tiers, click to expand)`)}</summary>
+          ${restTier.map(renderTierBox).join('')}
         </details>`;
       }
-      out += highTier.map(renderTierBox).join('');
+      out += idSevenTier.map(renderTierBox).join('');
       return out;
     })()}
     <div class="form-row" style="margin-top:6px;">
@@ -13266,8 +13882,11 @@ async function renderGM(body){
     const baseCoins = parseFloat(document.getElementById('gm-boss-base-coins').value);
     const bonusCoins = parseFloat(document.getElementById('gm-boss-bonus-coins').value);
     const rewardMult = parseFloat(document.getElementById('gm-boss-reward-mult').value);
-    const nums = [...hp, diff, cost, dmg, contribRatePct, baseCoins, bonusCoins, rewardMult];
-    if(nums.some(v=>isNaN(v)||v<0) || diff <= 0 || rewardMult <= 0){
+    const maxKills = parseFloat(document.getElementById('gm-boss-max-kills').value);
+    const affixChancePct = parseFloat(document.getElementById('gm-boss-affix-chance').value);
+    const affixFloorPct = parseFloat(document.getElementById('gm-boss-affix-floor').value);
+    const nums = [...hp, diff, cost, dmg, contribRatePct, baseCoins, bonusCoins, rewardMult, maxKills, affixChancePct, affixFloorPct];
+    if(nums.some(v=>isNaN(v)||v<0) || diff <= 0 || rewardMult <= 0 || maxKills < 1){
       showToast(tt('請輸入有效的非負數字','Please enter a valid non-negative number')); return;
     }
     BOSS_STAGE_HP = hp;
@@ -13278,6 +13897,9 @@ async function renderGM(body){
     BOSS_BASE_REWARD = {coins: baseCoins};
     BOSS_BONUS_POOL = {coins: bonusCoins};
     BOSS_REWARD_MULT = rewardMult;
+    BOSS_MAX_DAILY_KILLS = Math.round(maxKills);
+    BOSS_AFFIX_CHANCE = affixChancePct / 100;
+    BOSS_AFFIX_BONUS_PCT = affixFloorPct / 100;
     await saveBossConfig();
     showToast(tt('Boss 設定已更新','Boss settings updated'));
     renderTab();
@@ -13292,6 +13914,9 @@ async function renderGM(body){
     BOSS_BASE_REWARD = {...DEFAULT_BOSS_BASE_REWARD};
     BOSS_BONUS_POOL = {...DEFAULT_BOSS_BONUS_POOL};
     BOSS_REWARD_MULT = DEFAULT_BOSS_REWARD_MULT;
+    BOSS_MAX_DAILY_KILLS = DEFAULT_BOSS_MAX_DAILY_KILLS;
+    BOSS_AFFIX_CHANCE = DEFAULT_BOSS_AFFIX_CHANCE;
+    BOSS_AFFIX_BONUS_PCT = DEFAULT_BOSS_AFFIX_BONUS_PCT;
     await saveBossConfig();
     showToast(tt('已還原為預設 Boss 設定','Reverted to default boss settings'));
     renderTab();
