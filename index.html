@@ -97,6 +97,44 @@
   .tab.active{color:var(--gold-bright);border-bottom-color:var(--gold);}
 
   .panel{background:var(--bg-panel);border:1px solid var(--line);border-radius:14px;padding:20px;margin-bottom:16px;}
+
+  /* 最高榮譽排行榜（完美骰）：金色漸層 + 呼吸光暈 + 流動光澤掃過效果，
+     用來跟其他排行榜拉開視覺層級，暗示這是「最難刷、最值得曬」的榜。 */
+  .panel.honor-panel{
+    position:relative;
+    border:1px solid var(--gold);
+    background:
+      linear-gradient(160deg, rgba(201,162,74,0.2), rgba(232,196,104,0.08) 45%, var(--bg-panel) 75%);
+    animation: honor-panel-glow 3.2s ease-in-out infinite;
+    overflow:visible;
+  }
+  .panel.honor-panel::before{
+    content:'';position:absolute;inset:0;border-radius:14px;pointer-events:none;z-index:0;
+    background:linear-gradient(115deg, transparent 30%, rgba(255,255,255,0.4) 48%, rgba(232,196,104,0.6) 52%, transparent 70%);
+    background-size:250% 100%;background-position:-120% 0;
+    animation: honor-shimmer-sweep 3.2s ease-in-out infinite;
+  }
+  .panel.honor-panel > *{position:relative;z-index:1;}
+  @keyframes honor-panel-glow{
+    0%,100%{ box-shadow:0 0 16px rgba(201,162,74,0.28); }
+    50%{ box-shadow:0 0 34px rgba(232,196,104,0.6); }
+  }
+  @keyframes honor-shimmer-sweep{
+    0%{ background-position:-120% 0; }
+    55%,100%{ background-position:120% 0; }
+  }
+  .panel.honor-panel h2{
+    background:linear-gradient(90deg, var(--gold-bright), #fff6d8, var(--gold-bright));
+    -webkit-background-clip:text;background-clip:text;color:transparent;
+  }
+  .honor-ribbon{
+    position:absolute;top:-12px;left:16px;z-index:2;
+    display:inline-flex;align-items:center;gap:4px;
+    background:linear-gradient(180deg, var(--gold-bright), var(--gold));
+    color:#241608;font-family:'Cinzel',serif;font-weight:700;font-size:11px;letter-spacing:1px;
+    padding:4px 12px;border-radius:999px;box-shadow:0 2px 12px rgba(201,162,74,0.55);
+  }
+
   .panel h2{font-family:'Cinzel',serif;font-size:16px;color:var(--gold-bright);margin:0 0 4px;letter-spacing:0.5px;}
   .panel .sub{color:var(--muted);font-size:13px;margin:0 0 16px;}
 
@@ -1754,8 +1792,9 @@ async function produceProfessionItem(itemId){
   const saveChance = professionMaterialSaveChance(prog && prog.level);
   const skillProc = Math.random() < saveChance; // 職業技能發動：材料與體力皆不消耗
   if(!skillProc){
-    p.professionMaterials[def.materialId] -= recipe.materialCost;
-    p.stamina -= recipe.staminaCost;
+    // 防呆：跟 auctionAdjustInventory 同一種寫法，避免材料被扣成負數
+    p.professionMaterials[def.materialId] = Math.max(0, p.professionMaterials[def.materialId] - recipe.materialCost);
+    p.stamina = Math.max(0, p.stamina - recipe.staminaCost);
   }
   p.professionItems[itemId] = (p.professionItems[itemId]||0) + 1;
   const leveled = applyProfessionExpGain(p, p.profession, recipe.exp);
@@ -2123,7 +2162,7 @@ async function plantPetEgg(elementId){
     showToast(tt(`材料不足，種蛋需要 ${PET_ELEMENT_META[elementId].icon} × ${PET_EGG_MATERIAL_COST}`, `Not enough material - planting needs ${PET_ELEMENT_META[elementId].icon} × ${PET_EGG_MATERIAL_COST}`));
     return;
   }
-  p.professionMaterials[elementId] -= PET_EGG_MATERIAL_COST;
+  p.professionMaterials[elementId] = Math.max(0, p.professionMaterials[elementId] - PET_EGG_MATERIAL_COST);
   const now = Date.now();
   p.petNest = {element: elementId, plantedAt: now, readyAt: now + PET_EGG_GROW_MS};
   await savePlayer(p);
@@ -3714,8 +3753,12 @@ const DEFAULT_DICE_GACHA_RATES = {common:0.80, rare:0.15, epic:0.05}; // 無保�
 let DICE_GACHA_RATES = {...DEFAULT_DICE_GACHA_RATES};
 
 // 骰子基礎攻擊力隨機範圍（暫定數值，待階段四攻擊公式定案時再校準）。
+// common/rare 共用這組區間；epic 改用獨立的 DICE_EPIC_BASE_ATTACK_RANGE，
+// 讓史詩骰子的基礎傷害明顯高一截，而不是跟 common/rare 抽同一組數字。
 const DEFAULT_DICE_BASE_ATTACK_RANGE = [80, 160];
 let DICE_BASE_ATTACK_RANGE = [...DEFAULT_DICE_BASE_ATTACK_RANGE];
+const DEFAULT_DICE_EPIC_BASE_ATTACK_RANGE = [110, 180];
+let DICE_EPIC_BASE_ATTACK_RANGE = [...DEFAULT_DICE_EPIC_BASE_ATTACK_RANGE];
 
 const DICE_EQUIP_SLOTS = 3; // 玩家同時裝備 3 顆不同骰子
 const TRIPLE_WILD_CRIT_DMG_BONUS = 0.50; // 🎉 萬能三連彩蛋：三顆全萬能面時額外疊加的固定暴擊傷害
@@ -3755,6 +3798,97 @@ const DICE_FACE_EFFECT_POOL = [
   {id:'comboboost15', kind:'combo_boost', value:0.15, weight:2, tier:'rare',     label:'組合加成 +15%', labelEn:'Combo Bonus +15%', desc:'觸發對子/豹子時，倍率額外 +15%（沒觸發組合則無效果）', descEn:'When Pair/Triple triggers, adds +15% to its multiplier (no effect otherwise)'},
 ];
 
+// ---------- 骰子完美度評分（排行榜／曬骰用，不影響戰鬥數值）----------
+// 目的：把「這顆骰子多強／多稀有」換算成單一分數，用於「完美骰排行榜」排名與展示。
+// 純展示用途，跟 rollDiceAttack 的實際傷害計算完全獨立，改這裡的權重不會影響戰鬥平衡。
+//
+// 設計重點：
+// 1. 品質/等級分＝已投入的資源量（愈難獲得/愈花錢愈高分）。
+// 2. 面數字分＝原本倍率 (DICE_FACE_MULT) 折算成分數，1~4 號額外把 DICE_FACE_NUM_BONUS
+//    的暴擊率/暴擊傷害用「等值換算係數」補回來，避免 1~4 號因為原始倍率較低被誤判成爛面
+//    （這兩個係數只是拍腦袋抓的期望值估算，正式上線後應依實戰數據回頭校準，故獨立成常數
+//    方便之後調整或丟進 GM 後台）。
+// 3. 暴擊率／暴擊傷害協同：暴擊傷害要有暴擊率撐才吃得到，這顆骰子（6 面一起看）若同時
+//    有暴擊率面與暴擊傷害面，暴擊傷害那面的分數吃滿；若只有暴擊傷害沒有暴擊率來源，
+//    視為「配裝失敗」打折——排行榜前段的骰子因此會自然長成「有配對」的樣子。
+// 4. 效果面分＝依效果 tier 給分，且刻意跟抽取權重成反比（rare 效果權重最低、分數最高），
+//    「湊滿全部面都有效果」還不夠強，要湊到稀有效果分數才會真的拉開差距。
+// 5. 完美加成＝非線性突破分：全數字滿 6、全面帶效果、湊到頂級稀有效果組合時額外給大量
+//    分數，讓「差最後一兩面」與「湊齊」分數差一大截，製造持續洗練的動機。
+// 6. 基礎攻擊力分＝跟該品質「初抽隨機下限」的差距換算分數，反映洗練/抽卡運氣與強化投入，
+//    沒有上限，只要 baseAttack 愈高（不管是抽得好還是練得多）分數就愈高。
+const DICE_NUM_BONUS_SCORE_PER_PCT = {critRate: 12, critDmg: 7}; // 每 1% 暴擊率/暴擊傷害折算的分數
+const DICE_CRIT_SYNERGY_BONUS_MULT = 1.4;  // 骰子同時有暴擊率面與暴擊傷害面：暴擊傷害面分數 ×1.4
+const DICE_CRIT_SYNERGY_PENALTY_MULT = 0.5; // 只有暴擊傷害沒有暴擊率來源：暴擊傷害面分數 ×0.5
+const DICE_EFFECT_TIER_SCORE = {common: 8, uncommon: 25, rare: 80}; // 面效果分（依 tier，跟抽取權重刻意反比）
+const DICE_QUALITY_SCORE = {common: 100, rare: 180, epic: 350}; // 品質基礎分（比照強化係數 6:10:20 抓比例，epic 拉更開）
+const DICE_LEVEL_SCORE_PER_LEVEL = 20; // 每強化 1 級的分數，滿 10 級 = 200 分
+const DICE_BASE_ATK_SCORE_PER_POINT = 0.5; // 基礎攻擊力每超過該品質隨機下限 1 點，折算的分數
+
+// 計算單一面的分數：面數字倍率分 + (若有暴擊加成)暴擊等值分 + (若有效果)效果分。
+// hasCritRateFace/hasCritDmgFace 用來判斷這顆骰子整體是否「配對成功」，決定暴擊傷害面吃全額還是打折。
+function diceFaceScore(face, hasCritRateFace, hasCritDmgFace){
+  let score = (DICE_FACE_MULT[face.num] - 1) * 100; // 面數字分：1號=10分…6號=60分
+  const numBonus = DICE_FACE_NUM_BONUS[face.num];
+  if(numBonus){
+    if(numBonus.critRate){
+      score += numBonus.critRate * 100 * DICE_NUM_BONUS_SCORE_PER_PCT.critRate;
+    }
+    if(numBonus.critDmg){
+      const synergyMult = hasCritRateFace ? DICE_CRIT_SYNERGY_BONUS_MULT : DICE_CRIT_SYNERGY_PENALTY_MULT;
+      score += numBonus.critDmg * 100 * DICE_NUM_BONUS_SCORE_PER_PCT.critDmg * synergyMult;
+    }
+  }
+  if(face.effect){
+    score += DICE_EFFECT_TIER_SCORE[face.effect.tier] || 0;
+  }
+  return score;
+}
+
+// 計算一顆骰子的完美度總分，回傳分數與拆解明細（明細用於排行榜/曬骰面板顯示分數怎麼來的）。
+function diceScore(dice){
+  if(!dice || !Array.isArray(dice.faces)) return {total: 0, breakdown: {}};
+  const faces = dice.faces;
+  const hasCritRateFace = faces.some(f => DICE_FACE_NUM_BONUS[f.num] && DICE_FACE_NUM_BONUS[f.num].critRate);
+  const hasCritDmgFace = faces.some(f => DICE_FACE_NUM_BONUS[f.num] && DICE_FACE_NUM_BONUS[f.num].critDmg);
+  const qualityScore = DICE_QUALITY_SCORE[dice.quality] || DICE_QUALITY_SCORE.common;
+  const levelScore = (dice.level || 1) * DICE_LEVEL_SCORE_PER_LEVEL;
+  const facesScore = faces.reduce((sum, f) => sum + diceFaceScore(f, hasCritRateFace, hasCritDmgFace), 0);
+  // 基礎攻擊力分：跟該品質「初抽隨機下限」比差距（史詩用自己獨立的範圍下限），
+  // 差距愈大代表洗練/抽卡運氣愈好，分數沒有上限——持續強化拉高 baseAttack 也會持續加分，
+  // 呼應 levelScore「投入愈多分愈高」的精神，但反映的是實際擲出的數值而非單純等級數字。
+  const atkRangeMin = (dice.quality === 'epic' ? DICE_EPIC_BASE_ATTACK_RANGE : DICE_BASE_ATTACK_RANGE)[0];
+  const baseAtkScore = Math.max(0, (dice.baseAttack || 0) - atkRangeMin) * DICE_BASE_ATK_SCORE_PER_POINT;
+
+  const effectFaceCount = faces.filter(f => f.effect).length;
+  const sixCount = faces.filter(f => f.num === 6).length;
+  const hasRareEffect = faces.some(f => f.effect && f.effect.tier === 'rare');
+  const rareEffectCount = faces.filter(f => f.effect && f.effect.tier === 'rare').length;
+  let perfectBonus = 0;
+  if(effectFaceCount === 6) perfectBonus += 50;      // 六面全部有效果（實務上只有練滿的史詩骰做得到）
+  if(sixCount === 6) perfectBonus += 80;             // 六面全部是 6 號
+  if(rareEffectCount >= 2) perfectBonus += 150;       // 同時擁有 2 個稀有效果面（例如萬能面+組合加成）
+  else if(hasRareEffect) perfectBonus += 40;          // 至少 1 個稀有效果面
+
+  const total = Math.round(qualityScore + levelScore + facesScore + baseAtkScore + perfectBonus);
+  return {
+    total,
+    breakdown: {qualityScore, levelScore, facesScore: Math.round(facesScore), baseAtkScore: Math.round(baseAtkScore), perfectBonus, effectFaceCount, sixCount, hasCritRateFace, hasCritDmgFace},
+  };
+}
+
+// 從玩家的整個骰子倉庫（p.dice）挑出分數最高的一顆，用於排行榜「這位玩家的最強骰」。
+function playerBestDice(p){
+  if(!p || !p.dice) return null;
+  let best = null, bestScore = -1;
+  Object.values(p.dice).forEach(d=>{
+    const {total} = diceScore(d);
+    if(total > bestScore){ bestScore = total; best = d; }
+  });
+  return best ? {dice: best, score: bestScore} : null;
+}
+
+
 // 組合加成：原本「三顆骰子開出同號才 ×2」改成分級——2 顆同號（對子）與 3 顆同號（豹子）
 // 給不同倍率，只要裝備 ≥2 顆骰子就有機會觸發，不再要求一定要裝滿 3 顆。
 const DEFAULT_DICE_COMBO_MULT = {pair:1.3, triple:2.0};
@@ -3774,7 +3908,7 @@ let DICE_QUALITY_COMBO_MULT = {...DEFAULT_DICE_QUALITY_COMBO_MULT};
 // 還沒有效果的面轉換成帶效果的面（等於變相增加觸發機率）；精華主要來源是拆解
 // 用不到的骰子（DICE_DISMANTLE_REFUND），形成「抽到重複/低階骰子 → 拆解 → 強化主力骰子」的循環。
 const DICE_ENHANCE_MAX_LEVEL = 10;
-const DEFAULT_DICE_ENHANCE_ATK_PER_LEVEL = {common:6, rare:10, epic:16}; // 每級增加的基礎攻擊力（依品質）
+const DEFAULT_DICE_ENHANCE_ATK_PER_LEVEL = {common:6, rare:10, epic:20}; // 每級增加的基礎攻擊力（依品質；epic 加碼調強）
 let DICE_ENHANCE_ATK_PER_LEVEL = {...DEFAULT_DICE_ENHANCE_ATK_PER_LEVEL};
 const DEFAULT_DICE_ENHANCE_BASE_COST = {common:8, rare:14, epic:22}; // 精華消耗 = 品質基礎值 × 目標等級
 let DICE_ENHANCE_BASE_COST = {...DEFAULT_DICE_ENHANCE_BASE_COST};
@@ -3799,6 +3933,177 @@ function diceDismantleRefund(dice){
   return base + Math.round(invested * 0.5);
 }
 
+// ---------- 骰子洗練系統 ----------
+// 玩家花「金幣」（跟強化用的骰子精華是不同資源池）重骰骰子的「面數字＋面效果」。
+// 可以勾選最多 5 面設為「鎖定」，鎖定的面保留原本數字與效果不變；至少 1 面永遠會被
+// 重骰（6 面全鎖等於沒得洗，UI 層要擋掉這個情況）。鎖的面數愈多，鎖定費愈高（見
+// DICE_REFINE_LOCK_COST，用「鎖定面數」查表，不是逐級疊加）；不管鎖幾面，執行洗練都
+// 要另外付一筆固定手續費（DICE_REFINE_BASE_COST）。鎖定是「逐次付費」——每次洗練都要
+// 重新選要鎖哪幾面、重新付那筆鎖定費，不是買斷。未鎖定的面用跟骰子誕生時
+// （rollNewDice）一樣的隨機邏輯重骰數字（1~6）與效果（rollFaceEffect）。
+// 「鎖 0 面」不算鎖定費，只需付固定手續費。
+// 已標記最愛的骰子不能洗練（跟拆解一樣，需先取消最愛），避免玩家在珍藏骰子上誤按重骰。
+const DEFAULT_DICE_REFINE_LOCK_COST = {0:0, 1:50000, 2:100000, 3:200000, 4:500000, 5:1000000};
+let DICE_REFINE_LOCK_COST = {...DEFAULT_DICE_REFINE_LOCK_COST};
+const DEFAULT_DICE_REFINE_BASE_COST = 100000; // 洗練手續費：固定值，不隨鎖定面數增加
+let DICE_REFINE_BASE_COST = DEFAULT_DICE_REFINE_BASE_COST;
+// 洗練「基礎攻擊力」是獨立按鈕、獨立計費，跟上面的面數字/效果洗練互不影響、不能一起結算。
+const DEFAULT_DICE_REFINE_BASE_ATTACK_COST = 100000;
+let DICE_REFINE_BASE_ATTACK_COST = DEFAULT_DICE_REFINE_BASE_ATTACK_COST;
+
+// 計算洗練面數字/效果這一次要付多少金幣：鎖定費（依鎖定面數查表）+ 固定手續費。
+function diceRefineCost(lockedCount){
+  const lockCost = (DICE_REFINE_LOCK_COST[lockedCount] !== undefined) ? DICE_REFINE_LOCK_COST[lockedCount] : DICE_REFINE_LOCK_COST[0];
+  return lockCost + DICE_REFINE_BASE_COST;
+}
+
+// 洗練骰子：lockedFaceIndexes 是要保留不變的面索引陣列（0-based，對應 dice.faces），
+// 最多 5 個、至少留 1 面重骰。用 CAS 保護讀-改-寫，避免連點兩次洗練只扣一次金幣
+// 卻重骰兩次（或反過來扣兩次錢只重骰一次）。
+async function doRefineDice(diceId, lockedFaceIndexes){
+  const p = state.player;
+  ensureDiceInventory(p);
+  const dice = p.dice[diceId];
+  if(!dice) return;
+  if(dice.favorite){
+    showToast(tt('這顆骰子已標記為最愛，請先取消最愛才能洗練','This die is marked as favorite — unmark it before refining'));
+    return;
+  }
+  const locked = Array.isArray(lockedFaceIndexes) ? [...new Set(lockedFaceIndexes)].filter(i => Number.isInteger(i) && i >= 0 && i < 6) : [];
+  if(locked.length > 5){
+    showToast(tt('最多只能鎖定 5 面，至少要留 1 面重骰','You can lock at most 5 faces — at least 1 must be re-rolled'));
+    return;
+  }
+  const cost = diceRefineCost(locked.length);
+  if((p.coins||0) < cost){
+    showToast(tt(`金幣不足，洗練需要 ✦${cost}`, `Not enough coins — refining needs ✦${cost}`));
+    return;
+  }
+  const unlockedCount = 6 - locked.length;
+  if(!confirm(tt(`確定要花費 ✦${cost} 洗練這顆骰子嗎？未鎖定的 ${unlockedCount} 面將重新隨機（數字+效果），此動作無法復原。`, `Spend ✦${cost} to refine this die? The ${unlockedCount} unlocked face(s) will be re-rolled (number + effect). This cannot be undone.`))) return;
+  let applied;
+  try{
+    applied = await updatePlayerCAS(p.nickname, (player)=>{
+      ensureDiceInventory(player);
+      const d = player.dice[diceId];
+      if(!d) throw new Error('dice not found');
+      if(d.favorite) throw new Error('dice is favorited');
+      const c = diceRefineCost(locked.length);
+      if((player.coins||0) < c) throw new Error('insufficient coins');
+      player.coins -= c;
+      d.faces = d.faces.map((f, i) => locked.includes(i) ? f : {num: 1 + Math.floor(Math.random()*6), effect: rollFaceEffect()});
+      bumpQuest(player, 'dice_refine', 1);
+    });
+  }catch(e){
+    if(e && e.message === 'dice is favorited'){
+      showToast(tt('這顆骰子已標記為最愛，請先取消最愛才能洗練','This die is marked as favorite — unmark it before refining'));
+    }else{
+      showToast(tt('洗練失敗，金幣不足或資料忙碌中，請重新整理後再試','Refine failed — not enough coins or data busy, refresh and try again'));
+    }
+    return;
+  }
+  if(!applied) return;
+  state.player = applied; // ✅ 沿用 CAS 寫入成功後的物件，不再多打一次可能失敗的 loadPlayer
+  showToast(tt('🎲 洗練完成！','🎲 Refine complete!'));
+  renderTab();
+  updateHeaderCoins();
+}
+
+// 洗練基礎攻擊力：獨立按鈕、固定費用（不隨等級/品質遞增），跟面數字/效果洗練分開計費。
+// 注意：這裡是直接在 quality 對應的隨機範圍內重骰一個全新的 baseAttack，會連同強化
+// （doEnhanceDice）已經疊加上去的等級加成一併覆蓋掉——如果要保留「已強化的部分」，
+// 之後要改成在重骰後另外把等級加成補回去；目前先照最直覺的「重骰基礎值」實作。
+async function doRefineDiceBaseAttack(diceId){
+  const p = state.player;
+  ensureDiceInventory(p);
+  const dice = p.dice[diceId];
+  if(!dice) return;
+  if(dice.favorite){
+    showToast(tt('這顆骰子已標記為最愛，請先取消最愛才能洗練','This die is marked as favorite — unmark it before refining'));
+    return;
+  }
+  const cost = DICE_REFINE_BASE_ATTACK_COST;
+  if((p.coins||0) < cost){
+    showToast(tt(`金幣不足，洗練基礎攻擊力需要 ✦${cost}`, `Not enough coins — refining base ATK needs ✦${cost}`));
+    return;
+  }
+  if(!confirm(tt(`確定要花費 ✦${cost} 重新隨機這顆骰子的基礎攻擊力嗎？此動作無法復原。`, `Spend ✦${cost} to re-roll this die's base ATK? This cannot be undone.`))) return;
+  let applied;
+  try{
+    applied = await updatePlayerCAS(p.nickname, (player)=>{
+      ensureDiceInventory(player);
+      const d = player.dice[diceId];
+      if(!d) throw new Error('dice not found');
+      if(d.favorite) throw new Error('dice is favorited');
+      if((player.coins||0) < cost) throw new Error('insufficient coins');
+      player.coins -= cost;
+      const [minAtk, maxAtk] = d.quality === 'epic' ? DICE_EPIC_BASE_ATTACK_RANGE : DICE_BASE_ATTACK_RANGE;
+      d.baseAttack = minAtk + Math.floor(Math.random()*(maxAtk - minAtk + 1));
+      bumpQuest(player, 'dice_refine', 1);
+    });
+  }catch(e){
+    if(e && e.message === 'dice is favorited'){
+      showToast(tt('這顆骰子已標記為最愛，請先取消最愛才能洗練','This die is marked as favorite — unmark it before refining'));
+    }else{
+      showToast(tt('洗練失敗，金幣不足或資料忙碌中，請重新整理後再試','Refine failed — not enough coins or data busy, refresh and try again'));
+    }
+    return;
+  }
+  if(!applied) return;
+  state.player = applied; // ✅ 沿用 CAS 寫入成功後的物件，不再多打一次可能失敗的 loadPlayer
+  showToast(tt('💥 基礎攻擊力洗練完成！','💥 Base ATK refine complete!'));
+  renderTab();
+  updateHeaderCoins();
+}
+
+// 洗練面板的「鎖定哪幾面」是純前端暫存的 UI 選擇，不寫進玩家存檔——玩家還沒按下
+// 「洗練」按鈕之前，這只是他在畫面上勾選的草稿。用 diceId 當 key 存在這個模組層級
+// 物件裡，好處是切分頁/renderTab() 重繪整個骰子庫存時，勾選狀態還能保留下來；
+// 真的執行洗練（doRefineDice）之後也刻意不清空，因為未鎖定的那幾面剛重骰完，
+// 玩家很可能想接著再看一次結果、决定要不要繼續鎖同一面。
+const DICE_REFINE_SELECTION = {};
+function diceRefineGetLocked(diceId){
+  const arr = DICE_REFINE_SELECTION[diceId];
+  return Array.isArray(arr) ? arr.filter(i => Number.isInteger(i) && i >= 0 && i < 6) : [];
+}
+
+// 渲染單顆骰子卡片裡的洗練區塊：6 面各一個鎖定 checkbox（最多勾 5 個，
+// 至少留 1 面重骰）、即時費用顯示、洗練按鈕、以及獨立的基礎攻擊力洗練按鈕。
+// 只有 renderDiceShop 的庫存列表會傳 opts.showRefine=true；拍賣行預覽等唯讀
+// 情境不會顯示這塊，避免玩家在別人的骰子上誤按洗練。
+function renderDiceRefineSection(dice){
+  const p = state.player;
+  const coins = p.coins || 0;
+  if(dice.favorite){
+    return `<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--line);">
+      <div class="countdown" style="margin-bottom:4px;">🧪 ${tt('洗練','Refine')}</div>
+      <div class="sub" style="margin:0;">${tt('這顆骰子已標記為最愛，請先取消最愛才能洗練','This die is marked as favorite — unmark it before refining')}</div>
+    </div>`;
+  }
+  const faces = Array.isArray(dice.faces) ? dice.faces : [];
+  const locked = diceRefineGetLocked(dice.id);
+  const cost = diceRefineCost(locked.length);
+  const unlockedCount = faces.length - locked.length;
+  const checkboxesHtml = faces.map((f,i)=>{
+    const checked = locked.includes(i);
+    const lockFull = (!checked && locked.length >= 5);
+    return `<label style="display:inline-flex;align-items:center;gap:3px;margin:2px 8px 2px 0;font-size:11px;color:${lockFull?'var(--muted)':'inherit'};cursor:${lockFull?'default':'pointer'};">
+      <input type="checkbox" data-refine-lock="${dice.id}" data-face-index="${i}" ${checked?'checked':''} ${lockFull?'disabled':''} style="cursor:pointer;">${tt('鎖','Lock')} ${diceFaceLabel(f)}
+    </label>`;
+  }).join('');
+  const refineDisabled = coins < cost;
+  const baseAtkDisabled = coins < DICE_REFINE_BASE_ATTACK_COST;
+  return `<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--line);">
+    <div class="countdown" style="margin-bottom:4px;">🧪 ${tt('洗練','Refine')}　💰 <b style="color:var(--gold-bright);">${coins}</b></div>
+    <div style="margin-bottom:4px;">${checkboxesHtml}</div>
+    <div class="countdown" style="margin-bottom:6px;">${tt(`已鎖定 ${locked.length} 面，未鎖定的 ${unlockedCount} 面洗練時會重骰數字＋效果`, `${locked.length} face(s) locked — the other ${unlockedCount} will be re-rolled (number + effect)`)}</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;">
+      <button class="btn small" data-refine-dice="${dice.id}" ${refineDisabled?'disabled':''}>${tt(`洗練（💰${cost}）`, `Refine (💰${cost})`)}</button>
+      <button class="btn small secondary" data-refine-base-attack="${dice.id}" ${baseAtkDisabled?'disabled':''}>${tt(`洗練基礎攻擊（💰${DICE_REFINE_BASE_ATTACK_COST}）`, `Refine Base ATK (💰${DICE_REFINE_BASE_ATTACK_COST})`)}</button>
+    </div>
+  </div>`;
+}
+
 async function loadDiceConfig(){
   try{
     const r = await storage.get(seasonKey('dice_settings'));
@@ -3806,6 +4111,7 @@ async function loadDiceConfig(){
       const s = JSON.parse(r.value);
       if(s.gachaRates && typeof s.gachaRates.common === 'number') DICE_GACHA_RATES = s.gachaRates;
       if(Array.isArray(s.baseAttackRange) && s.baseAttackRange.length === 2) DICE_BASE_ATTACK_RANGE = s.baseAttackRange;
+      if(Array.isArray(s.epicBaseAttackRange) && s.epicBaseAttackRange.length === 2) DICE_EPIC_BASE_ATTACK_RANGE = s.epicBaseAttackRange;
       if(Array.isArray(s.gachaCardIds) && s.gachaCardIds.length === 3 && s.gachaCardIds.every(id=>typeof id === 'string' && id)) DICE_GACHA_CARD_IDS = s.gachaCardIds;
       if(typeof s.gachaCostQty === 'number' && s.gachaCostQty > 0) DICE_GACHA_COST_QTY = s.gachaCostQty;
     }
@@ -3814,6 +4120,7 @@ async function loadDiceConfig(){
 async function saveDiceConfig(){
   await storage.set(seasonKey('dice_settings'), JSON.stringify({
     gachaRates: DICE_GACHA_RATES, baseAttackRange: DICE_BASE_ATTACK_RANGE,
+    epicBaseAttackRange: DICE_EPIC_BASE_ATTACK_RANGE,
     gachaCardIds: DICE_GACHA_CARD_IDS, gachaCostQty: DICE_GACHA_COST_QTY,
   }));
 }
@@ -3900,7 +4207,7 @@ function rollNewDice(quality){
   }
   const effectIdxs = new Set(idxPool.slice(0, effectFaceCount));
   const faces = nums.map((num, i)=>({num, effect: effectIdxs.has(i) ? rollFaceEffect() : null}));
-  const [minAtk, maxAtk] = DICE_BASE_ATTACK_RANGE;
+  const [minAtk, maxAtk] = quality === 'epic' ? DICE_EPIC_BASE_ATTACK_RANGE : DICE_BASE_ATTACK_RANGE;
   const baseAttack = minAtk + Math.floor(Math.random()*(maxAtk - minAtk + 1));
   return {id: uid(), quality, baseAttack, faces, level: 1, createdAt: new Date().toISOString()};
 }
@@ -4173,6 +4480,7 @@ function renderDiceCard(dice, opts){
       <span class="countdown">${tt('基礎攻擊','Base ATK')} ${dice.baseAttack}　${tt('Lv.','Lv.')}${dice.level||1}</span>
     </div>
     <div>${facesHtml}</div>
+    ${opts.showRefine ? renderDiceRefineSection(dice) : ''}
     ${opts.actionHtml || ''}
   </div>`;
 }
@@ -4240,7 +4548,7 @@ function renderDiceShop(body){
         ? '' // 裝備中或已標記最愛的骰子不給拆解按鈕，避免誤觸；要拆解需先卸下裝備／取消最愛
         : `<button class="btn small secondary" data-dismantle-dice="${dice.id}">${tt('拆解','Dismantle')}</button>`;
       const actionHtml = `${equipActionHtml}<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;">${favoriteBtnHtml}${enhanceBtnHtml}${dismantleBtnHtml}</div>`;
-      return renderDiceCard(dice, {actionHtml});
+      return renderDiceCard(dice, {actionHtml, showRefine: true});
     }).join('')}
   </div>`;
   body.innerHTML = html;
@@ -4281,6 +4589,42 @@ function renderDiceShop(body){
       btn.disabled = true;
       try{ await doDismantleDice(btn.dataset.dismantleDice); }
       catch(e){ console.error('[dismantle-dice btn] unexpected error', e); }
+      finally { renderTab(); }
+    };
+  });
+  // 洗練鎖定 checkbox：只更新 DICE_REFINE_SELECTION 這個前端暫存物件，再整頁重繪
+  // 一次，讓費用文字/按鈕的 disabled 狀態、以及「鎖滿5面時其餘 checkbox 要跟著
+  // disable」這件事都自動跟著 renderDiceRefineSection 重新算好，不用手動同步兩處邏輯。
+  body.querySelectorAll('[data-refine-lock]').forEach(cb=>{
+    cb.onchange = ()=>{
+      const diceId = cb.dataset.refineLock;
+      const idx = parseInt(cb.dataset.faceIndex, 10);
+      const arr = diceRefineGetLocked(diceId).slice();
+      if(cb.checked){
+        if(arr.length >= 5){ cb.checked = false; return; } // 保險：理論上 disabled 屬性已擋掉，這裡再擋一次
+        if(!arr.includes(idx)) arr.push(idx);
+      }else{
+        const pos = arr.indexOf(idx);
+        if(pos >= 0) arr.splice(pos, 1);
+      }
+      DICE_REFINE_SELECTION[diceId] = arr;
+      renderTab();
+    };
+  });
+  body.querySelectorAll('[data-refine-dice]').forEach(btn=>{
+    btn.onclick = async ()=>{
+      btn.disabled = true;
+      const diceId = btn.dataset.refineDice;
+      try{ await doRefineDice(diceId, diceRefineGetLocked(diceId)); }
+      catch(e){ console.error('[refine-dice btn] unexpected error', e); }
+      finally { renderTab(); }
+    };
+  });
+  body.querySelectorAll('[data-refine-base-attack]').forEach(btn=>{
+    btn.onclick = async ()=>{
+      btn.disabled = true;
+      try{ await doRefineDiceBaseAttack(btn.dataset.refineBaseAttack); }
+      catch(e){ console.error('[refine-base-attack btn] unexpected error', e); }
       finally { renderTab(); }
     };
   });
@@ -4746,6 +5090,10 @@ const DEFAULT_SLOT_SETTINGS = {
 };
 let SLOT_SETTINGS = {...DEFAULT_SLOT_SETTINGS};
 let SLOT_JACKPOT = DEFAULT_SLOT_SETTINGS.jackpotBase;
+// 上一位中獎者（任何稀有度中獎都算，不限頭獎），顯示在「三牌共鳴」面板上
+// 給大家看看最近是誰手氣好；資料來源跟 initWinBroadcastPoll 共用同一個
+// storage key（config:latest_win），這裡只是額外把它快取成畫面可以直接讀的全域變數。
+let LATEST_WIN = null;
 async function loadSlotConfig(){
   try{
     const r = await storage.get('config:slot_settings');
@@ -4763,6 +5111,16 @@ async function loadSlotConfig(){
       if(!isNaN(v) && v >= 0) SLOT_JACKPOT = v;
     }
   }catch(e){ /* keep default */ }
+  try{
+    // config:latest_win 每種等級中獎都會寫入（供全服廣播 toast 用）；
+    // 這裡只在「上一筆剛好是頭獎」時才拿來當作面板上的「上一輪中獎者」，
+    // 沒有另外開新的 storage key，避免多一次網路請求。
+    const r3 = await storage.get('config:latest_win');
+    if(r3){
+      const w3 = JSON.parse(r3.value);
+      if(w3.tier === 'jackpot') LATEST_WIN = w3;
+    }
+  }catch(e){ /* keep null，畫面上就不顯示上一輪中獎者 */ }
 }
 async function saveSlotSettings(newSettings){
   SLOT_SETTINGS = {...newSettings};
@@ -5209,6 +5567,7 @@ const ACHIEVEMENT_IMAGES = {
   jackpot_champion: 'https://lekcusong.github.io/tcg/assets/jackpot_champion.jpg',
   expedition_streak5: 'https://lekcusong.github.io/tcg/assets/expedition_streak5.jpg',
   fortune_star_winner: 'https://lekcusong.github.io/tcg/assets/fortune_star_winner.jpg',
+  hexagram_fate: 'https://lekcusong.github.io/tcg/assets/hexagram_fate.png',
 };
 const ACHIEVEMENTS = [
   {
@@ -5362,6 +5721,22 @@ const ACHIEVEMENTS = [
     check(p){ return ((p.stats && p.stats.totalFortuneStarWins) || 0) >= 1; },
     progress(p){ return `${Math.min(1, (p.stats && p.stats.totalFortuneStarWins) || 0)}/1`; },
   },
+  {
+    key: 'hexagram_fate',
+    nameZh: '六芒天命', nameEn: 'Hexagram Fate',
+    descZh: '擁有一顆六面數字全部相同的骰子', descEn: 'Own a die whose all six faces show the same number',
+    image: ACHIEVEMENT_IMAGES.hexagram_fate,
+    glow: 'rainbow',
+    check(p){
+      const diceMap = (p && p.dice) || {};
+      return Object.values(diceMap).some(d => Array.isArray(d.faces) && d.faces.length === 6 && d.faces.every(f => f.num === d.faces[0].num));
+    },
+    progress(p){
+      const diceMap = (p && p.dice) || {};
+      const has = Object.values(diceMap).some(d => Array.isArray(d.faces) && d.faces.length === 6 && d.faces.every(f => f.num === d.faces[0].num));
+      return has ? '1/1' : '0/1';
+    },
+  },
 ];
 const ACHIEVEMENT_BY_KEY = Object.fromEntries(ACHIEVEMENTS.map(a=>[a.key,a]));
 
@@ -5376,9 +5751,10 @@ const TITLES = [
   {key:'boss', nameZh:'屠神使者', nameEn:'Godslayer', icon:'👹'},
   {key:'harvest', nameZh:'田園宗師', nameEn:'Farming Grandmaster', icon:'🌻'},
   {key:'auction', nameZh:'黃金競拍師', nameEn:'Golden Auctioneer', icon:'🔨'},
+  {key:'dice', nameZh:'天選骰運', nameEn:'Chosen of Fortune', icon:'🎲'},
 ];
 const TITLE_BY_KEY = Object.fromEntries(TITLES.map(t=>[t.key,t]));
-let TITLE_HOLDERS = {wealth:null, collection:null, resonance:null, streak:null, boss:null, harvest:null, auction:null, updatedAt:0};
+let TITLE_HOLDERS = {wealth:null, collection:null, resonance:null, streak:null, boss:null, harvest:null, auction:null, dice:null, updatedAt:0};
 async function loadTitleHolders(){
   try{
     const r = await storage.get('config:title_holders');
@@ -5392,6 +5768,7 @@ async function loadTitleHolders(){
         boss: s.boss || null,
         harvest: s.harvest || null,
         auction: s.auction || null,
+        dice: s.dice || null,
         updatedAt: s.updatedAt || 0,
       };
     }
@@ -5402,7 +5779,7 @@ async function saveTitleHolders(){
   await storage.set('config:title_holders', JSON.stringify(TITLE_HOLDERS));
 }
 // 依排行榜頁面已經算好的榜單重新判斷榜首，若有變動才寫回，避免每次開排行榜都打一次寫入
-async function refreshTitleHoldersFromLeaderboards(byCoins, byCards, bySlotSpend, byStreak, byBossDamage, byHarvest, byAuctionVolume){
+async function refreshTitleHoldersFromLeaderboards(byCoins, byCards, bySlotSpend, byStreak, byBossDamage, byHarvest, byAuctionVolume, byDiceScore){
   const nextWealth = (byCoins[0] && byCoins[0].coins > 0) ? byCoins[0].nickname : null;
   const nextCollection = (byCards[0] && byCards[0].total > 0) ? byCards[0].nickname : null;
   const nextResonance = (bySlotSpend[0] && bySlotSpend[0].spend > 0) ? bySlotSpend[0].nickname : null;
@@ -5410,13 +5787,15 @@ async function refreshTitleHoldersFromLeaderboards(byCoins, byCards, bySlotSpend
   const nextBoss = (byBossDamage && byBossDamage[0] && byBossDamage[0].damage > 0) ? byBossDamage[0].nickname : null;
   const nextHarvest = (byHarvest && byHarvest[0] && byHarvest[0].harvests > 0) ? byHarvest[0].nickname : null;
   const nextAuction = (byAuctionVolume && byAuctionVolume[0] && byAuctionVolume[0].volume > 0) ? byAuctionVolume[0].nickname : null;
+  const nextDice = (byDiceScore && byDiceScore[0] && byDiceScore[0].score > 0) ? byDiceScore[0].nickname : null;
   const changed = nextWealth !== TITLE_HOLDERS.wealth
     || nextCollection !== TITLE_HOLDERS.collection
     || nextResonance !== TITLE_HOLDERS.resonance
     || nextStreak !== TITLE_HOLDERS.streak
     || nextBoss !== TITLE_HOLDERS.boss
     || nextHarvest !== TITLE_HOLDERS.harvest
-    || nextAuction !== TITLE_HOLDERS.auction;
+    || nextAuction !== TITLE_HOLDERS.auction
+    || nextDice !== TITLE_HOLDERS.dice;
   if(changed){
     TITLE_HOLDERS.wealth = nextWealth;
     TITLE_HOLDERS.collection = nextCollection;
@@ -5425,6 +5804,7 @@ async function refreshTitleHoldersFromLeaderboards(byCoins, byCards, bySlotSpend
     TITLE_HOLDERS.boss = nextBoss;
     TITLE_HOLDERS.harvest = nextHarvest;
     TITLE_HOLDERS.auction = nextAuction;
+    TITLE_HOLDERS.dice = nextDice;
     await saveTitleHolders();
   }
 }
@@ -5807,7 +6187,11 @@ Object.keys(SEED_TYPES).forEach(k=>{ DEFAULT_SEED_COSTS[k] = SEED_TYPES[k].cost;
 // ---- 種子分類（依花色分組，讓花園種子清單好掃視） ----
 function seedGroupKey(seed){
   if(seed.key && seed.key.indexOf('season_') === 0) return 'season';
-  return seed.key.replace(/_sprout$|_bloom$/, '');
+  // 🔒 修正花色分類標籤顯示英文 key 的 bug：原本只去掉 _sprout/_bloom 尾巴，
+  // 漏了「星輝」層的 _starlight 尾巴，導致 wands_starlight 等 key 沒被歸類回
+  // wands，在 SEED_GROUP_META 裡找不到對應項目，fallback 直接把原始英文 key
+  // 當中文名稱顯示（花色升級篩選標籤、圖示因此顯示成英文字/方框）。
+  return seed.key.replace(/_sprout$|_bloom$|_starlight$/, '');
 }
 const SEED_GROUP_META = {
   wands:     {icon:'🔥', zh:'火苗', en:'Flame'},
@@ -7423,6 +7807,7 @@ async function waterFriendPlot(friendNick, plotIndex){
 
   const wateredSeedName = seedName(SEED_TYPES[waterInfo.seed]);
   await createNotification(friendNick, state.nickname, 'water', {plotIndex, seedName: wateredSeedName, speedup});
+  invalidateVisitingPlayerCache(); // 剛改了這位好友的地，正在看他花園的話別讓快取顯示舊資料
 
   showToast(tt(`已幫 ${friendNick} 澆水，縮短了 ${formatDuration(speedup)}，你獲得 ✦${WATER_HELPER_REWARD} 作為謝禮`, `Watered ${friendNick}'s plot, cutting ${formatDuration(speedup)} off the timer. You received ✦${WATER_HELPER_REWARD} as thanks`));
   const coinEl = document.getElementById('player-coin');
@@ -7492,6 +7877,7 @@ async function waterAllFriendsPlots(){
     for(const job of notifJobs){
       await createNotification(job.friendNick, state.nickname, 'water_bulk', {plotCount: job.plotCount, totalSpeedup: job.totalSpeedup});
     }
+    invalidateVisitingPlayerCache(); // 一鍵澆水可能剛好也澆到正在看的那位好友，別讓快取顯示舊資料
 
     showToast(tt(`已幫 ${wateredFriendCount} 位好友共 ${wateredPlotCount} 塊地澆水，總共縮短 ${formatDuration(totalSpeedup)}，你獲得 ✦${coinsGained} 作為謝禮`, `Watered ${wateredPlotCount} plot(s) across ${wateredFriendCount} friend(s), cutting a total of ${formatDuration(totalSpeedup)}. You received ✦${coinsGained} as thanks`));
     const coinEl = document.getElementById('player-coin');
@@ -7564,6 +7950,7 @@ async function helpAllFriendsPetHunts(){
     for(const job of notifJobs){
       await createNotification(job.friendNick, state.nickname, 'pet_help_bulk', {slotCount: job.slotCount, totalSpeedup: job.totalSpeedup});
     }
+    invalidateVisitingPlayerCache(); // 加速的好友可能剛好是正在看的那位，別讓快取顯示舊資料
 
     showToast(tt(`已幫 ${helpedFriendCount} 位好友共 ${helpedSlotCount} 格尋寶加速，總共縮短 ${formatDuration(totalSpeedup)}，你獲得精華 × ${essenceGained} 作為謝禮`, `Sped up ${helpedSlotCount} hunt(s) across ${helpedFriendCount} friend(s), cutting a total of ${formatDuration(totalSpeedup)}. You received Essence × ${essenceGained} as thanks`));
     await renderTab();
@@ -7609,6 +7996,7 @@ async function stealFriendPlot(friendNick, plotIndex){
 
   const stolenSeedName = seedName(SEED_TYPES[stealInfo.seed]);
   await createNotification(friendNick, state.nickname, 'steal', {plotIndex, seedName: stolenSeedName, amount: gain});
+  invalidateVisitingPlayerCache(); // 剛改了這位好友的地，正在看他花園的話別讓快取顯示舊資料
 
   showToast(tt(`偷偷順走一點 ${friendNick} 的${stolenSeedName}，獲得 ✦${gain}（不影響對方收成）`, `Sneaked a bit of ${friendNick}'s ${stolenSeedName}, gaining ✦${gain} (doesn't affect their harvest)`));
   const coinEl = document.getElementById('player-coin');
@@ -7674,6 +8062,7 @@ async function stealAllFriendsPlots(){
     for(const job of notifJobs){
       await createNotification(job.friendNick, state.nickname, 'steal_bulk', {plotCount: job.plotCount, amount: job.amount});
     }
+    invalidateVisitingPlayerCache(); // 一鍵偷菜可能剛好也偷到正在看的那位好友，別讓快取顯示舊資料
 
     showToast(tt(`偷偷順走了 ${stolenFriendCount} 位好友共 ${stolenPlotCount} 塊地的作物，獲得 ✦${totalGain}（不影響對方收成）`, `Sneaked a bit from ${stolenPlotCount} plot(s) across ${stolenFriendCount} friend(s), gaining ✦${totalGain} (doesn't affect their harvest)`));
     const coinEl = document.getElementById('player-coin');
@@ -7975,6 +8364,7 @@ const T = {
   leaderBossHeader: {zh:'👹 Boss 單擊最高傷害榜', en:'👹 Boss Highest Single Hit Leaderboard'},
   leaderHarvestHeader: {zh:'🌻 種菜收成次數排行榜', en:'🌻 Crop Harvest Count Leaderboard'},
   leaderAuctionVolumeHeader: {zh:'🔨 拍賣交易量排行榜', en:'🔨 Auction Trade Volume Leaderboard'},
+  leaderDiceHeader: {zh:'🎲 完美骰排行榜', en:'🎲 Perfect Dice Leaderboard'},
   gmHeader: {zh:'⚡ GM 管理控制台', en:'⚡ GM Console'},
   allPlayersHeader: {zh:'所有玩家', en:'All Players'},
   grantCoinsHeader: {zh:'發放金幣', en:'Grant Coins'},
@@ -8877,9 +9267,9 @@ async function pullSlot(isMega){
 
   if(winMsg){
     setTimeout(()=>showToast(winMsg), 1700);
-    storage.set('config:latest_win', JSON.stringify({
-      nickname: state.nickname, tier: winTier, amount: winAmount, ts: Date.now()
-    })).catch(()=>{});
+    const winPayload = { nickname: state.nickname, tier: winTier, amount: winAmount, ts: Date.now() };
+    storage.set('config:latest_win', JSON.stringify(winPayload)).catch(()=>{});
+    if(winTier === 'jackpot') LATEST_WIN = winPayload; // 面板上「上一輪中獎者」只認頭獎
     lastSeenBroadcastTs = Date.now();
   }
 }
@@ -8925,6 +9315,12 @@ function initWinBroadcastPoll(){
       const r = await storage.get('config:latest_win');
       if(!r) return;
       const w = JSON.parse(r.value);
+      // 面板上「上一輪中獎者」只認頭獎（史詩三連），沿用同一次讀取結果篩選，
+      // 不額外多打一次 API，避免增加 egress。
+      if(w.tier === 'jackpot' && (!LATEST_WIN || w.ts !== LATEST_WIN.ts)){
+        LATEST_WIN = w;
+        if(state.tab === 'resonance') renderTab();
+      }
       if(w.ts > lastSeenBroadcastTs && w.nickname && w.nickname.toLowerCase() !== state.nickname.toLowerCase()){
         lastSeenBroadcastTs = w.ts;
         const tierLabel = w.tier === 'jackpot' ? tt('命運共鳴','Fated Resonance') : tt(`三張${RARITY_LABEL[w.tier]||''}共鳴`, `Three ${RARITY_LABEL[w.tier]||''} Resonance`);
@@ -9007,10 +9403,14 @@ function fortuneStarPanelHtml(p){
   } else if(round.phase === 'revealed'){
     const luckyCard = DECK_BY_ID[round.luckyCardId];
     const won = round.winners && round.winners.find(w=>(w.nickname||'').toLowerCase() === (state.nickname||'').toLowerCase());
+    const winnerNames = round.winners && round.winners.length > 0
+      ? round.winners.map(w=>escapeHtml(w.nickname||'?')).join(tt('、',', '))
+      : '';
     body = `<p class="sub" style="margin:0 0 6px;">${tt(`⭐ 幸運卡：<b style="color:var(--gold-bright);">${luckyCard ? luckyCard.name : '？'}</b>`, `⭐ Lucky card: <b style="color:var(--gold-bright);">${luckyCard ? luckyCard.name : '?'}</b>`)}</p>
       <p class="sub" style="margin:0 0 6px;">${round.winners && round.winners.length > 0
         ? tt(`🎉 本輪 ${round.winners.length} 位中獎者，每人獲得 ✦${round.winners[0].amount}`, `🎉 ${round.winners.length} winner(s) this round, each receiving ✦${round.winners[0].amount}`)
         : tt('本輪無人中獎，獎池已退回三牌共鳴獎池','No winners this round - the pool returned to the Resonance jackpot')}</p>
+      ${winnerNames ? `<p class="sub" style="margin:0 0 6px;color:var(--gold-bright);">${tt(`👑 ${winnerNames}`, `👑 ${winnerNames}`)}</p>` : ''}
       ${won ? `<p class="sub" style="margin:0;color:var(--gold-bright);">${tt(`✨ 恭喜你中獎了！✦${won.amount} 已送入信箱`, `✨ Congratulations, you won! ✦${won.amount} has been sent to your mailbox`)}</p>` : ''}`;
   }
   return `<div class="panel">
@@ -9509,6 +9909,26 @@ async function fetchMyFriendsCached(nickname){
   myFriendsCache = {nickname, friends, fetchedAt: now};
   return friends;
 }
+// 【修 bug】renderFarm() 顯示「正在查看的好友花園」時，過去每次重繪都直接
+// await loadPlayer(state.farmVisiting) 真的打一次 API，完全沒有快取。
+// farmTickInterval 每秒都會觸發一次 renderTab()→renderFarm()，只要玩家開著
+// 好友花園分頁沒切走，就會無限期每秒發一次網路請求：egress 爆量，而且
+// render() 要 await 這次網路來回才能畫完，每秒都會頓一下。
+// 比照上面 fetchMyFriendsCached 的做法加短期快取，只有換人查看或快取過期
+// 時才真的重抓；澆水/偷菜等會改變該好友花園狀態的操作要記得呼叫
+// invalidateVisitingPlayerCache() 強制下一次重抓最新資料。
+let visitingPlayerCache = null; // {nickname, player, fetchedAt}
+const VISITING_PLAYER_CACHE_MS = 8000;
+function invalidateVisitingPlayerCache(){ visitingPlayerCache = null; }
+async function loadPlayerCached(nickname){
+  const now = Date.now();
+  if(visitingPlayerCache && visitingPlayerCache.nickname === nickname && (now - visitingPlayerCache.fetchedAt) < VISITING_PLAYER_CACHE_MS){
+    return visitingPlayerCache.player;
+  }
+  const player = await loadPlayer(nickname);
+  visitingPlayerCache = {nickname, player, fetchedAt: now};
+  return player;
+}
 async function isFriendWith(nickA, nickB){
   try{
     const all = await fetchAllFriendships();
@@ -9661,7 +10081,9 @@ function auctionAdjustInventory(p, itemType, itemId, delta, diceData){
   }
   if(itemType === 'material'){
     ensureProfession(p);
-    p.professionMaterials[itemId] = (p.professionMaterials[itemId]||0) + delta;
+    // 防呆：不管上層呼叫端的檢查有沒有漏洞，這裡永遠不讓材料被扣成負數
+    // （跟 pending reward 領取那邊的 Math.max(0, ...) 同一種寫法）。
+    p.professionMaterials[itemId] = Math.max(0, (p.professionMaterials[itemId]||0) + delta);
   } else if(itemType === 'professionItem'){
     ensureProfession(p);
     p.professionItems[itemId] = (p.professionItems[itemId]||0) + delta;
@@ -9774,6 +10196,15 @@ async function listAuction(itemType, itemId, qty, startBid, buyoutPrice, durMs){
   const hasBuyout = buyoutPrice && buyoutPrice >= 1;
   if(!hasStart && !hasBuyout){ showToast(tt('起標價與一口價至少要填一個','Please fill in either a starting bid or a buyout price')); return; }
   if(hasStart && hasBuyout && buyoutPrice <= startBid){ showToast(tt('一口價必須高於起標價','Buyout price must be higher than the starting bid')); return; }
+  // 🔒 修正材料變負數的漏洞：上面那個 owned<qty 檢查是在 await fetchAuctions() 之前做的，
+  // 但真正扣庫存的 auctionAdjustInventory 在那個 await 之後才執行。await 期間如果玩家
+  // 同時觸發了其他會消耗同一種材料的動作（例如職業頁面按下「生產」），因為兩邊操作的
+  // 都是同一個 state.player 物件參考，那個動作會直接在這段 await 空檔把材料扣掉、存檔；
+  // 等 fetchAuctions() 回來後，這裡就會拿著「已經扣過的最新庫存」再扣一次，扣成負數
+  // （這就是玩家回報的材料變成 -4）。修法：緊貼在真正扣庫存之前，用當下最新的
+  // state.player 再驗證一次數量足夠，不足就中止，不再依賴函式最上面那個提早做的檢查。
+  const ownedNow = auctionOwnedQty(state.player, itemType, itemId);
+  if(ownedNow < qty){ showToast(tt('數量不足，無法上架','Not enough quantity to list')); return; }
   auctionAdjustInventory(state.player, itemType, itemId, -qty);
   bumpQuest(state.player, 'auction', 1);
   await savePlayer(state.player);
@@ -10580,6 +11011,7 @@ function renderResonance(body){
     </div>
     <p class="sub" style="margin:10px 0 0;font-size:12px;">${tt(`超級共鳴花費較高，其餘規則相同，但三張史詩會直接卷走獎池的 ${SLOT_SETTINGS.megaJackpotMult} 倍！`, `Mega Resonance costs more with the same rules otherwise, but three Epics take ${SLOT_SETTINGS.megaJackpotMult}x the jackpot pool!`)}</p>
     <p class="sub" style="margin:6px 0 0;font-size:12px;color:var(--muted);">${tt('當你發現自己已登上消費榜一，請記住：真正的賭桌，才是你該遠離的地方。','If you find yourself topping the spending leaderboard, remember: the real gambling table is the one you should stay away from.')}</p>
+    ${LATEST_WIN ? `<p class="sub" style="margin:6px 0 0;font-size:12px;color:var(--gold-bright);">${tt(`👑 上一位頭獎得主：${escapeHtml(LATEST_WIN.nickname||'?')}，獨得 ✦${LATEST_WIN.amount}`, `👑 Last jackpot winner: ${escapeHtml(LATEST_WIN.nickname||'?')}, won ✦${LATEST_WIN.amount}`)}</p>` : ''}
   </div>`;
 
   body.innerHTML = html;
@@ -11315,7 +11747,7 @@ async function renderFarm(body){
 
   let visitingFarm = null, visitingPlayer = null;
   if(state.farmVisiting && friends.includes(state.farmVisiting)){
-    visitingPlayer = await loadPlayer(state.farmVisiting);
+    visitingPlayer = await loadPlayerCached(state.farmVisiting);
     if(visitingPlayer) visitingFarm = ensureFarm(visitingPlayer);
   }
   if(state.farmVisiting && visitingFarm){
@@ -11469,7 +11901,13 @@ async function computeLeaderboards(){
     .sort((a,b)=>b.harvests-a.harvests).slice(0,5);
   const byAuctionVolume = players.map(pl=>({nickname:pl.nickname, volume: (pl.stats && pl.stats.totalAuctionVolume) || 0, trades: (pl.stats && pl.stats.totalAuctionTrades) || 0}))
     .sort((a,b)=>b.volume-a.volume).slice(0,5);
-  return {byCards, byCoins, bySlotSpend, byStreak, byBossDamage, byHarvest, byAuctionVolume, updatedAt: Date.now()};
+  // 完美骰排行榜：每位玩家挑出自己骰子倉庫裡分數最高的一顆（不限是否已裝備），
+  // 用 diceScore() 算分並附上骰子快照本身，讓排行榜可以直接畫出 6 面內容曬骰。
+  const byDiceScore = players.map(pl=>{
+    const best = playerBestDice(pl);
+    return best ? {nickname: pl.nickname, score: best.score, dice: best.dice} : null;
+  }).filter(Boolean).sort((a,b)=>b.score-a.score).slice(0,5);
+  return {byCards, byCoins, bySlotSpend, byStreak, byBossDamage, byHarvest, byAuctionVolume, byDiceScore, updatedAt: Date.now()};
 }
 async function fetchLeaderboards(){
   try{
@@ -11485,16 +11923,39 @@ async function fetchLeaderboards(){
 }
 async function renderLeaderboard(body){
   body.innerHTML = `<div class="loading-line">${tt('讀取排行榜中...','Loading leaderboard...')}</div>`;
-  const {byCards, byCoins, bySlotSpend, byStreak, byBossDamage, byHarvest, byAuctionVolume} = await fetchLeaderboards();
+  const {byCards, byCoins, bySlotSpend, byStreak, byBossDamage, byHarvest, byAuctionVolume, byDiceScore} = await fetchLeaderboards();
   // 部署後 3 分鐘快取期內，舊快取資料可能還沒有這個新欄位，補一個空陣列避免整頁掛掉
   const safeAuctionVolume = byAuctionVolume || [];
+  const safeDiceScore = byDiceScore || [];
 
-  refreshTitleHoldersFromLeaderboards(byCoins, byCards, bySlotSpend, byStreak, byBossDamage, byHarvest, byAuctionVolume).catch(()=>{});
+  refreshTitleHoldersFromLeaderboards(byCoins, byCards, bySlotSpend, byStreak, byBossDamage, byHarvest, byAuctionVolume, byDiceScore).catch(()=>{});
 
   const medal = i => i===0?'🥇':i===1?'🥈':i===2?'🥉':`#${i+1}`;
   const isMe = nick => state.nickname && nick.toLowerCase()===state.nickname.toLowerCase();
 
-  let html = `<div class="panel">
+  let html = `<div class="panel honor-panel">
+    <span class="honor-ribbon">👑 ${tt('最高榮譽','Highest Honor')}</span>
+    <h2>${t('leaderDiceHeader')}</h2>
+    <p class="sub">${tt('依骰子完美度分數排名：品質、強化等級、基礎攻擊力、6 面數字與效果一起計分，分數愈高愈稀有', 'Ranked by dice perfection score: quality, enhancement level, base ATK, and all 6 faces (numbers + effects) are scored together — higher means rarer')}</p>
+    ${safeDiceScore.length===0 ? `<div class="empty-note">${tt('目前尚無玩家擁有骰子','No player owns a die yet')}</div>` : safeDiceScore.map((pl,i)=>{
+      const meta = DICE_QUALITY_META[pl.dice.quality] || DICE_QUALITY_META.common;
+      const facesHtml = (pl.dice.faces||[]).map(f=>{
+        const rare = f.effect && f.effect.tier === 'rare';
+        return `<span class="dice-slot-chip" style="border-color:${rare?'#ffd76a':meta.color};color:${rare?'#ffd76a':meta.color};${rare?'box-shadow:0 0 8px #ffd76a;':''}">${diceFaceLabel(f)}</span>`;
+      }).join('');
+      return `
+      <div class="listing" style="flex-wrap:wrap;align-items:flex-start;">
+        <div class="left"><div class="icon-box">${medal(i)}</div><div class="meta">
+          <div data-view-profile="${escapeHtml(pl.nickname)}">${escapeHtml(pl.nickname)}${isMe(pl.nickname)?` <span style="color:var(--gold-bright);">(${tt('你','you')})</span>`:''}${nameWithTitlesHtml(pl.nickname)}</div>
+          <div style="margin-top:2px;color:var(--muted);font-size:12px;font-family:'Space Mono',monospace;">${tt('基礎攻擊','Base ATK')} ${pl.dice.baseAttack}　Lv.${pl.dice.level||1}</div>
+          <div style="margin-top:4px;">${facesHtml}</div>
+        </div></div>
+        <div class="right"><span class="price" style="color:${meta.color};">🎲 ${pl.score.toLocaleString()} ${tt('分',' pts')}</span></div>
+      </div>
+    `;}).join('')}
+  </div>`;
+
+  html += `<div class="panel">
     <h2>${t('leaderCollectionHeader')}</h2>
     <p class="sub">${tt('依收藏卡牌總張數排名','Ranked by total cards collected')}</p>
     ${byCards.length===0 ? `<div class="empty-note">${tt('目前尚無玩家資料','No player data yet')}</div>` : byCards.map((pl,i)=>`
