@@ -3878,10 +3878,14 @@ function diceScore(dice){
 }
 
 // 從玩家的整個骰子倉庫（p.dice）挑出分數最高的一顆，用於排行榜「這位玩家的最強骰」。
+// 排行榜資料來自 fetchAllPlayers() 抓回來的「其他玩家」原始存檔，沒有經過 ensureDiceInventory
+// 那一輪還原，faces[].effect 可能還是存檔精簡格式（純 id 字串），這裡先用 resolveDiceFaceEffect
+// 查表換回完整物件（含 label/labelEn），不然排行榜畫面上的效果名稱會顯示成 undefined。
 function playerBestDice(p){
   if(!p || !p.dice) return null;
   let best = null, bestScore = -1;
   Object.values(p.dice).forEach(d=>{
+    if(Array.isArray(d.faces)) d.faces = d.faces.map(f => ({...f, effect: resolveDiceFaceEffect(f.effect)}));
     const {total} = diceScore(d);
     if(total > bestScore){ bestScore = total; best = d; }
   });
@@ -6547,13 +6551,17 @@ function buildExpeditionDurations(tier){
   });
   return durations;
 }
+// 🔺 2026-08：全階成功獎勵（金幣、經驗）統一 +15%，失敗安慰經驗/成功率/卡牌需求不變。
 const EXPEDITION_TIER_BASE = [
-  {id:1, unlockLevel:0,  commonCount:3, uncommonCount:0, rareCount:1, epicCount:1, coinPerMinMin:8,  coinPerMinMax:15, expPerMin:2.00, failExpPerMin:0.60, baseSuccessRate:0.95},
-  {id:2, unlockLevel:2,  commonCount:5, uncommonCount:0, rareCount:1, epicCount:1, coinPerMinMin:11, coinPerMinMax:19, expPerMin:2.60, failExpPerMin:0.78, baseSuccessRate:0.92},
-  {id:3, unlockLevel:4,  commonCount:4, uncommonCount:1, rareCount:1, epicCount:1, coinPerMinMin:15, coinPerMinMax:25, expPerMin:3.40, failExpPerMin:1.02, baseSuccessRate:0.89},
-  {id:4, unlockLevel:6,  commonCount:0, uncommonCount:3, rareCount:1, epicCount:1, coinPerMinMin:20, coinPerMinMax:33, expPerMin:4.40, failExpPerMin:1.32, baseSuccessRate:0.85},
-  {id:5, unlockLevel:8,  commonCount:4, uncommonCount:3, rareCount:1, epicCount:1, coinPerMinMin:27, coinPerMinMax:44, expPerMin:5.70, failExpPerMin:1.71, baseSuccessRate:0.80},
-  {id:6, unlockLevel:10, commonCount:0, uncommonCount:6, rareCount:1, epicCount:1, coinPerMinMin:36, coinPerMinMax:58, expPerMin:7.40, failExpPerMin:2.22, baseSuccessRate:0.74},
+  {id:1, unlockLevel:0,  commonCount:3, uncommonCount:0, rareCount:1, epicCount:1, coinPerMinMin:9,  coinPerMinMax:17, expPerMin:2.30, failExpPerMin:0.60, baseSuccessRate:0.95},
+  {id:2, unlockLevel:2,  commonCount:5, uncommonCount:0, rareCount:1, epicCount:1, coinPerMinMin:13, coinPerMinMax:22, expPerMin:2.99, failExpPerMin:0.78, baseSuccessRate:0.92},
+  {id:3, unlockLevel:4,  commonCount:4, uncommonCount:1, rareCount:1, epicCount:1, coinPerMinMin:17, coinPerMinMax:29, expPerMin:3.91, failExpPerMin:1.02, baseSuccessRate:0.89},
+  {id:4, unlockLevel:6,  commonCount:0, uncommonCount:3, rareCount:1, epicCount:1, coinPerMinMin:23, coinPerMinMax:38, expPerMin:5.06, failExpPerMin:1.32, baseSuccessRate:0.85},
+  {id:5, unlockLevel:8,  commonCount:4, uncommonCount:3, rareCount:1, epicCount:1, coinPerMinMin:31, coinPerMinMax:51, expPerMin:6.56, failExpPerMin:1.71, baseSuccessRate:0.80},
+  {id:6, unlockLevel:10, commonCount:0, uncommonCount:6, rareCount:2, epicCount:2, coinPerMinMin:41, coinPerMinMax:67, expPerMin:8.51, failExpPerMin:2.22, baseSuccessRate:0.74},
+  // Lv.12 上限提高後新增的第 7 階：延續前一階到這一階的成長幅度（coinPerMin ×~1.35、expPerMin ×~1.28），
+  // 卡牌需求把 uncommonCount 再拉高、rareCount 提到 3，成功率延續每階 -5~6% 的節奏。
+  {id:7, unlockLevel:12, commonCount:0, uncommonCount:8, rareCount:3, epicCount:3, coinPerMinMin:55, coinPerMinMax:90, expPerMin:10.93, failExpPerMin:2.85, baseSuccessRate:0.70},
 ];
 const DEFAULT_EXPEDITION_QUESTS = EXPEDITION_TIER_BASE.map(tier=>({
   id: tier.id,
@@ -6736,8 +6744,10 @@ function getExpeditionRequiredCards(p, tier, durationKey){
 }
 // 遠征等級所需的累積經驗值表（EXP_TABLE[n] = 升到 Lv.n 所需的累積經驗）。
 // 最高等級 EXP_MAX_LEVEL 需 >= 所有遠征任務的 unlockLevel（目前最高為 10）。
-const EXP_MAX_LEVEL = 10;
-const EXP_TABLE = [0, 150, 400, 800, 1400, 2200, 3200, 4500, 6200, 8500, 12000];
+// 上限由 10 提高到 12：沿用原本「每級所需經驗差距逐漸放大」的曲線往後延伸兩級
+// （Lv.11 差距 4,700、Lv.12 差距 6,300，跟前面 3,500 的漲幅節奏一致）。
+const EXP_MAX_LEVEL = 12;
+const EXP_TABLE = [0, 150, 400, 800, 1400, 2200, 3200, 4500, 6200, 8500, 12000, 16700, 23000];
 function expeditionNextLevelExp(level){
   return EXP_TABLE[Math.min(level+1, EXP_MAX_LEVEL)];
 }
@@ -6865,6 +6875,23 @@ function autoResolveTimedOutExpeditionEvents(p, exp){
     }
   });
 }
+// 🎲 遠征救援骰：初判失敗時，若玩家 3 個裝備欄都有骰子，允許補丟一次骰子——
+// 開出「豹子」（3 顆同號，萬能面可搭配湊數）就直接把這次失敗逆轉成功，
+// 沒吃到成功率的失敗還有一次翻盤機會。純判定用途，重用 computeNumberCombo
+// 同一套對子/豹子判定邏輯，不消耗骰子/道具，也不影響戰鬥傷害計算。
+// 未裝備滿 3 顆骰子時 eligible:false，直接維持原本的失敗結果。
+function rollExpeditionRescueDice(p){
+  ensureDiceInventory(p);
+  const equippedIds = p.diceSlots.filter(id => id && p.dice[id]);
+  if(equippedIds.length < DICE_EQUIP_SLOTS) return {eligible:false, rescued:false, rolls:[]};
+  const rolls = equippedIds.map(id => {
+    const dice = p.dice[id];
+    const faceIdx = Math.floor(Math.random() * 6);
+    return {face: dice.faces[faceIdx]};
+  });
+  const combo = computeNumberCombo(rolls);
+  return {eligible:true, rescued: combo.tier === 'triple', rolls};
+}
 async function claimExpedition(){
   const p = state.player;
   if(!p) return;
@@ -6901,12 +6928,19 @@ async function claimExpedition(){
     + eventSuccessDelta
     + (exp.starChartSuccessBonus||0)
   ));
-  const success = Math.random() < effectiveRate;
+  let success = Math.random() < effectiveRate;
+  // 🎲 初判失敗時給一次補骰翻盤機會（見 rollExpeditionRescueDice 說明），
+  // 開出豹子直接改判成功，走下面完整的成功結算流程（獎勵/經驗/連勝都正常計算）。
+  const rescue = success ? null : rollExpeditionRescueDice(p);
+  if(rescue && rescue.rescued) success = true;
   p.expedition = null;
 
   let msg;
   const bonusNotes = [];
   let streakBossEncounter = null; // 🐲 這次領獎若觸發連勝加碼 Boss 戰，存這裡供結尾交給 state 顯示
+  if(rescue && rescue.rescued){
+    bonusNotes.push(tt(`🎲補骰逆轉！開出豹子（${rescue.rolls.map(r=>r.face.num).join('·')}），失敗轉成功`, `🎲Dice rescue! Rolled a Triple (${rescue.rolls.map(r=>r.face.num).join('·')}) — turned the failure into a success!`));
+  }
   if(success){
     // 獎勵區間：⚔️武器/💍飾品(既有) + 🎴祝福獎勵區間 + 🗺️事件節點結果，先疊加成一個百分比套用在上下限，
     // 再乘上 🎲 風險等級倍率；💍飾品最後把下限往（疊加後的）上限拉近；成功後再套 🎴祝福/詛咒的成功獎勵倍率、🔥連勝加成。
@@ -6960,6 +6994,9 @@ async function claimExpedition(){
     const bonusSuffix = bonusNotes.length ? `（${bonusNotes.join('、')}）` : '';
     msg = tt(`🧭 遠征成功！獲得 ✦${coins} 金幣、經驗 +${rewardExp}${leveled ? `，遠征等級提升到 Lv.${p.expLevel}！` : ''}${bonusSuffix}`, `🧭 Expedition succeeded! +✦${coins} coins, +${rewardExp} exp${leveled ? `, expedition level up to Lv.${p.expLevel}!` : ''}${bonusSuffix}`);
   } else {
+    if(rescue && rescue.eligible && !rescue.rescued){
+      bonusNotes.push(tt(`🎲補骰未中（${rescue.rolls.map(r=>r.face.num).join('·')}，沒開出豹子）`, `🎲Dice rescue attempt failed (${rescue.rolls.map(r=>r.face.num).join('·')}, no Triple)`));
+    }
     // 🔥 連勝只在「亡命」風險等級 + 8小時時長成功時累計，但只要遠征失敗（不論風險等級／時長），連勝一律中斷歸零
     p.expeditionStreak = 0;
     p.expeditionRecklessStreak = 0;
@@ -7321,7 +7358,8 @@ async function renderExpedition(body){
       const rangeMax = Math.max(boostedMin, boostedMax);
       const effMin = Math.round(Math.min(rangeMax, rangeMin + (rangeMax - rangeMin) * accessoryPct));
       const effMax = Math.round(rangeMax);
-      variantLine = `<p class="sub">🎲 ${tt(`成功率約 ${Math.round(effRate*100)}%`, `~${Math.round(effRate*100)}% success`)}　✦ ${tt(`預估獎勵 ${effMin}–${effMax} 金幣、經驗 +${variant.rewardExp}`, `Est. reward ${effMin}-${effMax} coins, +${variant.rewardExp} exp`)}<br><span style="font-size:11px;color:var(--muted);">${tt('（未包含尚未觸發的遭遇事件效果）','(excludes effects from encounter events not yet triggered)')}</span></p>`;
+      const rescueEligible = p.diceSlots.filter(id => id && p.dice[id]).length >= DICE_EQUIP_SLOTS;
+      variantLine = `<p class="sub">🎲 ${tt(`成功率約 ${Math.round(effRate*100)}%`, `~${Math.round(effRate*100)}% success`)}　✦ ${tt(`預估獎勵 ${effMin}–${effMax} 金幣、經驗 +${variant.rewardExp}`, `Est. reward ${effMin}-${effMax} coins, +${variant.rewardExp} exp`)}<br><span style="font-size:11px;color:var(--muted);">${tt('（未包含尚未觸發的遭遇事件效果）','(excludes effects from encounter events not yet triggered)')}</span>${rescueEligible ? `<br><span style="font-size:11px;color:var(--gold-bright);">${tt('🎲已裝備滿 3 顆骰子：若失敗會補丟一次骰子，開出豹子直接逆轉成功','🎲3 dice equipped: on failure you get one rescue roll — a Triple turns it into a success')}</span>` : ''}</p>`;
     }
     const potionQty = p.professionItems.potion_small||0;
     const rogueLine = (exp.riskLevel && exp.riskLevel !== 'standard') || exp.blessingCurse
