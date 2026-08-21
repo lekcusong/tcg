@@ -753,6 +753,31 @@
     .boss-hero-img{height:440px;object-fit:cover;object-position:center 15%;}
   }
   .boss-portrait-shake{animation:boss-portrait-shake .32s ease-in-out;}
+  /* 幽靈Boss 戰鬥畫面：桌機維持原本順序（幽冥骰符/貢獻點兌換 在上，骰子裝備+攻擊按鍵在下）；
+     手機版把骰子裝備、擲骰動畫、攻擊按鍵挪到血量正下方，幽冥骰符/貢獻點兌換往下移，方便手機一打開就先看到攻擊操作。 */
+  .gb-battle-blocks{display:flex;flex-direction:column;}
+  .gb-talisman-block{order:1;}
+  .gb-dice-block{order:2;}
+  @media (max-width:600px){
+    .gb-talisman-block{order:2;}
+    .gb-dice-block{order:1;}
+  }
+  /* 普通Boss 戰鬥畫面：桌機維持原本順序（擊殺獎勵/擊殺獎池 在上，骰子裝備+擲骰動畫+攻擊按鍵 在下，
+     且骰子裝備→擲骰動畫→攻擊按鍵）；手機版把擲骰動畫、攻擊按鍵、骰子裝備整組挪到血量正下方（且
+     組內順序改成 擲骰動畫→攻擊按鍵→骰子裝備），擊殺獎勵/擊殺獎池往下移。 */
+  .mb-battle-blocks{display:flex;flex-direction:column;}
+  .mb-reward-block{order:1;}
+  .mb-dice-block{order:2;display:flex;flex-direction:column;}
+  .mb-dice-equip{order:1;}
+  .mb-dice-anim{order:2;}
+  .mb-dice-attack{order:3;}
+  @media (max-width:600px){
+    .mb-dice-block{order:1;}
+    .mb-reward-block{order:2;}
+    .mb-dice-anim{order:1;}
+    .mb-dice-attack{order:2;}
+    .mb-dice-equip{order:3;}
+  }
   @keyframes boss-portrait-shake{
     0%,100%{ transform:translate(0,0) rotate(0); }
     20%{ transform:translate(-7px,3px) rotate(-1.6deg); }
@@ -1473,8 +1498,8 @@ const DEFAULT_EXPEDITION_STREAK_BOSS_BASE_HP = 2000;    // 門檻那一場（str
 const DEFAULT_EXPEDITION_STREAK_BOSS_HP_STEP = 300;     // 之後每多連勝 1 次，血量 +這個值
 const DEFAULT_EXPEDITION_STREAK_BOSS_ATTACKS = 3;       // 固定攻擊次數，用完即結算勝負
 const DEFAULT_EXPEDITION_STREAK_BOSS_ESSENCE_BASE = 3;  // 門檻那一場擊退成功的骰子精華獎勵
-const DEFAULT_EXPEDITION_STREAK_BOSS_COIN_BASE = 200;   // 門檻那一場擊退成功額外發放的金幣獎勵
-const DEFAULT_EXPEDITION_STREAK_BOSS_COIN_STEP = 50;    // 之後每多連勝 1 次，金幣獎勵 +這個值
+const DEFAULT_EXPEDITION_STREAK_BOSS_COIN_BASE = 1000;  // 門檻那一場擊退成功額外發放的金幣獎勵
+const DEFAULT_EXPEDITION_STREAK_BOSS_COIN_STEP = 500;   // 之後每多連勝 1 次，金幣獎勵 +這個值
 let EXPEDITION_STREAK_BOSS_TRIGGER = DEFAULT_EXPEDITION_STREAK_BOSS_TRIGGER;
 let EXPEDITION_STREAK_BOSS_BASE_HP = DEFAULT_EXPEDITION_STREAK_BOSS_BASE_HP;
 let EXPEDITION_STREAK_BOSS_HP_STEP = DEFAULT_EXPEDITION_STREAK_BOSS_HP_STEP;
@@ -1518,6 +1543,17 @@ function drawExpeditionBlessingCurseCards(riskLevel){
 // ---------- 階段三：進行中頁面——事件節點觸發與互動 ----------
 // 派遣當下就依這趟的時長，照 EXPEDITION_EVENT_SCHEDULE 的進度百分比排好節點時刻表；
 // 每個節點觸發時是「選擇型」還是「戰鬥型」各 50% 機率隨機決定，內容也隨機從對應池子抽一個。
+// 🐛 共用修正：任何會改變 exp.readyAt 的效果（小藥水縮時、選擇型節點的時間增減、額外祝福卡
+// 的時長效果）都要連帶把「還沒解決」的事件節點觸發時間往同方向移動同樣的量，否則節點的
+// triggerAt（派遣當下依原始總時長算好的絕對時間戳）會跟縮短/延長後的剩餘時間脫節——縮時
+// 縮到 readyAt 追過 triggerAt 時，節點會在玩家還沒看到互動面板前就被 claimExpedition 的
+// 逾時安全結算吃掉，看起來就像「事件節點沒有觸發」。
+function shiftUnresolvedExpeditionEventTriggers(exp, deltaMs){
+  if(!exp || !deltaMs || !Array.isArray(exp.events)) return;
+  exp.events.forEach(ev=>{
+    if(!ev.resolved) ev.triggerAt -= deltaMs;
+  });
+}
 function buildExpeditionEventSchedule(durationKey, startAt, durationMs){
   const points = EXPEDITION_EVENT_SCHEDULE[durationKey] || [];
   return points.map((pct, idx)=>{
@@ -1549,7 +1585,9 @@ function resolveExpeditionEventOption(p, event, optionId){
   }
   if(opt.remainingTimePctDelta){
     const remaining = Math.max(0, p.expedition.readyAt - Date.now());
+    const prevReadyAt = p.expedition.readyAt;
     p.expedition.readyAt = Date.now() + Math.max(0, Math.round(remaining * (1+opt.remainingTimePctDelta)));
+    shiftUnresolvedExpeditionEventTriggers(p.expedition, prevReadyAt - p.expedition.readyAt);
   }
   const extraBlessingsApplied = [];
   if(opt.extraBlessingDraw){
@@ -1562,7 +1600,9 @@ function resolveExpeditionEventOption(p, event, optionId){
       if(typeof card.rewardRangePctDelta === 'number') rewardPctDelta += card.rewardRangePctDelta;
       if(typeof card.durationPctDelta === 'number'){
         const remaining2 = Math.max(0, p.expedition.readyAt - Date.now());
+        const prevReadyAt2 = p.expedition.readyAt;
         p.expedition.readyAt = Date.now() + Math.max(0, Math.round(remaining2 * (1+card.durationPctDelta)));
+        shiftUnresolvedExpeditionEventTriggers(p.expedition, prevReadyAt2 - p.expedition.readyAt);
       }
     }
   }
@@ -5290,47 +5330,57 @@ function renderBoss(body){
       })() : ''}
       <div class="countdown" style="margin-bottom:10px;">${tt('本輪已造成傷害','Damage this cycle')}：<b style="color:var(--gold-bright);">${(boss.cycleDamage||0).toLocaleString()}</b></div>
       ${(boss.comboStreak||0) > 0 ? `<div class="countdown" style="margin-bottom:10px;">🔥 ${tt('連擊中','Combo streak')}：<b style="color:var(--gold-bright);">×${boss.comboStreak}</b>　（${tt('下次攻擊加成','next hit bonus')} +${Math.round(Math.min((boss.comboStreak||0) * BOSS_COMBO_STREAK_BONUS_PER_HIT, BOSS_COMBO_STREAK_CAP) * 100)}%）</div>` : ''}
-      <div style="border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:10px;display:flex;flex-direction:column;gap:4px;background:rgba(139,107,209,0.06);">
-        <div class="countdown">🎁 ${tt('擊殺獎勵','Kill Reward')}（${tt('基礎','base')}）：<b style="color:var(--gold-bright);">✦${bossCurrentBaseReward(boss.cycle).coins}</b></div>
-        <div class="countdown">🏆 ${tt('擊殺獎池','Kill Bonus Pool')}（${tt('全額入袋','all yours')}）：<b style="color:var(--gold-bright);">✦${bossCurrentBonusPool(boss.cycle).coins.toLocaleString()}</b></div>
-        <div class="countdown">💠 ${tt('破階精華','Per-stage Essence')}：<b style="color:var(--gold-bright);">${bossCurrentStageEssence(boss.cycle)}</b>　|　💠 ${tt('通關加碼','Clear bonus')}：<b style="color:var(--gold-bright);">${bossCurrentClearEssence(boss.cycle)}</b></div>
+      <div class="mb-battle-blocks">
+        <div class="mb-reward-block">
+          <div style="border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:10px;display:flex;flex-direction:column;gap:4px;background:rgba(139,107,209,0.06);">
+            <div class="countdown">🎁 ${tt('擊殺獎勵','Kill Reward')}（${tt('基礎','base')}）：<b style="color:var(--gold-bright);">✦${bossCurrentBaseReward(boss.cycle).coins}</b></div>
+            <div class="countdown">🏆 ${tt('擊殺獎池','Kill Bonus Pool')}（${tt('全額入袋','all yours')}）：<b style="color:var(--gold-bright);">✦${bossCurrentBonusPool(boss.cycle).coins.toLocaleString()}</b></div>
+            <div class="countdown">💠 ${tt('破階精華','Per-stage Essence')}：<b style="color:var(--gold-bright);">${bossCurrentStageEssence(boss.cycle)}</b>　|　💠 ${tt('通關加碼','Clear bonus')}：<b style="color:var(--gold-bright);">${bossCurrentClearEssence(boss.cycle)}</b></div>
+          </div>
+        </div>
+        <div class="mb-dice-block">
+          <div class="mb-dice-equip">
+            ${(()=>{
+              const equipped = p.diceSlots.map(id => id ? p.dice[id] : null);
+              const equippedCount = equipped.filter(Boolean).length;
+              const slotsHtml = equipped.map((dice, i) => {
+                if(!dice){
+                  return `<span class="dice-slot-chip" style="border-style:dashed;color:var(--muted);">${tt(`骰${i+1}：未裝備`, `Die ${i+1}: empty`)}</span>`;
+                }
+                const meta = DICE_QUALITY_META[dice.quality];
+                return `<span class="dice-slot-chip" style="border-color:${meta.color};color:${meta.color};">
+                  <span class="dice-slot-swatch" style="background:${meta.color};"></span>
+                  ${tt(meta.label, meta.labelEn)} · ${tt('基礎','ATK')}${dice.baseAttack}
+                </span>`;
+              }).join('');
+              const lastRoll = state.bossLastAttack;
+              const lastRollComboHtml = lastRoll && lastRoll.comboTier === 'triple' ? tt('　🎯豹子×2','　🎯Triple×2')
+                : lastRoll && lastRoll.comboTier === 'pair' ? tt(`　✌️對子×${DICE_COMBO_MULT.pair}`, `　✌️Pair×${DICE_COMBO_MULT.pair}`) : '';
+              const lastRollQualityComboHtml = lastRoll && lastRoll.qualityComboTier === 'triple' ? tt(`　🔷品質豹子×${DICE_QUALITY_COMBO_MULT.triple}`, `　🔷Quality Triple×${DICE_QUALITY_COMBO_MULT.triple}`)
+                : lastRoll && lastRoll.qualityComboTier === 'pair' ? tt(`　🔷品質對子×${DICE_QUALITY_COMBO_MULT.pair}`, `　🔷Quality Pair×${DICE_QUALITY_COMBO_MULT.pair}`) : '';
+              const lastRollStreakHtml = lastRoll && lastRoll.comboStreakBonus > 0 ? tt(`　🔥連擊+${Math.round(lastRoll.comboStreakBonus*100)}%`, `　🔥Streak+${Math.round(lastRoll.comboStreakBonus*100)}%`) : '';
+              const lastRollEventHtml = lastRoll && lastRoll.eventApplied ? (()=>{
+                const eMeta = BOSS_EVENT_TYPES.find(e => e.id === lastRoll.eventApplied.id);
+                return eMeta ? `　${eMeta.icon}${tt(eMeta.labelZh, eMeta.labelEn)}` : '';
+              })() : '';
+              const lastRollHtml = (lastRoll && lastRoll.rolls) ? `<div class="countdown" style="margin-top:6px;">${tt('上次擲骰','Last roll')}：${lastRoll.rolls.map(r=>r.face.num).join(' · ')}${lastRollComboHtml}${lastRollQualityComboHtml}${lastRollStreakHtml}${lastRoll.isCrit ? tt('　💥暴擊','　💥Crit') : ''}${lastRollEventHtml}</div>` : '';
+              return `<div style="border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:10px;display:flex;flex-direction:column;gap:6px;">
+                <div class="countdown">🎲 ${tt('已裝備骰子','Equipped dice')}：</div>
+                <div>${slotsHtml}</div>
+                ${equippedCount===0 ? `<div class="countdown" style="color:var(--danger);">${tt('尚未裝備骰子，請先到「骰子」分頁裝備','No dice equipped — equip in the Dice tab first')}</div>` : ''}
+                ${lastRollHtml}
+              </div>`;
+            })()}
+          </div>
+          <!-- 🎲 上次擲骰的骰子畫面：整頁重繪（renderTab）不會再把它換成空白容器——
+               有上次結果時直接用 renderSettledDiceHtml 原樣畫出來、保持可見，直到玩家
+               按下一次攻擊、playDiceRollAnimation 重新接管這個容器為止。 -->
+          <div id="dice-roll-anim" class="dice-roll-anim mb-dice-anim" style="${state.bossLastAttack && state.bossLastAttack.rolls ? '' : 'display:none;'}">${state.bossLastAttack && state.bossLastAttack.rolls ? renderSettledDiceHtml(state.bossLastAttack.rolls, state.bossLastAttack.comboTier, state.bossLastAttack.qualityComboTier, state.bossLastAttack.allWild, state.bossLastAttack.isCrit) : ''}</div>
+          <div class="mb-dice-attack">
+            <button class="btn" id="boss-burst-btn" ${(p.coins < BOSS_COIN_COST) ? 'disabled' : ''}>${tt(`🎲 擲骰攻擊（消耗✦${BOSS_COIN_COST}）`, `🎲 Dice Attack (✦${BOSS_COIN_COST})`)}</button>
+          </div>
+        </div>
       </div>
-      ${(()=>{
-        const equipped = p.diceSlots.map(id => id ? p.dice[id] : null);
-        const equippedCount = equipped.filter(Boolean).length;
-        const slotsHtml = equipped.map((dice, i) => {
-          if(!dice){
-            return `<span class="dice-slot-chip" style="border-style:dashed;color:var(--muted);">${tt(`骰${i+1}：未裝備`, `Die ${i+1}: empty`)}</span>`;
-          }
-          const meta = DICE_QUALITY_META[dice.quality];
-          return `<span class="dice-slot-chip" style="border-color:${meta.color};color:${meta.color};">
-            <span class="dice-slot-swatch" style="background:${meta.color};"></span>
-            ${tt(meta.label, meta.labelEn)} · ${tt('基礎','ATK')}${dice.baseAttack}
-          </span>`;
-        }).join('');
-        const lastRoll = state.bossLastAttack;
-        const lastRollComboHtml = lastRoll && lastRoll.comboTier === 'triple' ? tt('　🎯豹子×2','　🎯Triple×2')
-          : lastRoll && lastRoll.comboTier === 'pair' ? tt(`　✌️對子×${DICE_COMBO_MULT.pair}`, `　✌️Pair×${DICE_COMBO_MULT.pair}`) : '';
-        const lastRollQualityComboHtml = lastRoll && lastRoll.qualityComboTier === 'triple' ? tt(`　🔷品質豹子×${DICE_QUALITY_COMBO_MULT.triple}`, `　🔷Quality Triple×${DICE_QUALITY_COMBO_MULT.triple}`)
-          : lastRoll && lastRoll.qualityComboTier === 'pair' ? tt(`　🔷品質對子×${DICE_QUALITY_COMBO_MULT.pair}`, `　🔷Quality Pair×${DICE_QUALITY_COMBO_MULT.pair}`) : '';
-        const lastRollStreakHtml = lastRoll && lastRoll.comboStreakBonus > 0 ? tt(`　🔥連擊+${Math.round(lastRoll.comboStreakBonus*100)}%`, `　🔥Streak+${Math.round(lastRoll.comboStreakBonus*100)}%`) : '';
-        const lastRollEventHtml = lastRoll && lastRoll.eventApplied ? (()=>{
-          const eMeta = BOSS_EVENT_TYPES.find(e => e.id === lastRoll.eventApplied.id);
-          return eMeta ? `　${eMeta.icon}${tt(eMeta.labelZh, eMeta.labelEn)}` : '';
-        })() : '';
-        const lastRollHtml = (lastRoll && lastRoll.rolls) ? `<div class="countdown" style="margin-top:6px;">${tt('上次擲骰','Last roll')}：${lastRoll.rolls.map(r=>r.face.num).join(' · ')}${lastRollComboHtml}${lastRollQualityComboHtml}${lastRollStreakHtml}${lastRoll.isCrit ? tt('　💥暴擊','　💥Crit') : ''}${lastRollEventHtml}</div>` : '';
-        return `<div style="border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:10px;display:flex;flex-direction:column;gap:6px;">
-          <div class="countdown">🎲 ${tt('已裝備骰子','Equipped dice')}：</div>
-          <div>${slotsHtml}</div>
-          ${equippedCount===0 ? `<div class="countdown" style="color:var(--danger);">${tt('尚未裝備骰子，請先到「骰子」分頁裝備','No dice equipped — equip in the Dice tab first')}</div>` : ''}
-          ${lastRollHtml}
-        </div>`;
-      })()}
-      <!-- 🎲 上次擲骰的骰子畫面：整頁重繪（renderTab）不會再把它換成空白容器——
-           有上次結果時直接用 renderSettledDiceHtml 原樣畫出來、保持可見，直到玩家
-           按下一次攻擊、playDiceRollAnimation 重新接管這個容器為止。 -->
-      <div id="dice-roll-anim" class="dice-roll-anim" style="${state.bossLastAttack && state.bossLastAttack.rolls ? '' : 'display:none;'}">${state.bossLastAttack && state.bossLastAttack.rolls ? renderSettledDiceHtml(state.bossLastAttack.rolls, state.bossLastAttack.comboTier, state.bossLastAttack.qualityComboTier, state.bossLastAttack.allWild, state.bossLastAttack.isCrit) : ''}</div>
-      <button class="btn" id="boss-burst-btn" ${(p.coins < BOSS_COIN_COST) ? 'disabled' : ''}>${tt(`🎲 擲骰攻擊（消耗✦${BOSS_COIN_COST}）`, `🎲 Dice Attack (✦${BOSS_COIN_COST})`)}</button>
     </div>`;
     if(myGen !== bossRenderGen) return; // 已經有更新的一次 renderBoss 呼叫了，這份是過期結果，丟棄不寫 DOM
     const bossScrollY = window.scrollY;
@@ -5499,15 +5549,21 @@ function renderGhostBoss(body){
       <div class="countdown" style="text-align:center;margin-bottom:12px;">${Math.max(0,boss.hp).toLocaleString()} / ${boss.maxHp.toLocaleString()} HP</div>
       <div class="countdown" style="margin-bottom:10px;">${tt('本輪已造成傷害','Damage this cycle')}：<b style="color:var(--gold-bright);">${(boss.cycleDamage||0).toLocaleString()}</b></div>
       ${(boss.comboStreak||0) > 0 ? `<div class="countdown" style="margin-bottom:10px;">🔥 ${tt('連擊中','Combo streak')}：<b style="color:var(--gold-bright);">×${boss.comboStreak}</b>　（${tt('下次攻擊加成','next hit bonus')} +${Math.round(Math.min((boss.comboStreak||0) * BOSS_COMBO_STREAK_BONUS_PER_HIT, BOSS_COMBO_STREAK_CAP) * 100)}%）</div>` : ''}
-      ${talismanHtml}
-      <div style="border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:10px;display:flex;flex-direction:column;gap:6px;">
-        <div class="countdown">🎲 ${tt('已裝備骰子','Equipped dice')}：</div>
-        <div>${slotsHtml}</div>
-        ${equippedCount===0 ? `<div class="countdown" style="color:var(--danger);">${tt('尚未裝備骰子，請先到「骰子」分頁裝備','No dice equipped — equip in the Dice tab first')}</div>` : ''}
-        ${lastRollHtml}
+      <div class="gb-battle-blocks">
+        <div class="gb-talisman-block">
+          ${talismanHtml}
+        </div>
+        <div class="gb-dice-block">
+          <div style="border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:10px;display:flex;flex-direction:column;gap:6px;">
+            <div class="countdown">🎲 ${tt('已裝備骰子','Equipped dice')}：</div>
+            <div>${slotsHtml}</div>
+            ${equippedCount===0 ? `<div class="countdown" style="color:var(--danger);">${tt('尚未裝備骰子，請先到「骰子」分頁裝備','No dice equipped — equip in the Dice tab first')}</div>` : ''}
+            ${lastRollHtml}
+          </div>
+          <div id="ghost-dice-roll-anim" class="dice-roll-anim" style="${state.ghostBossLastAttack && state.ghostBossLastAttack.rolls ? '' : 'display:none;'}">${state.ghostBossLastAttack && state.ghostBossLastAttack.rolls ? renderSettledDiceHtml(state.ghostBossLastAttack.rolls, state.ghostBossLastAttack.comboTier, state.ghostBossLastAttack.qualityComboTier, state.ghostBossLastAttack.allWild, state.ghostBossLastAttack.isCrit) : ''}</div>
+          <button class="btn" id="ghost-boss-burst-btn" ${(p.coins < GHOST_BOSS_COIN_COST) ? 'disabled' : ''}>${tt(`🎲 擲骰攻擊（消耗✦${GHOST_BOSS_COIN_COST}）`, `🎲 Dice Attack (✦${GHOST_BOSS_COIN_COST})`)}</button>
+        </div>
       </div>
-      <div id="ghost-dice-roll-anim" class="dice-roll-anim" style="${state.ghostBossLastAttack && state.ghostBossLastAttack.rolls ? '' : 'display:none;'}">${state.ghostBossLastAttack && state.ghostBossLastAttack.rolls ? renderSettledDiceHtml(state.ghostBossLastAttack.rolls, state.ghostBossLastAttack.comboTier, state.ghostBossLastAttack.qualityComboTier, state.ghostBossLastAttack.allWild, state.ghostBossLastAttack.isCrit) : ''}</div>
-      <button class="btn" id="ghost-boss-burst-btn" ${(p.coins < GHOST_BOSS_COIN_COST) ? 'disabled' : ''}>${tt(`🎲 擲骰攻擊（消耗✦${GHOST_BOSS_COIN_COST}）`, `🎲 Dice Attack (✦${GHOST_BOSS_COIN_COST})`)}</button>
     </div>`;
     if(myGen !== ghostBossRenderGen) return;
     const scrollY3 = window.scrollY;
@@ -5765,8 +5821,9 @@ const DEFAULT_SLOT_SETTINGS = {
   multCommon: 2,
   multUncommon: 5,
   multRare: 15,
-  contribRate: 10,   // 百分比，未中獎時投入獎池
-  jackpotBase: 200,  // 中頭獎後獎池重置的保底金額
+  contribRate: 20,   // 百分比，未中獎時投入獎池；共鳴一次／超級共鳴用同一個比例，
+                      // 且會「各抽一份」：一份存入「三牌共鳴」獎池，另一份存入「幸運之星」獎池（兩池各自獨立累積）
+  jackpotBase: 200,  // 中頭獎後「三牌共鳴」獎池重置的保底金額
   megaCost: 1000,       // 「超級共鳴」每次花費
   megaJackpotMult: 5,   // 「超級共鳴」中頭獎（三張史詩）時，拿走的獎池倍率
 };
@@ -5830,16 +5887,24 @@ async function syncSlotJackpot(){
 // ---------- 每日星運之星（塔羅樂透） ----------
 // 玩法：GMT+8 每天固定時間鎖定，系統從 78 張塔羅牌中「均勻隨機」抽出 1 張幸運卡；
 // 凡是在鎖定前已完成「今日塔羅指引」抽卡、且三張牌其中含有幸運卡的玩家都算中獎。
-// 鎖定當下把「三牌共鳴」目前的獎池整包搬進本輪獎池、共鳴獎池歸零重置回保底金額；
-// 公布時平分給所有中獎者。跟其餘「排程」行為一樣，這個 app 沒有後端 cron，所有時間判定
+// 幸運之星有自己獨立的獎池（FORTUNE_STAR_JACKPOT），跟「三牌共鳴」獎池（SLOT_JACKPOT）
+// 分開累積：共鳴一次／超級共鳴每次沒中獎時，會依各自獨立設定的抽成比例
+// （SLOT_SETTINGS.contribRate／FORTUNE_STAR_SETTINGS.contribRate）分別存入這兩個獎池，
+// 彼此互不影響（不再是幸運之星整包搬走共鳴獎池）。
+// 鎖定當下把「幸運之星」自己的獎池金額鎖定為本輪獎金、幸運之星獎池歸零重置；
+// 公布時平分給所有中獎者，無人中獎或除不盡的餘數則留在幸運之星獎池累加到下一輪。
+// 跟其餘「排程」行為一樣，這個 app 沒有後端 cron，所有時間判定
 // 都是靠「剛好有玩家在那個時間點之後打開/操作 app」時順便觸發並寫回共用 storage
 // （沒有玩家在線時會延遲到下一個有人上線的時刻才補觸發）。
 const DEFAULT_FORTUNE_STAR_SETTINGS = {
   enabled: true,
   lockHour: 20, lockMinute: 0,     // GMT+8 鎖定時間（預設 8:00pm）
   revealHour: 22, revealMinute: 0, // GMT+8 公布時間（預設 10:00pm）
+  contribRate: 20,   // 百分比，未中獎時投入幸運之星獎池；跟三牌共鳴的 contribRate 各自獨立設定
 };
 let FORTUNE_STAR_SETTINGS = {...DEFAULT_FORTUNE_STAR_SETTINGS};
+// 幸運之星自己獨立的獎池（不再共用「三牌共鳴」的 SLOT_JACKPOT）
+let FORTUNE_STAR_JACKPOT = 0;
 async function loadFortuneStarConfig(){
   try{
     const r = await storage.get('config:fortunestar_settings');
@@ -5851,10 +5916,33 @@ async function loadFortuneStarConfig(){
       });
     }
   }catch(e){ /* keep defaults */ }
+  try{
+    const r2 = await storage.get('config:fortunestar_jackpot');
+    if(r2){
+      const v = parseFloat(r2.value);
+      if(!isNaN(v) && v >= 0) FORTUNE_STAR_JACKPOT = v;
+    }
+  }catch(e){ /* keep default */ }
 }
 async function saveFortuneStarSettings(newSettings){
   FORTUNE_STAR_SETTINGS = {...newSettings};
   await storage.set('config:fortunestar_settings', JSON.stringify(FORTUNE_STAR_SETTINGS));
+}
+async function saveFortuneStarJackpot(newValue){
+  FORTUNE_STAR_JACKPOT = newValue;
+  await storage.set('config:fortunestar_jackpot', JSON.stringify(FORTUNE_STAR_JACKPOT));
+}
+// 跟 syncSlotJackpot 同樣道理：讀取／疊加幸運之星獎池前先重新抓一次最新值，
+// 縮短「讀舊值→算新值→寫回」之間的競態窗口。
+async function syncFortuneStarJackpot(){
+  try{
+    const r = await storage.get('config:fortunestar_jackpot');
+    if(r){
+      const v = parseFloat(r.value);
+      if(!isNaN(v) && v >= 0){ FORTUNE_STAR_JACKPOT = v; return v; }
+    }
+  }catch(e){ /* 抓不到就先沿用目前記憶體裡的值 */ }
+  return FORTUNE_STAR_JACKPOT;
 }
 // 用「絕對 UTC 毫秒數 + 8 小時」再取 getUTC* 的方式換算 GMT+8 的年月日/時分，
 // 不受玩家瀏覽器所在時區影響，確保全服玩家看到的鎖定/公布時間點一致。
@@ -5938,13 +6026,14 @@ async function lockFortuneStarRound(dateStr){
     if(existing && existing.phase !== 'open'){
       return existing;
     }
-    await syncSlotJackpot();
+    await syncFortuneStarJackpot();
     const entries = await listFortuneStarEntries(dateStr);
     const lucky = DECK[Math.floor(Math.random()*DECK.length)]; // 均勻隨機，不套用稀有度加權
-    const pool = SLOT_JACKPOT;
+    const pool = FORTUNE_STAR_JACKPOT;
     const round = {date: dateStr, phase:'locked', pool, luckyCardId: lucky.id, participantCount: entries.length, lockedAt: Date.now()};
     await saveFortuneStarRound(dateStr, round);
-    await saveSlotJackpot(SLOT_SETTINGS.jackpotBase);
+    // 幸運之星獎池歸零重置，重新從下一輪的抽成累積（不影響「三牌共鳴」自己的獎池）
+    await saveFortuneStarJackpot(0);
     return round;
   }catch(e){ return null; }
 }
@@ -5971,11 +6060,12 @@ async function revealFortuneStarRound(dateStr, round){
       // 徽章解鎖統計獨立於分潤金額，即使獎池被瓜分到每人 0 元，中獎紀錄仍然算數
       await Promise.all(winners.map(w=>createPendingReward(w.nickname, 'stat_bump', {statKey:'totalFortuneStarWins', amount:1})));
       winnerPayload = winners.map(w=>({nickname: w.nickname, amount: share}));
-      if(remainder > 0){ await syncSlotJackpot(); await saveSlotJackpot(SLOT_JACKPOT + remainder); }
+      // 除不盡的餘數留在幸運之星自己的獎池，累加到下一輪，不會憑空消失
+      if(remainder > 0){ await syncFortuneStarJackpot(); await saveFortuneStarJackpot(FORTUNE_STAR_JACKPOT + remainder); }
     } else if(round.pool > 0){
-      // 無人中獎：獎池退回共鳴獎池，不會憑空消失
-      await syncSlotJackpot();
-      await saveSlotJackpot(SLOT_JACKPOT + round.pool);
+      // 無人中獎：獎池退回幸運之星自己的獎池，累加到下一輪（不會流回「三牌共鳴」獎池）
+      await syncFortuneStarJackpot();
+      await saveFortuneStarJackpot(FORTUNE_STAR_JACKPOT + round.pool);
     }
     const newRound = {...round, phase:'revealed', winners: winnerPayload, revealedAt: Date.now()};
     await saveFortuneStarRound(dateStr, newRound);
@@ -7801,7 +7891,9 @@ async function usePotionOnExpedition(){
     return;
   }
   p.professionItems.potion_small -= 1;
+  const prevReadyAt = exp.readyAt;
   exp.readyAt = Math.max(floorAt, exp.readyAt - reduceMs);
+  shiftUnresolvedExpeditionEventTriggers(exp, prevReadyAt - exp.readyAt);
   exp.potionMinutesUsed = (exp.potionMinutesUsed||0) + POTION_EXPEDITION_MINUTES;
   await savePlayer(p);
   const nowReady = Date.now() >= exp.readyAt;
@@ -9453,45 +9545,10 @@ function showAnnounceModal(ann){
 }
 
 // ---------- Daily login popup image (shown once per calendar day per player) ----------
-let DAILY_POPUP_IMAGE_URL = null; // dataURL uploaded by GM, or null = use default local daily-popup.png
-let DAILY_POPUP_META = null; // {updatedAt, updatedBy}
-let DAILY_POPUP_DISABLED = false; // GM 可完全關閉彈窗，不顯示任何圖片
-async function loadDailyPopupImage(){
-  try{
-    const r = await storage.get('config:daily-popup');
-    if(r){
-      const cfg = JSON.parse(r.value);
-      DAILY_POPUP_IMAGE_URL = cfg.dataUrl || null;
-      DAILY_POPUP_DISABLED = !!cfg.disabled;
-      DAILY_POPUP_META = {updatedAt: cfg.updatedAt, updatedBy: cfg.updatedBy};
-    } else {
-      DAILY_POPUP_IMAGE_URL = null;
-      DAILY_POPUP_DISABLED = false;
-      DAILY_POPUP_META = null;
-    }
-  }catch(e){ /* keep previous value */ }
-}
-async function saveDailyPopupImage(dataUrl){
-  const cfg = {dataUrl, disabled:false, updatedAt: Date.now(), updatedBy: state.nickname};
-  await storage.set('config:daily-popup', JSON.stringify(cfg));
-  DAILY_POPUP_IMAGE_URL = dataUrl;
-  DAILY_POPUP_DISABLED = false;
-  DAILY_POPUP_META = {updatedAt: cfg.updatedAt, updatedBy: cfg.updatedBy};
-  return cfg;
-}
-async function clearDailyPopupImage(){
-  try{ await storage.delete('config:daily-popup'); }catch(e){ /* ignore */ }
-  DAILY_POPUP_IMAGE_URL = null;
-  DAILY_POPUP_DISABLED = false;
-  DAILY_POPUP_META = null;
-}
-async function setDailyPopupDisabled(disabled){
-  const cfg = {dataUrl: DAILY_POPUP_IMAGE_URL, disabled, updatedAt: Date.now(), updatedBy: state.nickname};
-  await storage.set('config:daily-popup', JSON.stringify(cfg));
-  DAILY_POPUP_DISABLED = disabled;
-  DAILY_POPUP_META = {updatedAt: cfg.updatedAt, updatedBy: cfg.updatedBy};
-}
+// 🖼 圖片一律讀 GitHub repo 裡的 daily-popup.png（見 showDailyPopupIfNeeded），
+// 舊版「後台上傳自訂圖片／停用彈窗」的資料庫覆蓋機制已移除，換圖直接上傳到 GitHub 即可生效。
 function todayDateStr(){
+
   const d = new Date();
   return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
 }
@@ -9501,11 +9558,11 @@ async function showDailyPopupIfNeeded(){
   if(!p || !overlay) return;
   const today = todayDateStr();
   if(p.lastDailyPopupDate === today) return;
-  await loadDailyPopupImage().catch(()=>{}); // 確保拿到 GM 最新設定（圖片或停用狀態）
-  if(DAILY_POPUP_DISABLED) return; // GM 已停用彈窗，不顯示任何圖片
+  // 🖼 GM 後台的自訂上傳/停用面板已移除，圖片一律直接讀 GitHub repo 裡的 daily-popup.png，
+  // 不再理會資料庫裡可能殘留的舊自訂圖片設定，避免以後在 GitHub 換圖沒生效。
   return new Promise(resolve=>{
     const imgEl = document.getElementById('daily-popup-img');
-    if(imgEl) imgEl.src = DAILY_POPUP_IMAGE_URL || 'daily-popup.png';
+    if(imgEl) imgEl.src = 'daily-popup.png';
     overlay.style.display = 'flex';
     const okBtn = document.getElementById('daily-popup-ok-btn');
     if(okBtn) okBtn.onclick = async ()=>{
@@ -9516,6 +9573,7 @@ async function showDailyPopupIfNeeded(){
     };
   });
 }
+
 
 // ---------- Boot 診斷：追蹤分頁是否被瀏覽器（尤其 iOS Safari）中途重新載入 ----------
 // 玩家回報「遊戲開著、操作到一半突然跳回登入畫面」，但程式邏輯裡沒有任何主動登出
@@ -9606,7 +9664,6 @@ async function boot(){
   loadQuestSettings().catch(()=>{});
   loadSeedPrices().catch(()=>{});
   loadSeasonConfig().catch(()=>{});
-  loadDailyPopupImage().catch(()=>{});
   loadAvatarShop().catch(()=>{});
   loadStarChartConfig().catch(()=>{});
   loadBossConfig().catch(()=>{});
@@ -9868,12 +9925,14 @@ async function pullSlot(isMega){
   let winAmount = 0;
   let winTier = null;
   let jackpotAfterWin = null;   // 中頭獎時，存檔成功後才要 reset 成的獎池新值
-  let jackpotContribution = null; // 沒中獎時，存檔成功後才要疊加的獎池貢獻
+  let jackpotContribution = null; // 沒中獎時，存檔成功後才要疊加的「三牌共鳴」獎池貢獻
+  let fortuneStarContribution = null; // 沒中獎時，存檔成功後才要疊加的「幸運之星」獎池貢獻（各抽一份，跟共鳴獎池分開累積）
 
-  // 結算前重新同步獎池最新值，避免用這個分頁自己過期的快照
+  // 結算前重新同步兩個獎池最新值，避免用這個分頁自己過期的快照
   // 去計算頭獎金額，或用舊數字疊加抽成蓋掉其他玩家剛存進去的貢獻
   try{
     await syncSlotJackpot();
+    await syncFortuneStarJackpot();
   }catch(e){
     showToast(tt('連線異常，請稍後再試','Connection issue, please try again later'));
     unlockSlotButtons();
@@ -9904,8 +9963,11 @@ async function pullSlot(isMega){
     winTier = 'common';
     winMsg = tt(`✨ 三張普通共鳴！獲得 ✦${winAmount} 金幣`, `✨ Three Common Resonance! Won ✦${winAmount} coins`);
   } else {
+    // 沒中獎：兩個獨立獎池「各抽一份」，比例各自獨立設定（共鳴一次／超級共鳴都用同一組比例）
     const contrib = Math.round(cost * SLOT_SETTINGS.contribRate / 100);
+    const fsContrib = Math.round(cost * FORTUNE_STAR_SETTINGS.contribRate / 100);
     jackpotContribution = SLOT_JACKPOT + contrib;
+    fortuneStarContribution = FORTUNE_STAR_JACKPOT + fsContrib;
   }
 
   // 把這次結果套用到本地玩家物件，準備存檔；下面若存檔失敗會整組復原。
@@ -9939,6 +10001,7 @@ async function pullSlot(isMega){
       broadcastJackpotWin(state.nickname, winAmount).catch(()=>{});
     } else if(jackpotContribution !== null){
       await saveSlotJackpot(jackpotContribution);
+      if(fortuneStarContribution !== null) await saveFortuneStarJackpot(fortuneStarContribution);
     }
   }catch(e){
     // 存檔失敗：整組復原本地狀態，不套用任何本次抽卡效果，提示玩家重試
@@ -10033,8 +10096,10 @@ function initSlotJackpotPoll(){
     if(document.visibilityState !== 'visible') return; // 背景分頁不輪詢
     if(!state.nickname) return;
     const before = SLOT_JACKPOT;
+    const fsBefore = FORTUNE_STAR_JACKPOT;
     await syncSlotJackpot();
-    if(SLOT_JACKPOT !== before && state.tab === 'resonance'){
+    await syncFortuneStarJackpot();
+    if((SLOT_JACKPOT !== before || FORTUNE_STAR_JACKPOT !== fsBefore) && (state.tab === 'resonance' || state.tab === 'home')){
       renderTab();
     }
   };
@@ -10086,7 +10151,8 @@ function fortuneStarPanelHtml(p){
     // 的人來說，這顆按鈕頂多是多寫一次同樣的資料（key 相同、後寫覆蓋前寫，無副作用）；
     // 對顯示異常但其實還沒被記錄到的人來說，等於補一次正式寫入。
     const showConfirmBtn = !enteredToday && !lockedOutToday;
-    body = `<p class="sub" style="margin:0 0 6px;">${tt(`每天 GMT+8 ${lockLabel} 鎖定名單並將「三牌共鳴」目前獎池整包搬入本輪獎池，${revealLabel} 公布幸運卡與得獎名單。`, `Locks the entry list at ${lockLabel} GMT+8 daily, moving the entire Resonance jackpot into this round's pool - the lucky card and winners are revealed at ${revealLabel} GMT+8.`)}</p>
+    body = `<p class="sub" style="margin:0 0 6px;">${tt(`每天 GMT+8 ${lockLabel} 鎖定名單並鎖定本輪獎池金額，${revealLabel} 公布幸運卡與得獎名單。`, `Locks the entry list and this round's pool amount at ${lockLabel} GMT+8 daily - the lucky card and winners are revealed at ${revealLabel} GMT+8.`)}</p>
+      <p class="sub" style="margin:0 0 6px;">${tt(`目前累積獎池：<b style="color:var(--gold-bright);">✦ ${FORTUNE_STAR_JACKPOT}</b>`, `Pool building up so far: <b style="color:var(--gold-bright);">✦ ${FORTUNE_STAR_JACKPOT}</b>`)}</p>
       <p class="sub" style="margin:0 0 ${showConfirmBtn ? '10px' : '0'};">${statusLine}</p>
       ${showConfirmBtn ? `<button class="btn small" id="fs-confirm-btn">✋ ${tt('確認參與本輪','Confirm My Entry')}</button>` : ''}`;
   } else if(round.phase === 'locked'){
@@ -10104,7 +10170,7 @@ function fortuneStarPanelHtml(p){
     body = `<p class="sub" style="margin:0 0 6px;">${tt(`⭐ 幸運卡：<b style="color:var(--gold-bright);">${luckyCard ? luckyCard.name : '？'}</b>`, `⭐ Lucky card: <b style="color:var(--gold-bright);">${luckyCard ? luckyCard.name : '?'}</b>`)}</p>
       <p class="sub" style="margin:0 0 6px;">${round.winners && round.winners.length > 0
         ? tt(`🎉 本輪 ${round.winners.length} 位中獎者，每人獲得 ✦${round.winners[0].amount}`, `🎉 ${round.winners.length} winner(s) this round, each receiving ✦${round.winners[0].amount}`)
-        : tt('本輪無人中獎，獎池已退回三牌共鳴獎池','No winners this round - the pool returned to the Resonance jackpot')}</p>
+        : tt('本輪無人中獎，獎池已留在幸運之星獎池累加到下一輪','No winners this round - the pool rolled over to next round\'s Fortune Star jackpot')}</p>
       ${winnerNames ? `<p class="sub" style="margin:0 0 6px;color:var(--gold-bright);">${tt(`👑 ${winnerNames}`, `👑 ${winnerNames}`)}</p>` : ''}
       ${won ? `<p class="sub" style="margin:0;color:var(--gold-bright);">${tt(`✨ 恭喜你中獎了！✦${won.amount} 已送入信箱`, `✨ Congratulations, you won! ✦${won.amount} has been sent to your mailbox`)}</p>` : ''}`;
   }
@@ -12802,34 +12868,8 @@ async function renderGM(body){
   const GM_AUCTIONS_MAX_PAGES = 10;
   const gmAuctions = (await fetchAuctions()).sort((a,b)=>(b.createdAt||0)-(a.createdAt||0)).slice(0, GM_PAGE_SIZE * GM_AUCTIONS_MAX_PAGES);
   const currentAnnouncement = await fetchAnnouncement();
-  await loadDailyPopupImage().catch(()=>{});
 
-  let html = `<div class="panel">
-    <h2>${tt('🖼 每日登入彈窗圖片','🖼 Daily Login Popup Image')}</h2>
-    <p class="sub">${tt('玩家每天第一次登入時會看到這張圖片，按確定後當天不再顯示。上傳新圖片會立即對所有玩家生效','Shown to players the first time they log in each day; dismissing it hides it for the rest of that day. Uploading a new image takes effect immediately for everyone')}</p>
-    ${DAILY_POPUP_IMAGE_URL ? `
-      <div style="max-width:220px;margin-bottom:12px;">
-        <img src="${DAILY_POPUP_IMAGE_URL}" style="width:100%;border-radius:10px;border:1px solid var(--line);display:block;" />
-        <div class="who" style="margin-top:4px;">${tt('自訂圖片','Custom image')}${DAILY_POPUP_META ? ' · ' + timeAgo(DAILY_POPUP_META.updatedAt) : ''}</div>
-      </div>
-    ` : `<div class="empty-note">${tt('目前使用預設圖片（daily-popup.png）','Currently using the default image (daily-popup.png)')}</div>`}
-    ${DAILY_POPUP_DISABLED ? `<div class="empty-note">${tt('⛔ 彈窗目前已停用，玩家登入不會看到任何圖片','⛔ Popup is currently disabled - players will not see any image on login')}</div>` : ''}
-    <div class="form-row">
-      <div style="flex:1;min-width:220px;">
-        <label>${tt('上傳新圖片','Upload new image')}</label>
-        <input type="file" id="gm-daily-popup-file" accept="image/*" />
-        <div class="who" style="margin-top:4px;">${tt('建議檔案小於 1MB，避免玩家登入時載入過慢','Recommend under 1MB so it loads quickly on login')}</div>
-      </div>
-    </div>
-    <div class="form-row">
-      <button class="btn small" id="gm-daily-popup-save-btn">${tt('上傳並發布','Upload & Publish')}</button>
-      <button class="btn small secondary" id="gm-daily-popup-reset-btn">${tt('還原為預設圖片','Reset to Default Image')}</button>
-      ${DAILY_POPUP_DISABLED
-        ? `<button class="btn small" id="gm-daily-popup-enable-btn">${tt('啟用彈窗','Enable Popup')}</button>`
-        : `<button class="btn small secondary" id="gm-daily-popup-disable-btn">${tt('停用彈窗（不顯示任何圖片）','Disable Popup (show nothing)')}</button>`
-      }
-    </div>
-  </div>`;
+  let html = ``;
 
   await loadAvatarShop().catch(()=>{});
   html += `<div class="panel">
@@ -13109,10 +13149,10 @@ async function renderGM(body){
       <div><label>${tt('三稀有倍率','Rare x3 multiplier')}</label><input type="number" id="gm-slot-mult-rare" value="${SLOT_SETTINGS.multRare}" min="0" style="width:70px;" /></div>
     </div>
     <div class="form-row">
-      <div><label>${tt('未中獎抽成 %（存入獎池）','Non-win rake % (into jackpot)')}</label><input type="number" id="gm-slot-contrib" value="${SLOT_SETTINGS.contribRate}" min="0" max="100" style="width:80px;" /></div>
+      <div><label>${tt('未中獎抽成 %（存入共鳴獎池）','Non-win rake % (into Resonance jackpot)')}</label><input type="number" id="gm-slot-contrib" value="${SLOT_SETTINGS.contribRate}" min="0" max="100" style="width:80px;" /></div>
       <div><label>${tt('頭獎後獎池重置為','Jackpot resets to')}</label><input type="number" id="gm-slot-jackpot-base" value="${SLOT_SETTINGS.jackpotBase}" min="0" style="width:100px;" /></div>
     </div>
-    <p class="sub" style="margin-top:14px;">${tt('🔥 超級共鳴：花費更高的單獨按鍵，三普通／三罕見／三稀有沿用上面的固定倍率（以超級共鳴花費計算），未中獎抽成比例也沿用上面設定；只有中頭獎（三張史詩）的獎池倍率單獨設定。','🔥 Mega Resonance: a separate, higher-cost button. Common/Uncommon/Rare wins reuse the multipliers above (applied to the Mega cost), and the non-win rake % above also applies. Only the jackpot payout multiplier is set separately.')}</p>
+    <p class="sub" style="margin-top:14px;">${tt('🔥 超級共鳴：花費更高的單獨按鍵，三普通／三罕見／三稀有沿用上面的固定倍率（以超級共鳴花費計算），未中獎抽成比例也沿用上面設定；只有中頭獎（三張史詩）的獎池倍率單獨設定。幸運之星獎池的抽成比例在下方「每日星運之星設定」單獨設定。','🔥 Mega Resonance: a separate, higher-cost button. Common/Uncommon/Rare wins reuse the multipliers above (applied to the Mega cost), and the non-win rake % above also applies the same way. Only the jackpot payout multiplier is set separately. The Fortune Star jackpot has its own rake % set below under Daily Fortune Star Settings.')}</p>
     <div class="form-row">
       <div><label>${tt('超級共鳴花費','Mega pull cost')}</label><input type="number" id="gm-slot-mega-cost" value="${SLOT_SETTINGS.megaCost}" min="1" style="width:90px;" /></div>
       <div><label>${tt('超級共鳴頭獎倍率','Mega jackpot multiplier')}</label><input type="number" id="gm-slot-mega-jackpot-mult" value="${SLOT_SETTINGS.megaJackpotMult}" min="0" step="0.5" style="width:80px;" /></div>
@@ -13133,7 +13173,8 @@ async function renderGM(body){
     const fsLucky = fsRound && fsRound.luckyCardId ? (DECK_BY_ID[fsRound.luckyCardId] ? DECK_BY_ID[fsRound.luckyCardId].name : fsRound.luckyCardId) : '—';
     html += `<div class="panel">
     <h2>⭐ ${tt('每日星運之星設定','Daily Fortune Star Settings')}</h2>
-    <p class="sub">${tt('每天 GMT+8 鎖定時間，系統從 78 張塔羅牌均勻隨機抽 1 張幸運卡；鎖定前已抽今日塔羅、且三張牌中含幸運卡的玩家平分本輪獎池（獎池來自鎖定當下的三牌共鳴獎池）。','Each day at the GMT+8 lock time, the system draws 1 lucky card uniformly at random from all 78 tarot cards. Players who drew today\'s tarot before the lock and have the lucky card among their 3 cards split the round\'s pool (funded from the Resonance jackpot at lock time).')}</p>
+    <p class="sub">${tt(`每天 GMT+8 鎖定時間，系統從 78 張塔羅牌均勻隨機抽 1 張幸運卡；鎖定前已抽今日塔羅、且三張牌中含幸運卡的玩家平分本輪獎池。獎池是幸運之星自己獨立累積的（三牌共鳴／超級共鳴每次未中獎時，依下方設定的抽成比例存入，跟「三牌共鳴」獎池分開累積、比例也各自獨立設定）。`, `Each day at the GMT+8 lock time, the system draws 1 lucky card uniformly at random from all 78 tarot cards. Players who drew today's tarot before the lock and have the lucky card among their 3 cards split the round's pool. This pool builds up independently (every non-winning Resonance/Mega Resonance pull rakes into it too, at the rate set below - separate from the Resonance jackpot and set independently).`)}</p>
+    <p class="sub" style="margin:0 0 10px;">${tt(`目前幸運之星獎池：<b style="color:var(--gold-bright);">✦ ${FORTUNE_STAR_JACKPOT}</b>`, `Current Fortune Star jackpot: <b style="color:var(--gold-bright);">✦ ${FORTUNE_STAR_JACKPOT}</b>`)}</p>
     <div class="form-row">
       <div><label>${tt('啟用','Enabled')}</label><select id="gm-fs-enabled"><option value="true" ${FORTUNE_STAR_SETTINGS.enabled?'selected':''}>${tt('開啟','On')}</option><option value="false" ${!FORTUNE_STAR_SETTINGS.enabled?'selected':''}>${tt('關閉','Off')}</option></select></div>
       <div><label>${tt('鎖定時間（GMT+8 時）','Lock hour (GMT+8)')}</label><input type="number" id="gm-fs-lock-hour" value="${FORTUNE_STAR_SETTINGS.lockHour}" min="0" max="23" style="width:70px;" /></div>
@@ -13144,10 +13185,17 @@ async function renderGM(body){
       <div><label>${tt('公布時間（分）','Reveal minute')}</label><input type="number" id="gm-fs-reveal-minute" value="${FORTUNE_STAR_SETTINGS.revealMinute}" min="0" max="59" style="width:70px;" /></div>
     </div>
     <div class="form-row">
+      <div><label>${tt('未中獎抽成 %（存入幸運之星獎池）','Non-win rake % (into Fortune Star jackpot)')}</label><input type="number" id="gm-fs-contrib" value="${FORTUNE_STAR_SETTINGS.contribRate}" min="0" max="100" style="width:80px;" /></div>
+    </div>
+    <div class="form-row">
       <button class="btn small" id="gm-fs-save-btn">${tt('儲存星運之星設定','Save Fortune Star Settings')}</button>
       <button class="btn small secondary" id="gm-fs-reset-btn">${tt('還原預設值','Reset to Default')}</button>
     </div>
-    <p class="sub" style="margin-top:14px;">${tt(`今日狀態：<b style="color:var(--gold-bright);">${fsPhaseLabel}</b> · 參賽人數 ${fsRound ? fsRound.participantCount : '—'} · 本輪獎池 ✦${fsRound ? fsRound.pool : SLOT_JACKPOT}${fsRound && fsRound.phase==='revealed' ? ` · 幸運卡：${fsLucky} · 中獎 ${fsRound.winners.length} 人` : ''}`, `Today's status: <b style="color:var(--gold-bright);">${fsPhaseLabel}</b> · ${fsRound ? fsRound.participantCount : '—'} participant(s) · Pool ✦${fsRound ? fsRound.pool : SLOT_JACKPOT}${fsRound && fsRound.phase==='revealed' ? ` · Lucky card: ${fsLucky} · ${fsRound.winners.length} winner(s)` : ''}`)}</p>
+    <div class="form-row" style="margin-top:6px;">
+      <div><label>${tt('直接設定獎池金額','Set jackpot amount directly')}</label><input type="number" id="gm-fs-jackpot-set" placeholder="${tt('例如 500','e.g. 500')}" min="0" style="width:100px;" /></div>
+      <button class="btn small" id="gm-fs-jackpot-set-btn">${tt('設定獎池','Set Jackpot')}</button>
+    </div>
+    <p class="sub" style="margin-top:14px;">${tt(`今日狀態：<b style="color:var(--gold-bright);">${fsPhaseLabel}</b> · 參賽人數 ${fsRound ? fsRound.participantCount : '—'} · 本輪獎池 ✦${fsRound ? fsRound.pool : FORTUNE_STAR_JACKPOT}${fsRound && fsRound.phase==='revealed' ? ` · 幸運卡：${fsLucky} · 中獎 ${fsRound.winners.length} 人` : ''}`, `Today's status: <b style="color:var(--gold-bright);">${fsPhaseLabel}</b> · ${fsRound ? fsRound.participantCount : '—'} participant(s) · Pool ✦${fsRound ? fsRound.pool : FORTUNE_STAR_JACKPOT}${fsRound && fsRound.phase==='revealed' ? ` · Lucky card: ${fsLucky} · ${fsRound.winners.length} winner(s)` : ''}`)}</p>
     <div class="form-row" style="margin-top:6px;">
       <button class="btn small secondary" id="gm-fs-force-lock-btn">${tt('測試：強制鎖定今日','Test: Force Lock Today')}</button>
       <button class="btn small secondary" id="gm-fs-force-reveal-btn">${tt('測試：強制公布今日','Test: Force Reveal Today')}</button>
@@ -13447,51 +13495,6 @@ async function renderGM(body){
   wirePager(state.gmPlayersPage, gmPlayersTotalPages, 'gm-players-page', 'gmPlayersPage');
   wirePager(state.gmAuctionsPage, gmAuctionsTotalPages, 'gm-auctions-page', 'gmAuctionsPage');
 
-  const dailyPopupSaveBtn = document.getElementById('gm-daily-popup-save-btn');
-  if(dailyPopupSaveBtn) dailyPopupSaveBtn.onclick = async ()=>{
-    const fileInput = document.getElementById('gm-daily-popup-file');
-    const file = fileInput && fileInput.files && fileInput.files[0];
-    if(!file){ showToast(tt('請先選擇一張圖片','Please choose an image first')); return; }
-    if(!file.type || !file.type.startsWith('image/')){ showToast(tt('請選擇圖片檔案','Please choose an image file')); return; }
-    const MAX_BYTES = 4 * 1024 * 1024; // 4MB 上限，避免資料庫欄位過大
-    if(file.size > MAX_BYTES){ showToast(tt('圖片檔案過大，請壓縮到 4MB 以下','Image is too large, please compress it under 4MB')); return; }
-    dailyPopupSaveBtn.disabled = true;
-    dailyPopupSaveBtn.textContent = tt('上傳中...','Uploading...');
-    try{
-      const dataUrl = await new Promise((resolve, reject)=>{
-        const reader = new FileReader();
-        reader.onload = ()=>resolve(reader.result);
-        reader.onerror = ()=>reject(new Error('read failed'));
-        reader.readAsDataURL(file);
-      });
-      await saveDailyPopupImage(dataUrl);
-      showToast(tt('每日彈窗圖片已更新，玩家下次登入時會看到 🖼','Daily popup image updated - players will see it on next login 🖼'));
-      renderTab();
-    }catch(e){
-      showToast(tt('上傳失敗，請再試一次','Upload failed, please try again'));
-      dailyPopupSaveBtn.disabled = false;
-      dailyPopupSaveBtn.textContent = tt('上傳並發布','Upload & Publish');
-    }
-  };
-  const dailyPopupResetBtn = document.getElementById('gm-daily-popup-reset-btn');
-  if(dailyPopupResetBtn) dailyPopupResetBtn.onclick = async ()=>{
-    await clearDailyPopupImage();
-    showToast(tt('已還原為預設圖片','Reverted to the default image'));
-    renderTab();
-  };
-  const dailyPopupDisableBtn = document.getElementById('gm-daily-popup-disable-btn');
-  if(dailyPopupDisableBtn) dailyPopupDisableBtn.onclick = async ()=>{
-    await setDailyPopupDisabled(true);
-    showToast(tt('已停用每日彈窗，玩家登入不會再看到任何圖片','Daily popup disabled - players will no longer see any image on login'));
-    renderTab();
-  };
-  const dailyPopupEnableBtn = document.getElementById('gm-daily-popup-enable-btn');
-  if(dailyPopupEnableBtn) dailyPopupEnableBtn.onclick = async ()=>{
-    await setDailyPopupDisabled(false);
-    showToast(tt('已重新啟用每日彈窗','Daily popup re-enabled'));
-    renderTab();
-  };
-
   const avatarShopUrlInput = document.getElementById('gm-avatar-shop-url');
   const avatarShopUrlPreviewRow = document.getElementById('gm-avatar-shop-url-preview-row');
   const avatarShopUrlPreview = document.getElementById('gm-avatar-shop-url-preview');
@@ -13772,10 +13775,14 @@ async function renderGM(body){
       lockMinute: parseInt(document.getElementById('gm-fs-lock-minute').value, 10),
       revealHour: parseInt(document.getElementById('gm-fs-reveal-hour').value, 10),
       revealMinute: parseInt(document.getElementById('gm-fs-reveal-minute').value, 10),
+      contribRate: parseFloat(document.getElementById('gm-fs-contrib').value),
     };
     const nums = [s.lockHour, s.lockMinute, s.revealHour, s.revealMinute];
     if(nums.some(v=>isNaN(v) || v < 0) || s.lockHour > 23 || s.revealHour > 23 || s.lockMinute > 59 || s.revealMinute > 59){
       showToast(tt('請輸入有效的時間數字','Please enter valid time values')); return;
+    }
+    if(isNaN(s.contribRate) || s.contribRate < 0 || s.contribRate > 100){
+      showToast(tt('抽成 % 需介於 0-100 之間','Rake % must be between 0-100')); return;
     }
     if(s.revealHour*60+s.revealMinute <= s.lockHour*60+s.lockMinute){
       showToast(tt('公布時間必須晚於鎖定時間','Reveal time must be after lock time')); return;
@@ -13788,6 +13795,14 @@ async function renderGM(body){
   if(fsResetBtn) fsResetBtn.onclick = async ()=>{
     await saveFortuneStarSettings({...DEFAULT_FORTUNE_STAR_SETTINGS});
     showToast(tt('已還原為預設星運之星設定','Reverted to default Fortune Star settings'));
+    renderTab();
+  };
+  const fsJackpotSetBtn = document.getElementById('gm-fs-jackpot-set-btn');
+  if(fsJackpotSetBtn) fsJackpotSetBtn.onclick = async ()=>{
+    const v = parseFloat(document.getElementById('gm-fs-jackpot-set').value);
+    if(isNaN(v) || v < 0){ showToast(tt('請輸入有效的非負數字','Please enter a valid non-negative number')); return; }
+    await saveFortuneStarJackpot(v);
+    showToast(tt(`幸運之星獎池已設定為 ✦${v}`, `Fortune Star jackpot pool set to ✦${v}`));
     renderTab();
   };
   const fsForceLockBtn = document.getElementById('gm-fs-force-lock-btn');
