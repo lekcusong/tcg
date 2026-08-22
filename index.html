@@ -1429,7 +1429,7 @@ let ACCESSORY_EXPEDITION_MAX_STACK = DEFAULT_ACCESSORY_EXPEDITION_MAX_STACK;
 
 // ---------- 職業道具進階版（uncommon tier，職業等級5解鎖）----------
 // 🧪 中藥水：縮短遠征時間，可與小藥水混用（各自扣自己的庫存，分鐘數直接疊加）
-const DEFAULT_POTION_MEDIUM_EXPEDITION_MINUTES = 22;
+const DEFAULT_POTION_MEDIUM_EXPEDITION_MINUTES = 30;
 let POTION_MEDIUM_EXPEDITION_MINUTES = DEFAULT_POTION_MEDIUM_EXPEDITION_MINUTES;
 // ⚔️ 武器(uncommon)：與 common 互斥，出征前只能選一把
 const DEFAULT_WEAPON_UNCOMMON_EXPEDITION_REWARD_PCT = 0.18;
@@ -1483,18 +1483,18 @@ const EXPEDITION_CHOICE_EVENT_POOL = [
   {id:'fork', icon:'🛤️', labelZh:'岔路', labelEn:'Fork in the Road', options:[
     {id:'safe',      labelZh:'小路',        labelEn:'Safe path',    descZh:'不變', descEn:'No change'},
     {id:'shortcut',  labelZh:'近路',        labelEn:'Shortcut',     descZh:'成功率-10%，剩餘時間-20%', descEn:'Success -10%, remaining time -20%', successDelta:-0.10, remainingTimePctDelta:-0.20},
-    {id:'furniture', labelZh:'耗1件家具庫存', labelEn:'Spend 1 Furniture', descZh:'成功率+8%（需家具庫存≥1）', descEn:'Success +8% (needs Furniture ≥1)', successDelta:0.08, requiresItem:'furniture_common', itemCost:1},
+    {id:'furniture', labelZh:'耗1件小家具庫存', labelEn:'Spend 1 Small Furniture', descZh:'成功率+8%（需小家具庫存≥1）', descEn:'Success +8% (needs Small Furniture ≥1)', successDelta:0.08, requiresItem:'furniture_common', itemCost:1},
   ]},
   {id:'trap', icon:'🕳️', labelZh:'陷阱', labelEn:'Trap', options:[
     {id:'avoid',     labelZh:'小心繞開',      labelEn:'Avoid',        descZh:'不變', descEn:'No change'},
     {id:'push',      labelZh:'闖過去',        labelEn:'Push through', descZh:'50%機率獎勵+30%／50%機率獎勵-30%', descEn:'50% reward +30% / 50% reward -30%', gamble:{successPct:0.5, winRewardPctDelta:0.30, loseRewardPctDelta:-0.30}},
-    {id:'accessory', labelZh:'耗1件飾品庫存', labelEn:'Spend 1 Accessory', descZh:'免疫陷阱風險，並獲得獎勵+15%（需飾品庫存≥1）', descEn:'Immune to trap risk, and reward +15% (needs Accessory ≥1)', requiresItem:'accessory_common', itemCost:1, rewardPctDelta:0.15},
-    {id:'accessory_uncommon', labelZh:'耗1件飾品(uncommon)庫存', labelEn:'Spend 1 Accessory (Uncommon)', descZh:'免疫陷阱風險，並獲得獎勵+25%（需飾品(uncommon)庫存≥1）', descEn:'Immune to trap risk, and reward +25% (needs Accessory (Uncommon) ≥1)', requiresItem:'accessory_uncommon', itemCost:1, rewardPctDelta:0.25},
+    {id:'accessory', labelZh:'耗1件小飾品庫存', labelEn:'Spend 1 Small Accessory', descZh:'免疫陷阱風險，並獲得獎勵+15%（需小飾品庫存≥1）', descEn:'Immune to trap risk, and reward +15% (needs Small Accessory ≥1)', requiresItem:'accessory_common', itemCost:1, rewardPctDelta:0.15},
+    {id:'accessory_uncommon', labelZh:'耗1件中飾品庫存', labelEn:'Spend 1 Medium Accessory', descZh:'免疫陷阱風險，並獲得獎勵+25%（需中飾品庫存≥1）', descEn:'Immune to trap risk, and reward +25% (needs Medium Accessory ≥1)', requiresItem:'accessory_uncommon', itemCost:1, rewardPctDelta:0.25},
   ]},
   {id:'merchant', icon:'🧙', labelZh:'神秘商人', labelEn:'Mysterious Merchant', options:[
     {id:'ignore',       labelZh:'無視離開',                 labelEn:'Ignore',            descZh:'不變', descEn:'No change'},
     {id:'buy_blessing', labelZh:'花50金幣多抽1張本輪祝福',  labelEn:'Pay 50 coins for extra blessing draw', descZh:'需50金幣', descEn:'Costs 50 coins', coinsCost:50, extraBlessingDraw:1},
-    {id:'sell_weapon',  labelZh:'花1件武器庫存換金幣',      labelEn:'Trade 1 Weapon for coins', descZh:'獲得小額金幣，不影響結算加成（需武器庫存≥1）', descEn:'Get coins, no effect on settlement (needs Weapon ≥1)', requiresItem:'weapon_common', itemCost:1, instantCoins:30},
+    {id:'sell_weapon',  labelZh:'花1件小武器庫存換金幣',      labelEn:'Trade 1 Small Weapon for coins', descZh:'獲得小額金幣，不影響結算加成（需小武器庫存≥1）', descEn:'Get coins, no effect on settlement (needs Small Weapon ≥1)', requiresItem:'weapon_common', itemCost:1, instantCoins:30},
   ]},
 ];
 const EXPEDITION_COMBAT_EVENT_POOL = [
@@ -1736,16 +1736,16 @@ const DEFAULT_PROFESSION_DEFS = [
   {id:'blacksmith', icon:'⚒️', labelZh:'鍛造師', labelEn:'Blacksmith',
     materialId:'ore', materialIcon:'⛏️', materialLabelZh:'礦石', materialLabelEn:'Ore',
     recipes:[
-      {itemId:'weapon_common', icon:'⚔️', labelZh:'武器（common）', labelEn:'Weapon (Common)', materialCost:5, staminaCost:10, exp:15},
-      {itemId:'accessory_common', icon:'💍', labelZh:'飾品（common）', labelEn:'Accessory (Common)', materialCost:3, staminaCost:10, exp:10},
-      {itemId:'weapon_uncommon', icon:'⚔️', labelZh:'武器（uncommon）', labelEn:'Weapon (Uncommon)', materialCost:9, staminaCost:15, exp:30, unlockLevel:PROFESSION_UNCOMMON_UNLOCK_LEVEL, consumeItemId:'weapon_common', consumeQty:1},
-      {itemId:'accessory_uncommon', icon:'💍', labelZh:'飾品（uncommon）', labelEn:'Accessory (Uncommon)', materialCost:6, staminaCost:12, exp:20, unlockLevel:PROFESSION_UNCOMMON_UNLOCK_LEVEL, consumeItemId:'accessory_common', consumeQty:1},
+      {itemId:'weapon_common', icon:'⚔️', labelZh:'小武器', labelEn:'Small Weapon', materialCost:5, staminaCost:10, exp:15},
+      {itemId:'accessory_common', icon:'💍', labelZh:'小飾品', labelEn:'Small Accessory', materialCost:3, staminaCost:10, exp:10},
+      {itemId:'weapon_uncommon', icon:'⚔️', labelZh:'中武器', labelEn:'Medium Weapon', materialCost:9, staminaCost:15, exp:30, unlockLevel:PROFESSION_UNCOMMON_UNLOCK_LEVEL, consumeItemId:'weapon_common', consumeQty:1},
+      {itemId:'accessory_uncommon', icon:'💍', labelZh:'中飾品', labelEn:'Medium Accessory', materialCost:6, staminaCost:12, exp:20, unlockLevel:PROFESSION_UNCOMMON_UNLOCK_LEVEL, consumeItemId:'accessory_common', consumeQty:1},
     ]},
   {id:'carpenter', icon:'🔨', labelZh:'木匠', labelEn:'Carpenter',
     materialId:'lumber', materialIcon:'🌳', materialLabelZh:'木料', materialLabelEn:'Lumber',
     recipes:[
-      {itemId:'furniture_common', icon:'🪑', labelZh:'家具（common）', labelEn:'Furniture (Common)', materialCost:5, staminaCost:10, exp:15},
-      {itemId:'furniture_uncommon', icon:'🪑', labelZh:'家具（uncommon）', labelEn:'Furniture (Uncommon)', materialCost:9, staminaCost:15, exp:30, unlockLevel:PROFESSION_UNCOMMON_UNLOCK_LEVEL, consumeItemId:'furniture_common', consumeQty:1},
+      {itemId:'furniture_common', icon:'🪑', labelZh:'小家具', labelEn:'Small Furniture', materialCost:5, staminaCost:10, exp:15},
+      {itemId:'furniture_uncommon', icon:'🪑', labelZh:'中家具', labelEn:'Medium Furniture', materialCost:9, staminaCost:15, exp:30, unlockLevel:PROFESSION_UNCOMMON_UNLOCK_LEVEL, consumeItemId:'furniture_common', consumeQty:1},
     ]},
 ];
 // 材料成本/體力成本/經驗值是 GM 可調的部分；icon/label/itemId 等展示用資料維持不變，只複製數值欄位
@@ -10041,8 +10041,9 @@ async function pullSlot(isMega){
   let winAmount = 0;
   let winTier = null;
   let jackpotAfterWin = null;   // 中頭獎時，存檔成功後才要 reset 成的獎池新值
-  let jackpotContribution = null; // 沒中獎時，存檔成功後才要疊加的「三牌共鳴」獎池貢獻
-  let fortuneStarContribution = null; // 沒中獎時，存檔成功後才要疊加的「幸運之星」獎池貢獻（各抽一份，跟共鳴獎池分開累積）
+  let isJackpotContrib = false; // 沒中獎時，存檔成功後才要疊加「三牌共鳴」獎池貢獻
+  let slotContrib = 0;
+  let fsContrib = 0;
 
   // 結算前重新同步兩個獎池最新值，避免用這個分頁自己過期的快照
   // 去計算頭獎金額，或用舊數字疊加抽成蓋掉其他玩家剛存進去的貢獻
@@ -10080,10 +10081,12 @@ async function pullSlot(isMega){
     winMsg = tt(`✨ 三張普通共鳴！獲得 ✦${winAmount} 金幣`, `✨ Three Common Resonance! Won ✦${winAmount} coins`);
   } else {
     // 沒中獎：兩個獨立獎池「各抽一份」，比例各自獨立設定（共鳴一次／超級共鳴都用同一組比例）
-    const contrib = Math.round(cost * SLOT_SETTINGS.contribRate / 100);
-    const fsContrib = Math.round(cost * FORTUNE_STAR_SETTINGS.contribRate / 100);
-    jackpotContribution = SLOT_JACKPOT + contrib;
-    fortuneStarContribution = FORTUNE_STAR_JACKPOT + fsContrib;
+    // 這裡只先記錄「要貢獻多少」，實際疊加到獎池的動作延後到 savePlayer 完成、
+    // 真正要寫回 storage 的那一刻才重新 sync 一次最新值再疊加，避免用這裡的舊快照覆蓋掉
+    // 中間可能發生的頭獎重置或其他玩家的貢獻。
+    isJackpotContrib = true;
+    slotContrib = Math.round(cost * SLOT_SETTINGS.contribRate / 100);
+    fsContrib = Math.round(cost * FORTUNE_STAR_SETTINGS.contribRate / 100);
   }
 
   // 把這次結果套用到本地玩家物件，準備存檔；下面若存檔失敗會整組復原。
@@ -10115,9 +10118,14 @@ async function pullSlot(isMega){
       // 這裡額外幫贏家自己寫一筆永久信箱通知，做法比照 boss_reward／fortunestar_win。
       await createNotification(state.nickname, 'system', 'jackpot_self_win', {amount: winAmount, mega: isMega, mult: SLOT_SETTINGS.megaJackpotMult}).catch(()=>{});
       broadcastJackpotWin(state.nickname, winAmount).catch(()=>{});
-    } else if(jackpotContribution !== null){
-      await saveSlotJackpot(jackpotContribution);
-      if(fortuneStarContribution !== null) await saveFortuneStarJackpot(fortuneStarContribution);
+    } else if(isJackpotContrib){
+      // 重新 sync 到緊貼著寫入前的最新值，而不是沿用 savePlayer 之前、可能已經過期的舊快照——
+      // 避免這次「沒中獎的貢獻」用舊金額算出的結果，蓋掉這段等待期間可能發生的頭獎重置
+      // 或其他玩家剛存進去的貢獻（storage 是 last-write-wins，讀寫間隔越短，競態窗口越小）。
+      await syncSlotJackpot();
+      await saveSlotJackpot(SLOT_JACKPOT + slotContrib);
+      await syncFortuneStarJackpot();
+      await saveFortuneStarJackpot(FORTUNE_STAR_JACKPOT + fsContrib);
     }
   }catch(e){
     // 存檔失敗：整組復原本地狀態，不套用任何本次抽卡效果，提示玩家重試
@@ -13265,7 +13273,7 @@ async function renderGM(body){
     </div>
     <div class="farm-upgrade-title" style="margin-top:14px;">✨ ${tt('進階版（uncommon，等級5解鎖）','Advanced (Uncommon, unlocks at Lv.5)')}</div>
     <div class="farm-upgrade-box" style="margin-bottom:10px;">
-      <div class="farm-upgrade-title">🪑 ${tt('家具(uncommon)：出征成功率加成（疊加上限沿用上方最大件數）','Furniture (Uncommon): expedition success-rate bonus (stack cap follows the common setting)')}</div>
+      <div class="farm-upgrade-title">🪑 ${tt('中家具：出征成功率加成（疊加上限沿用上方最大件數）','Medium Furniture: expedition success-rate bonus (stack cap follows the common setting)')}</div>
       <div class="form-row">
         <div><label>${tt('第 1 件 %','1st item %')}</label><input type="number" id="gm-prof-furniture-unc-tier1" value="${Math.round(FURNITURE_UNCOMMON_SUCCESS_TIERS[0]*100)}" min="0" max="100" style="width:80px;" /></div>
         <div><label>${tt('第 2 件 %','2nd item %')}</label><input type="number" id="gm-prof-furniture-unc-tier2" value="${Math.round(FURNITURE_UNCOMMON_SUCCESS_TIERS[1]*100)}" min="0" max="100" style="width:80px;" /></div>
@@ -13279,13 +13287,13 @@ async function renderGM(body){
       </div>
     </div>
     <div class="farm-upgrade-box" style="margin-bottom:10px;">
-      <div class="farm-upgrade-title">⚔️ ${tt('武器(uncommon)：提升遠征獎勵區間','Weapon (Uncommon): raise expedition reward range')}</div>
+      <div class="farm-upgrade-title">⚔️ ${tt('中武器：提升遠征獎勵區間','Medium Weapon: raise expedition reward range')}</div>
       <div class="form-row">
         <div><label>${tt('獎勵上下限加成 %','Reward min/max bonus %')}</label><input type="number" id="gm-prof-weapon-unc-pct" value="${Math.round(WEAPON_UNCOMMON_EXPEDITION_REWARD_PCT*100)}" min="0" max="200" style="width:90px;" /></div>
       </div>
     </div>
     <div class="farm-upgrade-box" style="margin-bottom:10px;">
-      <div class="farm-upgrade-title">💍 ${tt('飾品(uncommon)：拉近獎勵下限至上限（疊加上限沿用上方最大件數）','Accessory (Uncommon): pull reward floor toward max (stack cap follows the common setting)')}</div>
+      <div class="farm-upgrade-title">💍 ${tt('中飾品：拉近獎勵下限至上限（疊加上限沿用上方最大件數）','Medium Accessory: pull reward floor toward max (stack cap follows the common setting)')}</div>
       <div class="form-row">
         <div><label>${tt('每件拉近幅度 %','Pull-toward-max % per item')}</label><input type="number" id="gm-prof-accessory-unc-pct" value="${Math.round(ACCESSORY_UNCOMMON_EXPEDITION_FLOOR_PCT*100)}" min="0" max="100" style="width:90px;" /></div>
       </div>
