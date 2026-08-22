@@ -1395,7 +1395,9 @@ function ensureMaterials(p){
 // ---------- 職業玩法（階段一：資料結構）----------
 const PROFESSION_IDS = ['alchemist', 'blacksmith', 'carpenter'];
 const PROFESSION_MATERIAL_IDS = ['herb', 'ore', 'lumber'];
-const PROFESSION_ITEM_IDS = ['potion_small', 'weapon_common', 'accessory_common', 'furniture_common'];
+const PROFESSION_ITEM_IDS = ['potion_small', 'weapon_common', 'accessory_common', 'furniture_common', 'potion_medium', 'weapon_uncommon', 'accessory_uncommon', 'furniture_uncommon'];
+// 進階成品（uncommon tier）等級5解鎖門檻，供 produceProfessionItem/renderProfession 檢查用
+const PROFESSION_UNCOMMON_UNLOCK_LEVEL = 5;
 const PROFESSION_STAMINA_MAX = 100;
 const PROFESSION_STAMINA_REGEN_MS = 5 * 60 * 1000; // 每 5 分鐘 +1 體力
 const DEFAULT_PROFESSION_RESPEC_COST = 10000; // 轉職花費金幣（預設值，GM 可調）
@@ -1424,6 +1426,22 @@ const DEFAULT_ACCESSORY_EXPEDITION_FLOOR_PCT = 0.20; // 每件拉近幅度（預
 const DEFAULT_ACCESSORY_EXPEDITION_MAX_STACK = 3;
 let ACCESSORY_EXPEDITION_FLOOR_PCT = DEFAULT_ACCESSORY_EXPEDITION_FLOOR_PCT;
 let ACCESSORY_EXPEDITION_MAX_STACK = DEFAULT_ACCESSORY_EXPEDITION_MAX_STACK;
+
+// ---------- 職業道具進階版（uncommon tier，職業等級5解鎖）----------
+// 🧪 中藥水：縮短遠征時間，可與小藥水混用（各自扣自己的庫存，分鐘數直接疊加）
+const DEFAULT_POTION_MEDIUM_EXPEDITION_MINUTES = 22;
+let POTION_MEDIUM_EXPEDITION_MINUTES = DEFAULT_POTION_MEDIUM_EXPEDITION_MINUTES;
+// ⚔️ 武器(uncommon)：與 common 互斥，出征前只能選一把
+const DEFAULT_WEAPON_UNCOMMON_EXPEDITION_REWARD_PCT = 0.18;
+let WEAPON_UNCOMMON_EXPEDITION_REWARD_PCT = DEFAULT_WEAPON_UNCOMMON_EXPEDITION_REWARD_PCT;
+// 💍 飾品(uncommon)：與 common 互斥堆疊，疊加上限沿用 ACCESSORY_EXPEDITION_MAX_STACK
+const DEFAULT_ACCESSORY_UNCOMMON_EXPEDITION_FLOOR_PCT = 0.30;
+let ACCESSORY_UNCOMMON_EXPEDITION_FLOOR_PCT = DEFAULT_ACCESSORY_UNCOMMON_EXPEDITION_FLOOR_PCT;
+// 陷阱事件旁支：耗1件飾品(uncommon)，免疫風險+獎勵25%（對應 common 版本的15%，固定值不開放GM調整，與common版本一致的設計）
+const ACCESSORY_UNCOMMON_TRAP_REWARD_PCT = 0.25;
+// 🪑 家具(uncommon)：與 common 互斥堆疊，疊加上限沿用 FURNITURE_MAX_STACK
+const DEFAULT_FURNITURE_UNCOMMON_SUCCESS_TIERS = [0.08, 0.05, 0.02];
+let FURNITURE_UNCOMMON_SUCCESS_TIERS = [...DEFAULT_FURNITURE_UNCOMMON_SUCCESS_TIERS];
 
 // ---------- 遠征 Roguelike 玩法擴充（階段一：資料骨架，尚未接上派遣/結算邏輯）----------
 // 遠征等級達到此等級才解鎖風險等級／祝福詛咒／事件節點／連勝加成，等級以下維持現有玩法不變
@@ -1471,6 +1489,7 @@ const EXPEDITION_CHOICE_EVENT_POOL = [
     {id:'avoid',     labelZh:'小心繞開',      labelEn:'Avoid',        descZh:'不變', descEn:'No change'},
     {id:'push',      labelZh:'闖過去',        labelEn:'Push through', descZh:'50%機率獎勵+30%／50%機率獎勵-30%', descEn:'50% reward +30% / 50% reward -30%', gamble:{successPct:0.5, winRewardPctDelta:0.30, loseRewardPctDelta:-0.30}},
     {id:'accessory', labelZh:'耗1件飾品庫存', labelEn:'Spend 1 Accessory', descZh:'免疫陷阱風險，並獲得獎勵+15%（需飾品庫存≥1）', descEn:'Immune to trap risk, and reward +15% (needs Accessory ≥1)', requiresItem:'accessory_common', itemCost:1, rewardPctDelta:0.15},
+    {id:'accessory_uncommon', labelZh:'耗1件飾品(uncommon)庫存', labelEn:'Spend 1 Accessory (Uncommon)', descZh:'免疫陷阱風險，並獲得獎勵+25%（需飾品(uncommon)庫存≥1）', descEn:'Immune to trap risk, and reward +25% (needs Accessory (Uncommon) ≥1)', requiresItem:'accessory_uncommon', itemCost:1, rewardPctDelta:0.25},
   ]},
   {id:'merchant', icon:'🧙', labelZh:'神秘商人', labelEn:'Mysterious Merchant', options:[
     {id:'ignore',       labelZh:'無視離開',                 labelEn:'Ignore',            descZh:'不變', descEn:'No change'},
@@ -1712,17 +1731,21 @@ const DEFAULT_PROFESSION_DEFS = [
     materialId:'herb', materialIcon:'🌿', materialLabelZh:'藥草', materialLabelEn:'Herb',
     recipes:[
       {itemId:'potion_small', icon:'🧪', labelZh:'小藥水', labelEn:'Small Potion', materialCost:3, staminaCost:10, exp:10},
+      {itemId:'potion_medium', icon:'🧪', labelZh:'中藥水', labelEn:'Medium Potion', materialCost:8, staminaCost:15, exp:25, unlockLevel:PROFESSION_UNCOMMON_UNLOCK_LEVEL, consumeItemId:'potion_small', consumeQty:1},
     ]},
   {id:'blacksmith', icon:'⚒️', labelZh:'鍛造師', labelEn:'Blacksmith',
     materialId:'ore', materialIcon:'⛏️', materialLabelZh:'礦石', materialLabelEn:'Ore',
     recipes:[
       {itemId:'weapon_common', icon:'⚔️', labelZh:'武器（common）', labelEn:'Weapon (Common)', materialCost:5, staminaCost:10, exp:15},
       {itemId:'accessory_common', icon:'💍', labelZh:'飾品（common）', labelEn:'Accessory (Common)', materialCost:3, staminaCost:10, exp:10},
+      {itemId:'weapon_uncommon', icon:'⚔️', labelZh:'武器（uncommon）', labelEn:'Weapon (Uncommon)', materialCost:9, staminaCost:15, exp:30, unlockLevel:PROFESSION_UNCOMMON_UNLOCK_LEVEL, consumeItemId:'weapon_common', consumeQty:1},
+      {itemId:'accessory_uncommon', icon:'💍', labelZh:'飾品（uncommon）', labelEn:'Accessory (Uncommon)', materialCost:6, staminaCost:12, exp:20, unlockLevel:PROFESSION_UNCOMMON_UNLOCK_LEVEL, consumeItemId:'accessory_common', consumeQty:1},
     ]},
   {id:'carpenter', icon:'🔨', labelZh:'木匠', labelEn:'Carpenter',
     materialId:'lumber', materialIcon:'🌳', materialLabelZh:'木料', materialLabelEn:'Lumber',
     recipes:[
       {itemId:'furniture_common', icon:'🪑', labelZh:'家具（common）', labelEn:'Furniture (Common)', materialCost:5, staminaCost:10, exp:15},
+      {itemId:'furniture_uncommon', icon:'🪑', labelZh:'家具（uncommon）', labelEn:'Furniture (Uncommon)', materialCost:9, staminaCost:15, exp:30, unlockLevel:PROFESSION_UNCOMMON_UNLOCK_LEVEL, consumeItemId:'furniture_common', consumeQty:1},
     ]},
 ];
 // 材料成本/體力成本/經驗值是 GM 可調的部分；icon/label/itemId 等展示用資料維持不變，只複製數值欄位
@@ -1758,6 +1781,19 @@ async function loadProfessionConfig(){
       if(typeof s.accessoryExpeditionMaxStack === 'number' && s.accessoryExpeditionMaxStack >= 1){
         ACCESSORY_EXPEDITION_MAX_STACK = Math.round(s.accessoryExpeditionMaxStack);
       }
+      if(typeof s.potionMediumExpeditionMinutes === 'number' && s.potionMediumExpeditionMinutes >= 0){
+        POTION_MEDIUM_EXPEDITION_MINUTES = s.potionMediumExpeditionMinutes;
+      }
+      if(typeof s.weaponUncommonExpeditionRewardPct === 'number' && s.weaponUncommonExpeditionRewardPct >= 0 && s.weaponUncommonExpeditionRewardPct <= 2){
+        WEAPON_UNCOMMON_EXPEDITION_REWARD_PCT = s.weaponUncommonExpeditionRewardPct;
+      }
+      if(typeof s.accessoryUncommonExpeditionFloorPct === 'number' && s.accessoryUncommonExpeditionFloorPct >= 0 && s.accessoryUncommonExpeditionFloorPct <= 1){
+        ACCESSORY_UNCOMMON_EXPEDITION_FLOOR_PCT = s.accessoryUncommonExpeditionFloorPct;
+      }
+      if(Array.isArray(s.furnitureUncommonSuccessTiers) && s.furnitureUncommonSuccessTiers.length === FURNITURE_MAX_STACK &&
+         s.furnitureUncommonSuccessTiers.every(v=>typeof v==='number' && !isNaN(v) && v>=0 && v<=1)){
+        FURNITURE_UNCOMMON_SUCCESS_TIERS = [...s.furnitureUncommonSuccessTiers];
+      }
       if(s.recipes && typeof s.recipes === 'object'){
         PROFESSION_DEFS = DEFAULT_PROFESSION_DEFS.map(def=>({
           ...def,
@@ -1787,6 +1823,10 @@ async function saveProfessionConfig(){
     weaponExpeditionRewardPct: WEAPON_EXPEDITION_REWARD_PCT,
     accessoryExpeditionFloorPct: ACCESSORY_EXPEDITION_FLOOR_PCT,
     accessoryExpeditionMaxStack: ACCESSORY_EXPEDITION_MAX_STACK,
+    potionMediumExpeditionMinutes: POTION_MEDIUM_EXPEDITION_MINUTES,
+    weaponUncommonExpeditionRewardPct: WEAPON_UNCOMMON_EXPEDITION_REWARD_PCT,
+    accessoryUncommonExpeditionFloorPct: ACCESSORY_UNCOMMON_EXPEDITION_FLOOR_PCT,
+    furnitureUncommonSuccessTiers: FURNITURE_UNCOMMON_SUCCESS_TIERS,
     recipes,
   }));
 }
@@ -1837,6 +1877,11 @@ async function produceProfessionItem(itemId){
   const def = professionDef(p.profession);
   const recipe = def && def.recipes.find(r=>r.itemId===itemId);
   if(!def || !recipe){ showToast(tt('這不是你目前職業的配方','This recipe does not belong to your current profession')); return; }
+  const prog = p.professionProgress[p.profession];
+  if(recipe.unlockLevel && (prog.level||0) < recipe.unlockLevel){
+    showToast(tt(`需要職業等級 Lv.${recipe.unlockLevel} 才能生產這項成品`, `Requires profession level Lv.${recipe.unlockLevel} to produce this item`));
+    return;
+  }
   if((p.professionMaterials[def.materialId]||0) < recipe.materialCost){
     showToast(tt(`${professionMaterialLabel(def)}不足`, `Not enough ${professionMaterialLabel(def)}`));
     return;
@@ -1845,13 +1890,21 @@ async function produceProfessionItem(itemId){
     showToast(tt('體力不足','Not enough stamina'));
     return;
   }
-  const prog = p.professionProgress[p.profession];
+  if(recipe.consumeItemId && (p.professionItems[recipe.consumeItemId]||0) < (recipe.consumeQty||1)){
+    const consumeMeta = professionItemMeta(recipe.consumeItemId);
+    const consumeLabel = consumeMeta ? professionRecipeLabel(consumeMeta) : recipe.consumeItemId;
+    showToast(tt(`${consumeLabel}庫存不足（需要 ${recipe.consumeQty||1} 件）`, `Not enough ${consumeLabel} in stock (needs ${recipe.consumeQty||1})`));
+    return;
+  }
   const saveChance = professionMaterialSaveChance(prog && prog.level);
-  const skillProc = Math.random() < saveChance; // 職業技能發動：材料與體力皆不消耗
+  const skillProc = Math.random() < saveChance; // 職業技能發動：材料與體力（含加工材料）皆不消耗
   if(!skillProc){
     // 防呆：跟 auctionAdjustInventory 同一種寫法，避免材料被扣成負數
     p.professionMaterials[def.materialId] = Math.max(0, p.professionMaterials[def.materialId] - recipe.materialCost);
     p.stamina = Math.max(0, p.stamina - recipe.staminaCost);
+    if(recipe.consumeItemId){
+      p.professionItems[recipe.consumeItemId] = Math.max(0, (p.professionItems[recipe.consumeItemId]||0) - (recipe.consumeQty||1));
+    }
   }
   p.professionItems[itemId] = (p.professionItems[itemId]||0) + 1;
   const leveled = applyProfessionExpGain(p, p.profession, recipe.exp);
@@ -1905,7 +1958,7 @@ async function renderProfession(body){
       html += `<div class="farm-upgrade-box" style="margin-bottom:12px;">
         <div class="farm-upgrade-title">${def.icon} ${professionLabel(def)}</div>
         <div class="farm-upgrade-line" style="color:var(--muted);">${tt('使用材料：','Uses material:')} ${def.materialIcon} ${professionMaterialLabel(def)}</div>
-        ${def.recipes.map(r=>`<div class="farm-upgrade-line">${r.icon} ${professionRecipeLabel(r)}（${def.materialIcon}×${r.materialCost}、⚡×${r.staminaCost}）</div>`).join('')}
+        ${def.recipes.map(r=>`<div class="farm-upgrade-line">${r.icon} ${professionRecipeLabel(r)}（${def.materialIcon}×${r.materialCost}、⚡×${r.staminaCost}）${r.unlockLevel?tt(` · Lv.${r.unlockLevel}解鎖`, ` · unlocks at Lv.${r.unlockLevel}`):''}</div>`).join('')}
         <button class="btn small" data-choose-profession="${def.id}" style="margin-top:8px;">${tt('選擇這個職業','Choose this profession')}</button>
       </div>`;
     });
@@ -1931,15 +1984,21 @@ async function renderProfession(body){
       <div class="countdown" style="font-size:11px;margin-top:4px;color:var(--gold-bright);">${tt(`✨ 職業技能發動機率（材料+體力皆省）：${Math.round(saveChance*100)}%`, `✨ Skill trigger chance (saves both material & stamina): ${Math.round(saveChance*100)}%`)}</div>
     </div>`;
 
-    html += `<div class="panel"><h2>${tt('生產','Production')}</h2><p class="sub">${tt('目前配方皆為初級項目，之後會開放更高階配方。','Only entry-level recipes are open for now - higher tiers will follow.')}</p>`;
+    html += `<div class="panel"><h2>${tt('生產','Production')}</h2><p class="sub">${tt('等級5後會解鎖每項配方的進階版本（uncommon），效果更強。','Level 5 unlocks an advanced (uncommon) version of each recipe with stronger effects.')}</p>`;
     def.recipes.forEach(r=>{
+      const locked = r.unlockLevel && (prog.level||0) < r.unlockLevel;
       const haveMaterial = (p.professionMaterials[def.materialId]||0) >= r.materialCost;
       const haveStamina = (p.stamina||0) >= r.staminaCost;
-      const canProduce = haveMaterial && haveStamina;
-      html += `<div class="farm-upgrade-box" style="margin-bottom:10px;">
-        <div class="farm-upgrade-title">${r.icon} ${professionRecipeLabel(r)}</div>
+      const consumeQty = r.consumeItemId ? (r.consumeQty||1) : 0;
+      const consumeStock = r.consumeItemId ? (p.professionItems[r.consumeItemId]||0) : 0;
+      const haveConsumeItem = !r.consumeItemId || consumeStock >= consumeQty;
+      const canProduce = !locked && haveMaterial && haveStamina && haveConsumeItem;
+      const consumeMeta = r.consumeItemId ? professionItemMeta(r.consumeItemId) : null;
+      html += `<div class="farm-upgrade-box" style="margin-bottom:10px;${locked?'opacity:0.5;':''}">
+        <div class="farm-upgrade-title">${r.icon} ${professionRecipeLabel(r)}${locked?` 🔒 ${tt(`需要 Lv.${r.unlockLevel} 解鎖`, `Needs Lv.${r.unlockLevel} to unlock`)}`:''}</div>
         <div class="farm-upgrade-line" style="color:${haveMaterial?'inherit':'var(--danger)'};">${def.materialIcon} ${professionMaterialLabel(def)} × ${r.materialCost}</div>
         <div class="farm-upgrade-line" style="color:${haveStamina?'inherit':'var(--danger)'};">⚡ ${tt('體力','Stamina')} × ${r.staminaCost}</div>
+        ${r.consumeItemId ? `<div class="farm-upgrade-line" style="color:${haveConsumeItem?'inherit':'var(--danger)'};">${consumeMeta?consumeMeta.icon:''} ${tt('消耗','Consumes')} ${consumeMeta?professionRecipeLabel(consumeMeta):r.consumeItemId} × ${consumeQty}（${tt('庫存','stock')} ${consumeStock}）</div>` : ''}
         <div class="farm-upgrade-line" style="color:var(--muted);">${tt('目前庫存','Current stock')}：${p.professionItems[r.itemId]||0}</div>
         <button class="btn small ${canProduce?'':'secondary'}" data-produce-item="${r.itemId}" ${canProduce?'':'disabled'} style="margin-top:6px;">${tt('生產','Produce')}</button>
       </div>`;
@@ -6338,6 +6397,7 @@ const ACHIEVEMENT_IMAGES = {
   expedition_lv6: 'https://lekcusong.github.io/tcg/assets/expedition_lv6.jpg',
   jackpot_champion: 'https://lekcusong.github.io/tcg/assets/jackpot_champion.jpg',
   expedition_streak5: 'https://lekcusong.github.io/tcg/assets/expedition_streak5.jpg',
+  expedition_streak10: 'https://lekcusong.github.io/tcg/assets/expedition_streak10.png',
   fortune_star_winner: 'https://lekcusong.github.io/tcg/assets/fortune_star_winner.jpg',
   hexagram_fate: 'https://lekcusong.github.io/tcg/assets/hexagram_fate.png',
 };
@@ -6465,6 +6525,15 @@ const ACHIEVEMENTS = [
     glow: 'green',
     check(p){ return (p.expeditionRecklessStreak||0) >= 5; },
     progress(p){ return `${Math.min(5, p.expeditionRecklessStreak||0)}/5`; },
+  },
+  {
+    key: 'expedition_streak10',
+    nameZh: '遠征亡命連續成功 10 次', nameEn: 'Expedition Reckless Legend',
+    descZh: '「亡命」風險等級＋8小時遠征連續成功 10 次', descEn: 'Succeed 10 Reckless-risk 8-hour expeditions in a row',
+    image: ACHIEVEMENT_IMAGES.expedition_streak10,
+    glow: 'blue',
+    check(p){ return (p.expeditionRecklessStreak||0) >= 10; },
+    progress(p){ return `${Math.min(10, p.expeditionRecklessStreak||0)}/10`; },
   },
   {
     key: 'jackpot_champion',
@@ -7529,24 +7598,43 @@ async function confirmStartExpedition(tierId, durationKey, itemUsage){
     showToast(tt('缺少系統指定的出征卡牌，請先到拍賣行收購','Missing the system-assigned expedition cards - please buy them from the Auction House first'));
     return;
   }
-  // 向下相容：階段五之前的舊呼叫方式是傳入 boolean（是否使用家具），這裡統一轉成物件格式
-  const usage = (typeof itemUsage === 'boolean') ? {furnitureCount: itemUsage ? 1 : 0} : (itemUsage || {});
+  // 向下相容：階段五之前的舊呼叫方式是傳入 boolean（是否使用家具）或舊版 {furnitureCount, useWeapon, accessoryCount}（一律視為 common 等級），這裡統一轉成新版 tier 格式
+  const rawUsage = (typeof itemUsage === 'boolean') ? {furnitureCount: itemUsage ? 1 : 0} : (itemUsage || {});
+  const usage = {
+    furnitureSel: rawUsage.furnitureSel !== undefined ? rawUsage.furnitureSel : (rawUsage.furnitureCount ? `common:${rawUsage.furnitureCount}` : ''),
+    weaponTier: rawUsage.weaponTier !== undefined ? rawUsage.weaponTier : (rawUsage.useWeapon ? 'common' : null),
+    accessorySel: rawUsage.accessorySel !== undefined ? rawUsage.accessorySel : (rawUsage.accessoryCount ? `common:${rawUsage.accessoryCount}` : ''),
+    riskLevel: rawUsage.riskLevel, blessingCardId: rawUsage.blessingCardId,
+  };
+  // "tier:count" 字串解析成 {tier, count}；空字串/未選代表不使用
+  function parseTierSel(sel){
+    if(!sel) return {tier:null, count:0};
+    const parts = String(sel).split(':');
+    return {tier: parts[0], count: parseInt(parts[1],10)||0};
+  }
 
-  // 階段二：職業道具 × 遠征 —— 派遣當下扣道具、算好這趟的加成值存進 p.expedition（結算時直接讀取，之後 GM 調整設定不會影響已派出的遠征）
-  // 🪑 家具：可疊加最多 FURNITURE_MAX_STACK 件，逐件遞減，總和封頂 100%
-  const furnitureStock = p.professionItems.furniture_common||0;
-  const furnitureCount = Math.max(0, Math.min(FURNITURE_MAX_STACK, Math.floor(usage.furnitureCount||0), furnitureStock));
-  const furnitureBonus = Math.min(1, FURNITURE_SUCCESS_TIERS.slice(0, furnitureCount).reduce((sum,v)=>sum+v, 0));
+  // 階段二：職業道具 × 遠征 —— 派遣當下扣道具、算好這趟的加成值存進 p.expedition（結算時直接讀取，之後 GM 調整設定不會影響已派出的這趟）
+  // 🪑 家具：可疊加最多 FURNITURE_MAX_STACK 件，逐件遞減，總和封頂 100%；common／uncommon 互斥，只能擇一等級疊加
+  const furnitureSelParsed = parseTierSel(usage.furnitureSel);
+  const furnitureTier = furnitureSelParsed.tier;
+  const furnitureStock = furnitureTier === 'uncommon' ? (p.professionItems.furniture_uncommon||0) : (p.professionItems.furniture_common||0);
+  const furnitureCount = Math.max(0, Math.min(FURNITURE_MAX_STACK, furnitureSelParsed.count, furnitureStock));
+  const furnitureTiersArr = furnitureTier === 'uncommon' ? FURNITURE_UNCOMMON_SUCCESS_TIERS : FURNITURE_SUCCESS_TIERS;
+  const furnitureBonus = furnitureCount>0 ? Math.min(1, furnitureTiersArr.slice(0, furnitureCount).reduce((sum,v)=>sum+v, 0)) : 0;
 
-  // ⚔️ 武器：只能用 1 把，成功時獎勵區間 +N%（結算時套用）
-  const weaponStock = p.professionItems.weapon_common||0;
-  const weaponUsed = !!usage.useWeapon && weaponStock > 0;
-  const weaponRewardPct = weaponUsed ? WEAPON_EXPEDITION_REWARD_PCT : 0;
+  // ⚔️ 武器：只能用 1 把，成功時獎勵區間 +N%（結算時套用）；common／uncommon 互斥，只能擇一
+  const weaponTier = usage.weaponTier === 'uncommon' ? 'uncommon' : (usage.weaponTier === 'common' ? 'common' : null);
+  const weaponStock = weaponTier === 'uncommon' ? (p.professionItems.weapon_uncommon||0) : (weaponTier === 'common' ? (p.professionItems.weapon_common||0) : 0);
+  const weaponUsed = !!weaponTier && weaponStock > 0;
+  const weaponRewardPct = weaponUsed ? (weaponTier === 'uncommon' ? WEAPON_UNCOMMON_EXPEDITION_REWARD_PCT : WEAPON_EXPEDITION_REWARD_PCT) : 0;
 
-  // 💍 飾品：可疊加最多 ACCESSORY_EXPEDITION_MAX_STACK 件，把獎勵下限往上限拉近，總和封頂 100%
-  const accessoryStock = p.professionItems.accessory_common||0;
-  const accessoryCount = Math.max(0, Math.min(ACCESSORY_EXPEDITION_MAX_STACK, Math.floor(usage.accessoryCount||0), accessoryStock));
-  const accessoryFloorPct = Math.min(1, accessoryCount * ACCESSORY_EXPEDITION_FLOOR_PCT);
+  // 💍 飾品：可疊加最多 ACCESSORY_EXPEDITION_MAX_STACK 件，把獎勵下限往上限拉近，總和封頂 100%；common／uncommon 互斥，只能擇一等級疊加
+  const accessorySelParsed = parseTierSel(usage.accessorySel);
+  const accessoryTier = accessorySelParsed.tier;
+  const accessoryStock = accessoryTier === 'uncommon' ? (p.professionItems.accessory_uncommon||0) : (p.professionItems.accessory_common||0);
+  const accessoryCount = Math.max(0, Math.min(ACCESSORY_EXPEDITION_MAX_STACK, accessorySelParsed.count, accessoryStock));
+  const accessoryFloorPctPerItem = accessoryTier === 'uncommon' ? ACCESSORY_UNCOMMON_EXPEDITION_FLOOR_PCT : ACCESSORY_EXPEDITION_FLOOR_PCT;
+  const accessoryFloorPct = Math.min(1, accessoryCount * accessoryFloorPctPerItem);
 
   // 🎲 階段二：風險等級 + 局內祝福/詛咒 —— 僅 Lv >= EXPEDITION_ROGUELIKE_UNLOCK_LEVEL 生效，未達門檻一律視為「標準／無」
   const rogueUnlocked = (p.expLevel||0) >= EXPEDITION_ROGUELIKE_UNLOCK_LEVEL;
@@ -7569,9 +7657,9 @@ async function confirmStartExpedition(tierId, durationKey, itemUsage){
     effectiveDurationMs = Math.max(1000, Math.round(variant.durationMs * (1 + blessingCurse.durationPctDelta)));
   }
 
-  if(furnitureCount > 0) p.professionItems.furniture_common -= furnitureCount;
-  if(weaponUsed) p.professionItems.weapon_common -= 1;
-  if(accessoryCount > 0) p.professionItems.accessory_common -= accessoryCount;
+  if(furnitureCount > 0) p.professionItems[furnitureTier === 'uncommon' ? 'furniture_uncommon' : 'furniture_common'] -= furnitureCount;
+  if(weaponUsed) p.professionItems[weaponTier === 'uncommon' ? 'weapon_uncommon' : 'weapon_common'] -= 1;
+  if(accessoryCount > 0) p.professionItems[accessoryTier === 'uncommon' ? 'accessory_uncommon' : 'accessory_common'] -= accessoryCount;
 
   const staked = {};
   cards.forEach(cid=>{
@@ -7581,9 +7669,9 @@ async function confirmStartExpedition(tierId, durationKey, itemUsage){
   const now = Date.now();
   p.expedition = {
     tierId: tier.id, durationKey, startAt: now, readyAt: now + effectiveDurationMs, staked,
-    furnitureBonus, furnitureCount,
-    weaponUsed, weaponRewardPct,
-    accessoryCount, accessoryFloorPct,
+    furnitureBonus, furnitureCount, furnitureTier,
+    weaponUsed, weaponRewardPct, weaponTier,
+    accessoryCount, accessoryFloorPct, accessoryTier,
     starChartSuccessBonus: starChartMarsSuccessBonus(p), // ♂️ 星盤火星節點：出征當下 snapshot，之後點新節點不影響已出征的這趟
     starChartRewardBonus: starChartJupiterRewardBonus(p), // ♃ 星盤木星節點：同上
     potionMinutesUsed: 0, // 階段四：進行中頁面使用藥水縮時，會累加這個欄位
@@ -7598,9 +7686,9 @@ async function confirmStartExpedition(tierId, durationKey, itemUsage){
   bumpQuest(p, 'expedition', 1);
   await savePlayer(p);
   const usedNotes = [];
-  if(furnitureCount > 0) usedNotes.push(tt(`🪑家具×${furnitureCount}（成功率+${Math.round(furnitureBonus*100)}%）`, `🪑Furniture×${furnitureCount} (success +${Math.round(furnitureBonus*100)}%)`));
-  if(weaponUsed) usedNotes.push(tt(`⚔️武器（獎勵區間+${Math.round(weaponRewardPct*100)}%）`, `⚔️Weapon (reward range +${Math.round(weaponRewardPct*100)}%)`));
-  if(accessoryCount > 0) usedNotes.push(tt(`💍飾品×${accessoryCount}（獎勵下限拉近${Math.round(accessoryFloorPct*100)}%）`, `💍Accessory×${accessoryCount} (reward floor pulled ${Math.round(accessoryFloorPct*100)}% toward max)`));
+  if(furnitureCount > 0) usedNotes.push(tt(`🪑家具(${furnitureTier})×${furnitureCount}（成功率+${Math.round(furnitureBonus*100)}%）`, `🪑Furniture(${furnitureTier})×${furnitureCount} (success +${Math.round(furnitureBonus*100)}%)`));
+  if(weaponUsed) usedNotes.push(tt(`⚔️武器(${weaponTier})（獎勵區間+${Math.round(weaponRewardPct*100)}%）`, `⚔️Weapon(${weaponTier}) (reward range +${Math.round(weaponRewardPct*100)}%)`));
+  if(accessoryCount > 0) usedNotes.push(tt(`💍飾品(${accessoryTier})×${accessoryCount}（獎勵下限拉近${Math.round(accessoryFloorPct*100)}%）`, `💍Accessory(${accessoryTier})×${accessoryCount} (reward floor pulled ${Math.round(accessoryFloorPct*100)}% toward max)`));
   if(rogueUnlocked) usedNotes.push(tt(`🎲${riskData.labelZh}`, `🎲${riskData.labelEn}`));
   if(blessingCurse) usedNotes.push(`${blessingCurse.icon}${tt(blessingCurse.labelZh, blessingCurse.labelEn)}`);
   const usedSuffix = usedNotes.length ? `（${usedNotes.join('、')}）` : '';
@@ -7874,7 +7962,11 @@ function dismissStreakBossEncounter(){
   state.streakBossEncounter = null;
   render();
 }
-async function usePotionOnExpedition(){
+// itemId: 'potion_small' 或 'potion_medium' —— 兩種藥水可在同一趟遠征混用，各自扣自己的庫存，縮短的分鐘數直接疊加
+async function usePotionOnExpedition(itemId){
+  itemId = itemId === 'potion_medium' ? 'potion_medium' : 'potion_small';
+  const minutesPerPotion = itemId === 'potion_medium' ? POTION_MEDIUM_EXPEDITION_MINUTES : POTION_EXPEDITION_MINUTES;
+  const potionLabel = itemId === 'potion_medium' ? tt('中藥水','Medium Potion') : tt('小藥水','Small Potion');
   const p = state.player;
   if(!p) return;
   ensureExpedition(p);
@@ -7882,24 +7974,24 @@ async function usePotionOnExpedition(){
   const exp = p.expedition;
   if(!exp){ showToast(tt('目前沒有進行中的遠征','No expedition in progress')); return; }
   if(Date.now() >= exp.readyAt){ showToast(tt('遠征已經可以領取了','The expedition is already ready to claim')); return; }
-  if(exp.blessingCurse && exp.blessingCurse.blockPotion){ showToast(tt('🚫封印生效中，這趟遠征無法使用小藥水縮時','🚫Sealed - Small Potions can\'t be used to shorten this run')); return; }
-  if((p.professionItems.potion_small||0) < 1){ showToast(tt('沒有小藥水','No Small Potions')); return; }
-  const reduceMs = POTION_EXPEDITION_MINUTES * 60 * 1000;
+  if(exp.blessingCurse && exp.blessingCurse.blockPotion){ showToast(tt('🚫封印生效中，這趟遠征無法使用藥水縮時','🚫Sealed - Potions can\'t be used to shorten this run')); return; }
+  if((p.professionItems[itemId]||0) < 1){ showToast(tt(`沒有${potionLabel}`, `No ${potionLabel}`)); return; }
+  const reduceMs = minutesPerPotion * 60 * 1000;
   const floorAt = Date.now() + POTION_EXPEDITION_MIN_REMAIN_MINUTES * 60 * 1000;
   if(exp.readyAt <= floorAt){
     showToast(tt(`剩餘時間已經接近下限（${POTION_EXPEDITION_MIN_REMAIN_MINUTES} 分鐘），無法再縮短`, `Remaining time is already near the floor (${POTION_EXPEDITION_MIN_REMAIN_MINUTES} min) - can't shorten further`));
     return;
   }
-  p.professionItems.potion_small -= 1;
+  p.professionItems[itemId] -= 1;
   const prevReadyAt = exp.readyAt;
   exp.readyAt = Math.max(floorAt, exp.readyAt - reduceMs);
   shiftUnresolvedExpeditionEventTriggers(exp, prevReadyAt - exp.readyAt);
-  exp.potionMinutesUsed = (exp.potionMinutesUsed||0) + POTION_EXPEDITION_MINUTES;
+  exp.potionMinutesUsed = (exp.potionMinutesUsed||0) + minutesPerPotion;
   await savePlayer(p);
   const nowReady = Date.now() >= exp.readyAt;
   showToast(nowReady
-    ? tt('🧪 已使用小藥水，遠征剩餘時間已縮短完畢，可以領取了！','🧪 Used a Small Potion - remaining time is up, the expedition is ready to claim!')
-    : tt(`🧪 已使用小藥水，遠征剩餘時間 -${POTION_EXPEDITION_MINUTES} 分鐘`, `🧪 Used a Small Potion, expedition time -${POTION_EXPEDITION_MINUTES} min`));
+    ? tt(`🧪 已使用${potionLabel}，遠征剩餘時間已縮短完畢，可以領取了！`, `🧪 Used a ${potionLabel} - remaining time is up, the expedition is ready to claim!`)
+    : tt(`🧪 已使用${potionLabel}，遠征剩餘時間 -${minutesPerPotion} 分鐘`, `🧪 Used a ${potionLabel}, expedition time -${minutesPerPotion} min`));
   render();
 }
 // 派遣前的「風險等級 + 翻牌選祝福/詛咒」UI，只在 p.expLevel >= EXPEDITION_ROGUELIKE_UNLOCK_LEVEL 時渲染
@@ -7990,16 +8082,11 @@ function expeditionEventLogLine(event){
 // 但這些互動的 onclick 直接呼叫 render() 整段重繪，原生 <select>/<checkbox> 會被換成全新 DOM、
 // 值重設回預設 —— 所以呼叫前先記住目前的選擇，重繪後再還原（跟下面 expeditionTickInterval 用的是同一招）。
 async function renderPreservingExpeditionItemInputs(){
-  const savedSelects = Array.from(document.querySelectorAll('select[id^="furniture-sel-"], select[id^="accessory-sel-"]')).map(el=>({id: el.id, value: el.value}));
-  const savedChecks = Array.from(document.querySelectorAll('input[type=checkbox][id^="weapon-cb-"]:checked')).map(el=>el.id);
+  const savedSelects = Array.from(document.querySelectorAll('select[id^="furniture-sel-"], select[id^="accessory-sel-"], select[id^="weapon-sel-"]')).map(el=>({id: el.id, value: el.value}));
   await render();
   savedSelects.forEach(({id, value})=>{
     const el = document.getElementById(id);
     if(el && !el.disabled && Array.from(el.options).some(o=>o.value===value)) el.value = value;
-  });
-  savedChecks.forEach(id=>{
-    const el = document.getElementById(id);
-    if(el && !el.disabled) el.checked = true;
   });
 }
 async function renderExpedition(body){
@@ -8117,6 +8204,7 @@ async function renderExpedition(body){
       variantLine = `<p class="sub">🎲 ${tt(`成功率約 ${Math.round(effRate*100)}%`, `~${Math.round(effRate*100)}% success`)}　✦ ${tt(`預估獎勵 ${effMin}–${effMax} 金幣、經驗 +${variant.rewardExp}`, `Est. reward ${effMin}-${effMax} coins, +${variant.rewardExp} exp`)}<br><span style="font-size:11px;color:var(--muted);">${tt('（未包含尚未觸發的遭遇事件效果）','(excludes effects from encounter events not yet triggered)')}</span>${rescueEligible ? `<br><span style="font-size:11px;color:var(--gold-bright);">${tt('🎲已裝備滿 3 顆骰子：若失敗會補丟一次骰子，開出豹子直接逆轉成功','🎲3 dice equipped: on failure you get one rescue roll — a Triple turns it into a success')}</span>` : ''}</p>`;
     }
     const potionQty = p.professionItems.potion_small||0;
+    const potionMediumQty = p.professionItems.potion_medium||0;
     const rogueLine = (exp.riskLevel && exp.riskLevel !== 'standard') || exp.blessingCurse
       ? `<p class="sub">${exp.riskLevel && exp.riskLevel!=='standard' ? tt(`🎲 風險：${EXPEDITION_RISK_LEVELS[exp.riskLevel]?.labelZh||exp.riskLevel}　`, `🎲 Risk: ${EXPEDITION_RISK_LEVELS[exp.riskLevel]?.labelEn||exp.riskLevel}　`) : ''}${exp.blessingCurse ? `${exp.blessingCurse.icon} ${tt(exp.blessingCurse.labelZh, exp.blessingCurse.labelEn)}` : ''}</p>`
       : '';
@@ -8135,9 +8223,12 @@ async function renderExpedition(body){
            <button class="btn" id="expedition-claim-btn">${tt('領取遠征成果','Claim Expedition Result')}</button>`
         : (exp.blessingCurse && exp.blessingCurse.blockPotion)
           ? `<div class="countdown" style="margin-bottom:10px;">${tt(`還需 ${formatDuration(exp.readyAt-now)}`, `${formatDuration(exp.readyAt-now)} remaining`)}</div>
-             <button class="btn small secondary" disabled style="opacity:0.5;">${tt('🚫 封印生效中，無法使用小藥水','🚫 Sealed - Small Potion unavailable')}</button>`
+             <button class="btn small secondary" disabled style="opacity:0.5;">${tt('🚫 封印生效中，無法使用藥水','🚫 Sealed - Potions unavailable')}</button>`
           : `<div class="countdown" style="margin-bottom:10px;">${tt(`還需 ${formatDuration(exp.readyAt-now)}`, `${formatDuration(exp.readyAt-now)} remaining`)}</div>
-             <button class="btn small secondary" id="expedition-use-potion-btn" ${potionQty>0?'':'disabled'} style="${potionQty>0?'':'opacity:0.5;'}">${tt(`🧪 使用小藥水（-${POTION_EXPEDITION_MINUTES}分鐘，庫存 ${potionQty}）`, `🧪 Use Small Potion (-${POTION_EXPEDITION_MINUTES}min, stock ${potionQty})`)}</button>`
+             <div style="display:flex;flex-wrap:wrap;gap:8px;">
+               <button class="btn small secondary" id="expedition-use-potion-btn" data-potion-item="potion_small" ${potionQty>0?'':'disabled'} style="${potionQty>0?'':'opacity:0.5;'}">${tt(`🧪 使用小藥水（-${POTION_EXPEDITION_MINUTES}分鐘，庫存 ${potionQty}）`, `🧪 Use Small Potion (-${POTION_EXPEDITION_MINUTES}min, stock ${potionQty})`)}</button>
+               <button class="btn small secondary" id="expedition-use-potion-medium-btn" data-potion-item="potion_medium" ${potionMediumQty>0?'':'disabled'} style="${potionMediumQty>0?'':'opacity:0.5;'}">${tt(`🧪 使用中藥水（-${POTION_MEDIUM_EXPEDITION_MINUTES}分鐘，庫存 ${potionMediumQty}）`, `🧪 Use Medium Potion (-${POTION_MEDIUM_EXPEDITION_MINUTES}min, stock ${potionMediumQty})`)}</button>
+             </div>`
       }
       ${eventLogHtml}
     </div>`;
@@ -8195,33 +8286,51 @@ async function renderExpedition(body){
             ${canAfford ? (()=>{
               const uid = `${tier.id}-${durKey}`;
               const furnitureQty = p.professionItems.furniture_common||0;
+              const furnitureUncommonQty = p.professionItems.furniture_uncommon||0;
               const weaponQty = p.professionItems.weapon_common||0;
+              const weaponUncommonQty = p.professionItems.weapon_uncommon||0;
               const accessoryQty = p.professionItems.accessory_common||0;
-              const furnitureMax = Math.min(FURNITURE_MAX_STACK, furnitureQty);
-              const accessoryMax = Math.min(ACCESSORY_EXPEDITION_MAX_STACK, accessoryQty);
-              const furnitureOptions = Array.from({length: furnitureMax+1}, (_,n)=>{
-                const bonus = Math.round(FURNITURE_SUCCESS_TIERS.slice(0,n).reduce((s,v)=>s+v,0)*100);
-                return `<option value="${n}">${n===0 ? tt('不使用','None') : tt(`${n} 件（成功率 +${bonus}%）`, `${n} (success +${bonus}%)`)}</option>`;
-              }).join('');
-              const accessoryOptions = Array.from({length: accessoryMax+1}, (_,n)=>{
-                const pct = Math.round(Math.min(1, n*ACCESSORY_EXPEDITION_FLOOR_PCT)*100);
-                return `<option value="${n}">${n===0 ? tt('不使用','None') : tt(`${n} 件（下限拉近 ${pct}%）`, `${n} (floor pulled ${pct}%)`)}</option>`;
-              }).join('');
+              const accessoryUncommonQty = p.professionItems.accessory_uncommon||0;
+              // 家具／飾品：common 與 uncommon 互斥堆疊（不可混插），用單一 select 以 "tier:count" 編碼避免同時選兩層
+              const furnitureOptions = `<option value="">${tt('不使用','None')}</option>` +
+                Array.from({length: Math.min(FURNITURE_MAX_STACK, furnitureQty)}, (_,i)=>i+1).map(n=>{
+                  const bonus = Math.round(FURNITURE_SUCCESS_TIERS.slice(0,n).reduce((s,v)=>s+v,0)*100);
+                  return `<option value="common:${n}">${tt(`${n} 件・common（成功率 +${bonus}%）`, `${n}・Common (success +${bonus}%)`)}</option>`;
+                }).join('') +
+                Array.from({length: Math.min(FURNITURE_MAX_STACK, furnitureUncommonQty)}, (_,i)=>i+1).map(n=>{
+                  const bonus = Math.round(FURNITURE_UNCOMMON_SUCCESS_TIERS.slice(0,n).reduce((s,v)=>s+v,0)*100);
+                  return `<option value="uncommon:${n}">${tt(`${n} 件・uncommon（成功率 +${bonus}%）`, `${n}・Uncommon (success +${bonus}%)`)}</option>`;
+                }).join('');
+              const accessoryOptions = `<option value="">${tt('不使用','None')}</option>` +
+                Array.from({length: Math.min(ACCESSORY_EXPEDITION_MAX_STACK, accessoryQty)}, (_,i)=>i+1).map(n=>{
+                  const pct = Math.round(Math.min(1, n*ACCESSORY_EXPEDITION_FLOOR_PCT)*100);
+                  return `<option value="common:${n}">${tt(`${n} 件・common（下限拉近 ${pct}%）`, `${n}・Common (floor pulled ${pct}%)`)}</option>`;
+                }).join('') +
+                Array.from({length: Math.min(ACCESSORY_EXPEDITION_MAX_STACK, accessoryUncommonQty)}, (_,i)=>i+1).map(n=>{
+                  const pct = Math.round(Math.min(1, n*ACCESSORY_UNCOMMON_EXPEDITION_FLOOR_PCT)*100);
+                  return `<option value="uncommon:${n}">${tt(`${n} 件・uncommon（下限拉近 ${pct}%）`, `${n}・Uncommon (floor pulled ${pct}%)`)}</option>`;
+                }).join('');
+              const weaponOptions = `<option value="">${tt('不使用','None')}</option>` +
+                (weaponQty>0 ? `<option value="common">${tt(`common（獎勵區間 +${Math.round(WEAPON_EXPEDITION_REWARD_PCT*100)}%）`, `Common (reward range +${Math.round(WEAPON_EXPEDITION_REWARD_PCT*100)}%)`)}</option>` : '') +
+                (weaponUncommonQty>0 ? `<option value="uncommon">${tt(`uncommon（獎勵區間 +${Math.round(WEAPON_UNCOMMON_EXPEDITION_REWARD_PCT*100)}%）`, `Uncommon (reward range +${Math.round(WEAPON_UNCOMMON_EXPEDITION_REWARD_PCT*100)}%)`)}</option>` : '');
+              const hasFurniture = furnitureQty>0 || furnitureUncommonQty>0;
+              const hasWeapon = weaponQty>0 || weaponUncommonQty>0;
+              const hasAccessory = accessoryQty>0 || accessoryUncommonQty>0;
               return `<div style="display:flex;flex-direction:column;gap:6px;margin-top:8px;">
-                <label style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;${furnitureQty>0?'':'opacity:0.5;'}">
+                <label style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;${hasFurniture?'':'opacity:0.5;'}">
                   🪑 ${tt('家具','Furniture')}
-                  <select id="furniture-sel-${uid}" ${furnitureQty>0?'':'disabled'} style="min-width:150px;">${furnitureOptions}</select>
-                  <span style="color:var(--muted);font-size:11px;">${tt(`庫存 ${furnitureQty}`, `Stock ${furnitureQty}`)}</span>
+                  <select id="furniture-sel-${uid}" ${hasFurniture?'':'disabled'} style="min-width:170px;">${furnitureOptions}</select>
+                  <span style="color:var(--muted);font-size:11px;">${tt(`庫存 common ${furnitureQty}／uncommon ${furnitureUncommonQty}`, `Stock Common ${furnitureQty} / Uncommon ${furnitureUncommonQty}`)}</span>
                 </label>
-                <label style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;${weaponQty>0?'':'opacity:0.5;'}">
-                  <input type="checkbox" id="weapon-cb-${uid}" ${weaponQty>0?'':'disabled'} />
-                  ⚔️ ${tt(`使用武器（獎勵區間 +${Math.round(WEAPON_EXPEDITION_REWARD_PCT*100)}%）`, `Use Weapon (reward range +${Math.round(WEAPON_EXPEDITION_REWARD_PCT*100)}%)`)}
-                  <span style="color:var(--muted);font-size:11px;">${tt(`庫存 ${weaponQty}`, `Stock ${weaponQty}`)}</span>
+                <label style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;${hasWeapon?'':'opacity:0.5;'}">
+                  ⚔️ ${tt('武器','Weapon')}
+                  <select id="weapon-sel-${uid}" ${hasWeapon?'':'disabled'} style="min-width:170px;">${weaponOptions}</select>
+                  <span style="color:var(--muted);font-size:11px;">${tt(`庫存 common ${weaponQty}／uncommon ${weaponUncommonQty}`, `Stock Common ${weaponQty} / Uncommon ${weaponUncommonQty}`)}</span>
                 </label>
-                <label style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;${accessoryQty>0?'':'opacity:0.5;'}">
+                <label style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;${hasAccessory?'':'opacity:0.5;'}">
                   💍 ${tt('飾品','Accessory')}
-                  <select id="accessory-sel-${uid}" ${accessoryQty>0?'':'disabled'} style="min-width:150px;">${accessoryOptions}</select>
-                  <span style="color:var(--muted);font-size:11px;">${tt(`庫存 ${accessoryQty}`, `Stock ${accessoryQty}`)}</span>
+                  <select id="accessory-sel-${uid}" ${hasAccessory?'':'disabled'} style="min-width:170px;">${accessoryOptions}</select>
+                  <span style="color:var(--muted);font-size:11px;">${tt(`庫存 common ${accessoryQty}／uncommon ${accessoryUncommonQty}`, `Stock Common ${accessoryQty} / Uncommon ${accessoryUncommonQty}`)}</span>
                 </label>
               </div>${(p.expLevel||0) >= EXPEDITION_ROGUELIKE_UNLOCK_LEVEL ? renderExpeditionRogueDraftUI(uid) : ''}`;
             })() : ''}
@@ -8264,7 +8373,9 @@ async function renderExpedition(body){
   const streakBossDismissBtn = document.getElementById('streak-boss-dismiss-btn');
   if(streakBossDismissBtn) streakBossDismissBtn.onclick = dismissStreakBossEncounter;
   const usePotionBtn = document.getElementById('expedition-use-potion-btn');
-  if(usePotionBtn) usePotionBtn.onclick = usePotionOnExpedition;
+  if(usePotionBtn) usePotionBtn.onclick = ()=>usePotionOnExpedition('potion_small');
+  const usePotionMediumBtn = document.getElementById('expedition-use-potion-medium-btn');
+  if(usePotionMediumBtn) usePotionMediumBtn.onclick = ()=>usePotionOnExpedition('potion_medium');
   document.querySelectorAll('[data-rogue-event-idx]').forEach(btn=>{
     btn.onclick = async ()=>{
       const idx = parseInt(btn.dataset.rogueEventIdx, 10);
@@ -8321,7 +8432,7 @@ async function renderExpedition(body){
     btn.onclick = ()=>{
       const uid = btn.dataset.expeditionUid;
       const furnitureSel = uid ? document.getElementById(`furniture-sel-${uid}`) : null;
-      const weaponCb = uid ? document.getElementById(`weapon-cb-${uid}`) : null;
+      const weaponSel = uid ? document.getElementById(`weapon-sel-${uid}`) : null;
       const accessorySel = uid ? document.getElementById(`accessory-sel-${uid}`) : null;
       const rogueUnlocked = (state.player.expLevel||0) >= EXPEDITION_ROGUELIKE_UNLOCK_LEVEL;
       const draft = rogueUnlocked && uid ? getExpeditionRogueDraft(uid) : null;
@@ -8331,9 +8442,10 @@ async function renderExpedition(body){
         return;
       }
       const itemUsage = {
-        furnitureCount: furnitureSel ? parseInt(furnitureSel.value,10)||0 : 0,
-        useWeapon: !!weaponCb?.checked,
-        accessoryCount: accessorySel ? parseInt(accessorySel.value,10)||0 : 0,
+        // "tier:count" 編碼（例如 "common:2"／"uncommon:1"），空字串代表不使用；武器沒有件數，直接用 "common"／"uncommon"
+        furnitureSel: furnitureSel ? furnitureSel.value : '',
+        weaponTier: weaponSel && weaponSel.value ? weaponSel.value : null,
+        accessorySel: accessorySel ? accessorySel.value : '',
         riskLevel: draft ? draft.riskLevel : 'standard',
         blessingCardId: hasSelectedCard ? draft.drawnCards[draft.selectedIdx].id : null,
       };
@@ -8451,7 +8563,11 @@ async function harvestPlot(plotIndex, opts){
   const status = plotStatus(plot, now);
   if(status === 'empty' || status === 'growing') return null;
 
-  const seed = SEED_TYPES[plot.seed];
+  // 🐞修正：舊資料相容 — 若 plot.seed 指向的種子已經被移除／改版下架（例如過去的
+  // 季節限定種子），SEED_TYPES[plot.seed] 會是 undefined。過去這裡沒有防呆，
+  // 收成時直接讀 seed.coinMax 等欄位會整段拋出例外，玩家連清空這塊地都做不到。
+  // 補一個安全預設值，讓孤兒種子至少能被正常清掉（金幣/掉落一律視為 0）。
+  const seed = SEED_TYPES[plot.seed] || {icon:'❓', nameZh:'未知種子（已下架）', nameEn:'Unknown Seed (discontinued)', coinMin:0, coinMax:0, growMs:1};
   let result = null;
   if(status === 'withered'){
     result = {withered:true, seedName: seedName(seed)};
@@ -9023,7 +9139,7 @@ function newPlayer(nick, passwordHash){
     profession:null,
     professionProgress:{alchemist:{level:1,exp:0}, blacksmith:{level:1,exp:0}, carpenter:{level:1,exp:0}},
     professionMaterials:{herb:0, ore:0, lumber:0},
-    professionItems:{potion_small:0, weapon_common:0, accessory_common:0, furniture_common:0},
+    professionItems:{potion_small:0, weapon_common:0, accessory_common:0, furniture_common:0, potion_medium:0, weapon_uncommon:0, accessory_uncommon:0, furniture_uncommon:0},
     stamina:PROFESSION_STAMINA_MAX, staminaMax:PROFESSION_STAMINA_MAX, lastStaminaRegenAt:Date.now(),
     pets:[], petActiveId:null,
     petNest:{element:null, plantedAt:null, readyAt:null},
@@ -10172,7 +10288,8 @@ function fortuneStarPanelHtml(p){
         ? tt(`🎉 本輪 ${round.winners.length} 位中獎者，每人獲得 ✦${round.winners[0].amount}`, `🎉 ${round.winners.length} winner(s) this round, each receiving ✦${round.winners[0].amount}`)
         : tt('本輪無人中獎，獎池已留在幸運之星獎池累加到下一輪','No winners this round - the pool rolled over to next round\'s Fortune Star jackpot')}</p>
       ${winnerNames ? `<p class="sub" style="margin:0 0 6px;color:var(--gold-bright);">${tt(`👑 ${winnerNames}`, `👑 ${winnerNames}`)}</p>` : ''}
-      ${won ? `<p class="sub" style="margin:0;color:var(--gold-bright);">${tt(`✨ 恭喜你中獎了！✦${won.amount} 已送入信箱`, `✨ Congratulations, you won! ✦${won.amount} has been sent to your mailbox`)}</p>` : ''}`;
+      ${won ? `<p class="sub" style="margin:0 0 6px;color:var(--gold-bright);">${tt(`✨ 恭喜你中獎了！✦${won.amount} 已送入信箱`, `✨ Congratulations, you won! ✦${won.amount} has been sent to your mailbox`)}</p>` : ''}
+      <p class="sub" style="margin:0;">${tt(`下一輪累積獎池：<b style="color:var(--gold-bright);">✦ ${FORTUNE_STAR_JACKPOT}</b>`, `Next round's pool so far: <b style="color:var(--gold-bright);">✦ ${FORTUNE_STAR_JACKPOT}</b>`)}</p>`;
   }
   return `<div class="panel">
     <h2>⭐ ${tt('每日星運之星','Daily Fortune Star')}</h2>
@@ -10334,6 +10451,10 @@ async function applyPendingRewards(player){
     } else if(data.grantKind === 'auction_trade_stat'){
       ensureStats(player).totalAuctionTrades += 1;
       if(typeof data.price === 'number') ensureStats(player).totalAuctionVolume += data.price;
+      changed = true;
+    } else if(data.grantKind === 'ghost_talisman'){
+      if(!player.materials) player.materials = {};
+      player.materials.ghostDiceTalisman = Math.max(0, (player.materials.ghostDiceTalisman||0) + (data.qty||1));
       changed = true;
     } else if(data.grantKind === 'stat_bump'){
       // 通用統計數字累加（例如每日星運之星中獎次數），供成就徽章的 check() 判斷用
@@ -10894,7 +11015,8 @@ function ownedDiceAuctionOptions(){
   ensureDiceInventory(p);
   return Object.values(p.dice).filter(d=>!p.diceSlots.includes(d.id)).sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||'')).map(d=>{
     const meta = DICE_QUALITY_META[d.quality] || DICE_QUALITY_META.common;
-    const label = tt(`${meta.label} 骰子 Lv.${d.level||1}（基礎 ${d.baseAttack}）`, `${meta.labelEn} Die Lv.${d.level||1} (Base ${d.baseAttack})`);
+    const favTag = d.favorite ? tt('💛已標記最愛 - ', '💛Favorited - ') : '';
+    const label = favTag + tt(`${meta.label} 骰子 Lv.${d.level||1}（基礎 ${d.baseAttack}）`, `${meta.labelEn} Die Lv.${d.level||1} (Base ${d.baseAttack})`);
     return `<option value="${d.id}">${label}</option>`;
   }).join('');
 }
@@ -11301,6 +11423,23 @@ async function gmGrantProfessionItem(targetNick, itemId, qty){
   }
   render();
 }
+async function gmGrantGhostTalisman(targetNick, qty){
+  if(!isGM()) return;
+  targetNick = (targetNick||'').trim();
+  if(!targetNick){ showToast(tt('請輸入目標玩家暱稱','Please enter the target player nickname')); return; }
+  qty = parseInt(qty) || 1;
+  if(qty <= 0){ showToast(tt('請輸入有效的數量','Please enter a valid quantity')); return; }
+  const target = await loadPlayer(targetNick);
+  if(!target){ showToast(tt('找不到此玩家','Player not found')); return; }
+  const label = tt('幽冥骰符','Ghost Dice Talisman');
+  await createPendingReward(target.nickname, 'ghost_talisman', {qty});
+  await createNotification(target.nickname, GM_NICKNAME, 'gm_grant', {grantKind:'ghost_talisman', label, qty});
+  showToast(tt(`已發放 🔮 ${label} x${qty} 給 ${target.nickname} ⚡`, `Granted 🔮 ${label} x${qty} to ${target.nickname} ⚡`));
+  if(target.nickname.toLowerCase() === state.nickname.toLowerCase()){
+    await refreshPlayer();
+  }
+  render();
+}
 async function gmLookupPlayer(targetNick){
   targetNick = (targetNick||'').trim();
   if(!targetNick) return null;
@@ -11484,7 +11623,7 @@ async function render(){
         // 玩家還沒選完選項視窗就消失了。所以偵測到正在互動時，這一秒先跳過重繪，等選完失焦後再繼續倒數。
         const active = document.activeElement;
         const isPickerActive = active && typeof active.id === 'string' &&
-          (active.id.startsWith('furniture-sel-') || active.id.startsWith('accessory-sel-') || active.id.startsWith('weapon-cb-'));
+          (active.id.startsWith('furniture-sel-') || active.id.startsWith('accessory-sel-') || active.id.startsWith('weapon-sel-'));
         if(isPickerActive) return;
         // 🐛 連勝加碼 Boss 攻擊動畫（playDiceRollAnimation）播放期間也跳過這一秒的整段
         // 重繪，理由跟上面的下拉選單一樣：重繪會把動畫正在操作的 #streak-boss-dice-anim
@@ -11493,16 +11632,11 @@ async function render(){
         if(state.streakBossAnimating) return;
         // 遠征頁每秒重繪倒數計時，會連帶重建「使用道具」的選單，重繪後預設值會被重設；
         // 重繪前先記住家具/飾品下拉選單的值、武器勾選框的勾選狀態，重繪後再還原，避免玩家選了下一秒就消失。
-        const savedSelects = Array.from(document.querySelectorAll('select[id^="furniture-sel-"], select[id^="accessory-sel-"]')).map(el=>({id: el.id, value: el.value}));
-        const savedChecks = Array.from(document.querySelectorAll('input[type=checkbox][id^="weapon-cb-"]:checked')).map(el=>el.id);
+        const savedSelects = Array.from(document.querySelectorAll('select[id^="furniture-sel-"], select[id^="accessory-sel-"], select[id^="weapon-sel-"]')).map(el=>({id: el.id, value: el.value}));
         await renderTab();
         savedSelects.forEach(({id, value})=>{
           const el = document.getElementById(id);
           if(el && !el.disabled && Array.from(el.options).some(o=>o.value===value)) el.value = value;
-        });
-        savedChecks.forEach(id=>{
-          const el = document.getElementById(id);
-          if(el && !el.disabled) el.checked = true;
         });
       }
       else { clearInterval(expeditionTickInterval); expeditionTickInterval = null; }
@@ -12451,7 +12585,12 @@ async function renderFarm(body){
         ${lockedToggleHtml}
       </div>`;
     } else {
-      const seed = SEED_TYPES[plot.seed];
+      // 🐞修正：plot.seed 可能指向已被移除／改版下架的舊種子（例如過去的季節限定
+      // 種子），此時 SEED_TYPES[plot.seed] 會是 undefined。原本這裡的「已成熟」與
+      // 「成長中」分支會直接讀 seed.icon / seed.growMs 等欄位，整個 renderFarm()
+      // 因此拋出例外中斷，畫面停在切換前的分頁、點花園分頁看起來完全沒反應。
+      // 補一個安全預設值，讓孤兒種子的地塊至少能正常顯示、可以被收成/清掉。
+      const seed = SEED_TYPES[plot.seed] || {icon:'❓', nameZh:'未知種子（已下架）', nameEn:'Unknown Seed (discontinued)', coinMin:0, coinMax:0, growMs:1};
       if(status === 'withered'){
         html += `<div class="farm-plot withered">
           <div class="farm-plot-icon">🥀</div>
@@ -12525,7 +12664,9 @@ async function renderFarm(body){
           <div class="farm-plot-sub">${tt('還沒有種東西','Nothing planted yet')}</div>
         </div>`;
       } else {
-        const seed = SEED_TYPES[plot.seed];
+        // 🐞修正：跟上面自己的花園一樣，好友的地塊也可能種著已下架的舊種子，
+        // 補一樣的安全預設值，避免查看好友花園時整段拋出例外。
+        const seed = SEED_TYPES[plot.seed] || {icon:'❓', nameZh:'未知種子（已下架）', nameEn:'Unknown Seed (discontinued)', coinMin:0, coinMax:0, growMs:1};
         if(status === 'withered'){
           html += `<div class="farm-plot withered">
             <div class="farm-plot-icon">🥀</div>
@@ -13060,6 +13201,10 @@ async function renderGM(body){
       <div><label>${tt('數量','Quantity')}</label><input type="number" id="gm-pitem-qty" value="1" min="1" style="width:70px;" /></div>
       <button class="btn small" id="gm-pitem-btn">${tt('發放成品','Grant Item')}</button>
     </div>
+    <div class="form-row">
+      <div><label>🔮 ${tt('幽冥骰符數量','Ghost Dice Talisman quantity')}</label><input type="number" id="gm-talisman-qty" value="1" min="1" style="width:70px;" /></div>
+      <button class="btn small" id="gm-talisman-btn">${tt('發放幽冥骰符','Grant Ghost Dice Talisman')}</button>
+    </div>
   </div>`;
 
   html += `<div class="panel">
@@ -13072,7 +13217,7 @@ async function renderGM(body){
       <div class="farm-upgrade-box" style="margin-bottom:10px;">
         <div class="farm-upgrade-title">${def.icon} ${professionLabel(def)}</div>
         ${def.recipes.map(r=>`
-          <div class="farm-upgrade-line" style="color:var(--gold-bright);margin-top:6px;">${r.icon} ${professionRecipeLabel(r)}</div>
+          <div class="farm-upgrade-line" style="color:var(--gold-bright);margin-top:6px;">${r.icon} ${professionRecipeLabel(r)}${r.unlockLevel ? tt(` （Lv.${r.unlockLevel}解鎖，消耗${r.consumeQty||1}件${(()=>{const m=professionItemMeta(r.consumeItemId); return m?professionRecipeLabel(m):r.consumeItemId;})()}，不可於此調整）`, ` (unlocks Lv.${r.unlockLevel}, consumes ${r.consumeQty||1} ${(()=>{const m=professionItemMeta(r.consumeItemId); return m?professionRecipeLabel(m):r.consumeItemId;})()}, not adjustable here)`) : ''}</div>
           <div class="form-row">
             <div><label>${def.materialIcon} ${tt('材料成本','Material cost')}</label><input type="number" id="gm-prof-${r.itemId}-mat" value="${r.materialCost}" min="0" style="width:80px;" /></div>
             <div><label>⚡ ${tt('體力成本','Stamina cost')}</label><input type="number" id="gm-prof-${r.itemId}-sta" value="${r.staminaCost}" min="0" style="width:80px;" /></div>
@@ -13116,6 +13261,33 @@ async function renderGM(body){
       <div class="form-row">
         <div><label>${tt('每件拉近幅度 %','Pull-toward-max % per item')}</label><input type="number" id="gm-prof-accessory-pct" value="${Math.round(ACCESSORY_EXPEDITION_FLOOR_PCT*100)}" min="0" max="100" style="width:90px;" /></div>
         <div><label>${tt('最大疊加件數','Max stack count')}</label><input type="number" id="gm-prof-accessory-max" value="${ACCESSORY_EXPEDITION_MAX_STACK}" min="1" style="width:90px;" /></div>
+      </div>
+    </div>
+    <div class="farm-upgrade-title" style="margin-top:14px;">✨ ${tt('進階版（uncommon，等級5解鎖）','Advanced (Uncommon, unlocks at Lv.5)')}</div>
+    <div class="farm-upgrade-box" style="margin-bottom:10px;">
+      <div class="farm-upgrade-title">🪑 ${tt('家具(uncommon)：出征成功率加成（疊加上限沿用上方最大件數）','Furniture (Uncommon): expedition success-rate bonus (stack cap follows the common setting)')}</div>
+      <div class="form-row">
+        <div><label>${tt('第 1 件 %','1st item %')}</label><input type="number" id="gm-prof-furniture-unc-tier1" value="${Math.round(FURNITURE_UNCOMMON_SUCCESS_TIERS[0]*100)}" min="0" max="100" style="width:80px;" /></div>
+        <div><label>${tt('第 2 件 %','2nd item %')}</label><input type="number" id="gm-prof-furniture-unc-tier2" value="${Math.round(FURNITURE_UNCOMMON_SUCCESS_TIERS[1]*100)}" min="0" max="100" style="width:80px;" /></div>
+        <div><label>${tt('第 3 件 %','3rd item %')}</label><input type="number" id="gm-prof-furniture-unc-tier3" value="${Math.round(FURNITURE_UNCOMMON_SUCCESS_TIERS[2]*100)}" min="0" max="100" style="width:80px;" /></div>
+      </div>
+    </div>
+    <div class="farm-upgrade-box" style="margin-bottom:10px;">
+      <div class="farm-upgrade-title">🧪 ${tt('中藥水：縮短遠征剩餘時間（可與小藥水混用，效果疊加）','Medium Potion: shorten expedition remaining time (mixable with Small Potion, effects stack)')}</div>
+      <div class="form-row">
+        <div><label>${tt('每瓶縮短分鐘','Minutes reduced per potion')}</label><input type="number" id="gm-prof-potion-medium-minutes" value="${POTION_MEDIUM_EXPEDITION_MINUTES}" min="0" style="width:90px;" /></div>
+      </div>
+    </div>
+    <div class="farm-upgrade-box" style="margin-bottom:10px;">
+      <div class="farm-upgrade-title">⚔️ ${tt('武器(uncommon)：提升遠征獎勵區間','Weapon (Uncommon): raise expedition reward range')}</div>
+      <div class="form-row">
+        <div><label>${tt('獎勵上下限加成 %','Reward min/max bonus %')}</label><input type="number" id="gm-prof-weapon-unc-pct" value="${Math.round(WEAPON_UNCOMMON_EXPEDITION_REWARD_PCT*100)}" min="0" max="200" style="width:90px;" /></div>
+      </div>
+    </div>
+    <div class="farm-upgrade-box" style="margin-bottom:10px;">
+      <div class="farm-upgrade-title">💍 ${tt('飾品(uncommon)：拉近獎勵下限至上限（疊加上限沿用上方最大件數）','Accessory (Uncommon): pull reward floor toward max (stack cap follows the common setting)')}</div>
+      <div class="form-row">
+        <div><label>${tt('每件拉近幅度 %','Pull-toward-max % per item')}</label><input type="number" id="gm-prof-accessory-unc-pct" value="${Math.round(ACCESSORY_UNCOMMON_EXPEDITION_FLOOR_PCT*100)}" min="0" max="100" style="width:90px;" /></div>
       </div>
     </div>
     <div class="form-row" style="margin-top:6px;">
@@ -13647,6 +13819,12 @@ async function renderGM(body){
     const qty = document.getElementById('gm-pitem-qty').value;
     gmGrantProfessionItem(nick, itemId, qty);
   };
+  const talismanBtn = document.getElementById('gm-talisman-btn');
+  if(talismanBtn) talismanBtn.onclick = ()=>{
+    const nick = document.getElementById('gm-target-input').value;
+    const qty = document.getElementById('gm-talisman-qty').value;
+    gmGrantGhostTalisman(nick, qty);
+  };
   const profSaveBtn = document.getElementById('gm-prof-save-btn');
   if(profSaveBtn) profSaveBtn.onclick = async ()=>{
     const respecCost = parseFloat(document.getElementById('gm-prof-respec').value);
@@ -13686,8 +13864,14 @@ async function renderGM(body){
     const weaponPct = parseFloat(document.getElementById('gm-prof-weapon-pct').value);
     const accessoryPct = parseFloat(document.getElementById('gm-prof-accessory-pct').value);
     const accessoryMax = parseFloat(document.getElementById('gm-prof-accessory-max').value);
-    const pctFields = [tier1, tier2, tier3, accessoryPct];
-    const nonNegFields = [potionMinutes, potionMinRemain, weaponPct, accessoryMax];
+    const uncTier1 = parseFloat(document.getElementById('gm-prof-furniture-unc-tier1').value);
+    const uncTier2 = parseFloat(document.getElementById('gm-prof-furniture-unc-tier2').value);
+    const uncTier3 = parseFloat(document.getElementById('gm-prof-furniture-unc-tier3').value);
+    const potionMediumMinutes = parseFloat(document.getElementById('gm-prof-potion-medium-minutes').value);
+    const weaponUncPct = parseFloat(document.getElementById('gm-prof-weapon-unc-pct').value);
+    const accessoryUncPct = parseFloat(document.getElementById('gm-prof-accessory-unc-pct').value);
+    const pctFields = [tier1, tier2, tier3, accessoryPct, uncTier1, uncTier2, uncTier3, accessoryUncPct];
+    const nonNegFields = [potionMinutes, potionMinRemain, weaponPct, accessoryMax, potionMediumMinutes, weaponUncPct];
     const invalid = pctFields.some(v=>isNaN(v) || v < 0 || v > 100) ||
       nonNegFields.some(v=>isNaN(v) || v < 0) || accessoryMax < 1;
     if(invalid){ showToast(tt('請輸入有效的數字（百分比需在0-100之間，最大疊加件數需至少為1）','Please enter valid numbers (percentages must be 0-100, max stack must be at least 1)')); return; }
@@ -13698,6 +13882,10 @@ async function renderGM(body){
     WEAPON_EXPEDITION_REWARD_PCT = weaponPct / 100;
     ACCESSORY_EXPEDITION_FLOOR_PCT = accessoryPct / 100;
     ACCESSORY_EXPEDITION_MAX_STACK = Math.round(accessoryMax);
+    FURNITURE_UNCOMMON_SUCCESS_TIERS = [uncTier1/100, uncTier2/100, uncTier3/100];
+    POTION_MEDIUM_EXPEDITION_MINUTES = potionMediumMinutes;
+    WEAPON_UNCOMMON_EXPEDITION_REWARD_PCT = weaponUncPct / 100;
+    ACCESSORY_UNCOMMON_EXPEDITION_FLOOR_PCT = accessoryUncPct / 100;
     await saveProfessionConfig();
     showToast(tt('遠征道具加成設定已更新，即時對所有玩家生效 ⚡','Expedition item bonus settings updated, effective immediately for all players ⚡'));
     renderTab();
@@ -13711,6 +13899,10 @@ async function renderGM(body){
     WEAPON_EXPEDITION_REWARD_PCT = DEFAULT_WEAPON_EXPEDITION_REWARD_PCT;
     ACCESSORY_EXPEDITION_FLOOR_PCT = DEFAULT_ACCESSORY_EXPEDITION_FLOOR_PCT;
     ACCESSORY_EXPEDITION_MAX_STACK = DEFAULT_ACCESSORY_EXPEDITION_MAX_STACK;
+    FURNITURE_UNCOMMON_SUCCESS_TIERS = [...DEFAULT_FURNITURE_UNCOMMON_SUCCESS_TIERS];
+    POTION_MEDIUM_EXPEDITION_MINUTES = DEFAULT_POTION_MEDIUM_EXPEDITION_MINUTES;
+    WEAPON_UNCOMMON_EXPEDITION_REWARD_PCT = DEFAULT_WEAPON_UNCOMMON_EXPEDITION_REWARD_PCT;
+    ACCESSORY_UNCOMMON_EXPEDITION_FLOOR_PCT = DEFAULT_ACCESSORY_UNCOMMON_EXPEDITION_FLOOR_PCT;
     await saveProfessionConfig();
     showToast(tt('已還原為預設遠征道具加成設定','Reverted to default expedition item bonus settings'));
     renderTab();
