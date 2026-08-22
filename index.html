@@ -1417,9 +1417,11 @@ const DEFAULT_POTION_EXPEDITION_MIN_REMAIN_MINUTES = 0; // 緩衝下限（預設
 let POTION_EXPEDITION_MINUTES = DEFAULT_POTION_EXPEDITION_MINUTES;
 let POTION_EXPEDITION_MIN_REMAIN_MINUTES = DEFAULT_POTION_EXPEDITION_MIN_REMAIN_MINUTES;
 
-// 武器：出征派遣時可選用 1 把，成功時金幣獎勵上下限各 +N%（只影響這一趟，結算時計算）
+// 武器：出征派遣時可疊加選用最多 WEAPON_EXPEDITION_MAX_STACK 把（原本只能1把，現多開放2把可疊加），
+// 每把成功時金幣獎勵上下限各 +N%，疊加總和封頂 100%（只影響這一趟，結算時計算）
 const DEFAULT_WEAPON_EXPEDITION_REWARD_PCT = 0.10; // 預設值，GM 可調
 let WEAPON_EXPEDITION_REWARD_PCT = DEFAULT_WEAPON_EXPEDITION_REWARD_PCT;
+const WEAPON_EXPEDITION_MAX_STACK = 3;
 
 // 飾品：出征派遣時可疊加選用，每件把金幣隨機下限往上限方向拉近 N%（可疊加到封頂），最多疊 3 件
 const DEFAULT_ACCESSORY_EXPEDITION_FLOOR_PCT = 0.20; // 每件拉近幅度（預設值，GM 可調）
@@ -1431,7 +1433,7 @@ let ACCESSORY_EXPEDITION_MAX_STACK = DEFAULT_ACCESSORY_EXPEDITION_MAX_STACK;
 // 🧪 中藥水：縮短遠征時間，可與小藥水混用（各自扣自己的庫存，分鐘數直接疊加）
 const DEFAULT_POTION_MEDIUM_EXPEDITION_MINUTES = 30;
 let POTION_MEDIUM_EXPEDITION_MINUTES = DEFAULT_POTION_MEDIUM_EXPEDITION_MINUTES;
-// ⚔️ 武器(uncommon)：與 common 互斥，出征前只能選一把
+// ⚔️ 武器(uncommon)：與 common 互斥堆疊，疊加上限沿用 WEAPON_EXPEDITION_MAX_STACK
 const DEFAULT_WEAPON_UNCOMMON_EXPEDITION_REWARD_PCT = 0.18;
 let WEAPON_UNCOMMON_EXPEDITION_REWARD_PCT = DEFAULT_WEAPON_UNCOMMON_EXPEDITION_REWARD_PCT;
 // 💍 飾品(uncommon)：與 common 互斥堆疊，疊加上限沿用 ACCESSORY_EXPEDITION_MAX_STACK
@@ -2141,6 +2143,13 @@ const DEFAULT_PET_DURATION_REWARDS = {
 const DEFAULT_PET_RARE_LOOT_CHANCE = {'15m':0.03, '1h':0.05, '3h':0.08, '6h':0.12, '12h':0.18}; // 觸發時整批獎勵翻倍
 const PET_RARE_LOOT_MULT = 2; // 稀有掉落觸發時的獎勵倍率，固定值不開放調整
 
+// 🪑 家具消耗：種蛋、派遣尋寶都要額外扣小家具庫存（跟遠征搶同一批家具庫存，製造資源取捨），
+// 派遣消耗量依時長遞增，時長越長扣越多（預設值，GM 可調）
+const DEFAULT_PET_EGG_FURNITURE_COST = 3;
+const DEFAULT_PET_HUNT_FURNITURE_COST = {'15m':1, '1h':2, '3h':4, '6h':6, '12h':10};
+let PET_EGG_FURNITURE_COST = DEFAULT_PET_EGG_FURNITURE_COST;
+let PET_HUNT_FURNITURE_COST = {...DEFAULT_PET_HUNT_FURNITURE_COST};
+
 let PET_EGG_GROW_MS = DEFAULT_PET_EGG_GROW_MS;
 let PET_EGG_MATERIAL_COST = DEFAULT_PET_EGG_MATERIAL_COST;
 let PET_BONUS_EGG_CHANCE = DEFAULT_PET_BONUS_EGG_CHANCE;
@@ -2179,6 +2188,10 @@ async function loadPetConfig(){
     if(s.rareLootChance && typeof s.rareLootChance === 'object'){
       PET_DURATION_KEYS.forEach(key=>{ PET_RARE_LOOT_CHANCE[key] = pick(s.rareLootChance[key], DEFAULT_PET_RARE_LOOT_CHANCE[key], 0); });
     }
+    PET_EGG_FURNITURE_COST = pick(s.eggFurnitureCost, DEFAULT_PET_EGG_FURNITURE_COST, 0);
+    if(s.huntFurnitureCost && typeof s.huntFurnitureCost === 'object'){
+      PET_DURATION_KEYS.forEach(key=>{ PET_HUNT_FURNITURE_COST[key] = pick(s.huntFurnitureCost[key], DEFAULT_PET_HUNT_FURNITURE_COST[key], 0); });
+    }
   }catch(e){ /* keep defaults */ }
 }
 async function savePetConfig(){
@@ -2190,6 +2203,8 @@ async function savePetConfig(){
     rarityLevelBonus: PET_RARITY_LEVEL_BONUS,
     durationRewards: PET_DURATION_REWARDS,
     rareLootChance: PET_RARE_LOOT_CHANCE,
+    eggFurnitureCost: PET_EGG_FURNITURE_COST,
+    huntFurnitureCost: PET_HUNT_FURNITURE_COST,
   }));
 }
 
@@ -2347,7 +2362,13 @@ async function plantPetEgg(elementId){
     showToast(tt(`材料不足，種蛋需要 ${PET_ELEMENT_META[elementId].icon} × ${PET_EGG_MATERIAL_COST}`, `Not enough material - planting needs ${PET_ELEMENT_META[elementId].icon} × ${PET_EGG_MATERIAL_COST}`));
     return;
   }
+  ensureProfession(p);
+  if((p.professionItems.furniture_common||0) < PET_EGG_FURNITURE_COST){
+    showToast(tt(`小家具庫存不足，種蛋需要 🪑 × ${PET_EGG_FURNITURE_COST}`, `Not enough Small Furniture - planting needs 🪑 × ${PET_EGG_FURNITURE_COST}`));
+    return;
+  }
   p.professionMaterials[elementId] = Math.max(0, p.professionMaterials[elementId] - PET_EGG_MATERIAL_COST);
+  p.professionItems.furniture_common = Math.max(0, (p.professionItems.furniture_common||0) - PET_EGG_FURNITURE_COST);
   const now = Date.now();
   p.petNest = {element: elementId, plantedAt: now, readyAt: now + PET_EGG_GROW_MS};
   await savePlayer(p);
@@ -2506,16 +2527,23 @@ async function startPetHunt(slotId, durationKey){
   if(isPetHunting(p, pet.id)){ showToast(tt('這隻寵物已經在尋寶中了','This pet is already out on a hunt')); delete petHuntDraft[slotId]; renderTab(); return; }
   if(pet.id === p.petActiveId){ showToast(tt('鎮守中的寵物只能留在家裡，無法派去尋寶','Guardian pets stay home - they can\'t be dispatched on hunts')); delete petHuntDraft[slotId]; renderTab(); return; }
   if(!isPetLocationUnlocked(p, draft.locationKey)){ showToast(tt('這個地點尚未解鎖','This location is not unlocked yet')); return; }
+  ensureProfession(p);
+  const huntFurnitureCost = PET_HUNT_FURNITURE_COST[durationKey] || 0;
+  if((p.professionItems.furniture_common||0) < huntFurnitureCost){
+    showToast(tt(`小家具庫存不足，這個時長派遣需要 🪑 × ${huntFurnitureCost}`, `Not enough Small Furniture - this duration needs 🪑 × ${huntFurnitureCost}`));
+    return;
+  }
   const eff = petEffects(pet);
   const guardianEff = combinedGuardianAuraEffects(p); // 主鎮守 + 租來的副鎮守（若租用中）直接相加
   const totalDurationReduction = Math.min(GUARDIAN_AURA_TOTAL_DURATION_REDUCTION_CAP, eff.durationReduction + guardianEff.durationReduction);
   const baseMs = PET_DURATION_META[durationKey].ms;
   const actualMs = Math.round(baseMs * (1 - totalDurationReduction));
+  p.professionItems.furniture_common = Math.max(0, (p.professionItems.furniture_common||0) - huntFurnitureCost);
   const now = Date.now();
   p.petHunts[slotId] = {slotId, active:true, locationKey:draft.locationKey, durationKey, startAt:now, readyAt:now+actualMs, petId:pet.id, helpLog:{}};
   delete petHuntDraft[slotId];
   await savePlayer(p);
-  showToast(tt(`🧭 已派遣寵物前往${petLocationLabel(draft.locationKey)}尋寶（${petDurationLabel(durationKey)}）`, `🧭 Pet dispatched to ${petLocationLabel(draft.locationKey)} (${petDurationLabel(durationKey)})`));
+  showToast(tt(`🧭 已派遣寵物前往${petLocationLabel(draft.locationKey)}尋寶（${petDurationLabel(durationKey)}，耗🪑×${huntFurnitureCost}）`, `🧭 Pet dispatched to ${petLocationLabel(draft.locationKey)} (${petDurationLabel(durationKey)}, used 🪑×${huntFurnitureCost})`));
   renderTab();
 }
 async function claimPetHunt(slotId){
@@ -2584,12 +2612,15 @@ function petSectionHtml(p){
   const nest = p.petNest;
   html += `<div class="pet-banner-section"><h2>${tt('🏡 寵物巢','🏡 Pet Nest')}</h2>`;
   if(!nest.plantedAt){
-    html += `<p class="sub">${tt(`選擇要種下的蛋屬性（依對應材料決定），花費對應材料 × ${PET_EGG_MATERIAL_COST}，等待孵化。`, `Choose an egg element (matches its material), spend × ${PET_EGG_MATERIAL_COST} of that material, and wait for it to hatch.`)}</p>
+    const haveFurniture = (p.professionItems.furniture_common||0);
+    const canPlantFurniture = haveFurniture >= PET_EGG_FURNITURE_COST;
+    html += `<p class="sub">${tt(`選擇要種下的蛋屬性（依對應材料決定），花費對應材料 × ${PET_EGG_MATERIAL_COST}、🪑小家具 × ${PET_EGG_FURNITURE_COST}，等待孵化。`, `Choose an egg element (matches its material), spend × ${PET_EGG_MATERIAL_COST} of that material and 🪑 × ${PET_EGG_FURNITURE_COST} Small Furniture, and wait for it to hatch.`)}</p>
+    <div class="farm-upgrade-line" style="font-size:12px;color:${canPlantFurniture?'var(--muted)':'var(--danger)'};margin-bottom:4px;">${tt(`🪑小家具庫存 ${haveFurniture}/${PET_EGG_FURNITURE_COST}`, `🪑Small Furniture ${haveFurniture}/${PET_EGG_FURNITURE_COST}`)}</div>
     <div style="display:flex;flex-wrap:wrap;gap:8px;">`;
     PET_ELEMENT_IDS.forEach(id=>{
       const meta = PET_ELEMENT_META[id];
       const have = (p.professionMaterials[id]||0);
-      const canPlant = have >= PET_EGG_MATERIAL_COST;
+      const canPlant = have >= PET_EGG_MATERIAL_COST && canPlantFurniture;
       html += `<button class="btn small ${canPlant?'':'secondary'}" data-plant-egg="${id}" ${canPlant?'':'disabled'}>
         ${meta.icon} ${petElementLabel(id)}（${have}/${PET_EGG_MATERIAL_COST}）
       </button>`;
@@ -2749,11 +2780,15 @@ function petHuntSlotHtml(p, slot, now){
     return html;
   }
   const locMeta = PET_LOCATION_META[draft.locationKey];
+  const haveFurniture = (p.professionItems.furniture_common||0);
   let html = `<div class="farm-upgrade-box"><div class="farm-upgrade-title">${petLine}</div>
     <div class="farm-upgrade-line" style="color:var(--muted);font-size:12px;margin-bottom:4px;">${locMeta.icon} ${petLocationLabel(draft.locationKey)} · ${tt('第三步：選擇派遣時長','Step 3: choose a duration')}</div>
+    <div class="farm-upgrade-line" style="font-size:12px;color:var(--muted);margin-bottom:4px;">${tt(`🪑小家具庫存 ${haveFurniture}（時長越長消耗越多）`, `🪑Small Furniture ${haveFurniture} (longer duration costs more)`)}</div>
     <div style="display:flex;flex-wrap:wrap;gap:8px;">`;
   PET_DURATION_KEYS.forEach(key=>{
-    html += `<button class="btn small" data-hunt-start="${slotId}|${key}">${petDurationLabel(key)}</button>`;
+    const cost = PET_HUNT_FURNITURE_COST[key]||0;
+    const canAfford = haveFurniture >= cost;
+    html += `<button class="btn small ${canAfford?'':'secondary'}" data-hunt-start="${slotId}|${key}" ${canAfford?'':'disabled'}>${petDurationLabel(key)}（🪑×${cost}）</button>`;
   });
   html += `</div>
     <button class="btn small secondary" style="margin-top:8px;" data-hunt-cancel="${slotId}">${tt('取消','Cancel')}</button>
@@ -2976,6 +3011,14 @@ const DEFAULT_BOSS_REWARD_MULT = 1.15; // 獎勵倍率：每輪(cycle)疊加一�
 const DEFAULT_BOSS_MAX_DAILY_KILLS = 3;   // 每日最多可擊殺次數，用完鎖到隔天 00:00
 const DEFAULT_BOSS_AFFIX_CHANCE = 0.15;   // 重生時套用詞綴的機率（其餘為普通 Boss）
 const DEFAULT_BOSS_AFFIX_BONUS_PCT = 0.50; // 符合詞綴條件時，傷害額外加成的比例（不符合條件傷害維持正常，不會被打折）
+const DEFAULT_BOSS_AFFIX_GUARANTEED_CYCLE = 5; // 保底輪數：達到此輪數（含）之後，重生必定套用詞綴，不再吃機率
+// 🏃 Boss跑路：同一階段（stage）內攻擊次數達到上限仍未擊破，Boss直接跑路，整輪重置回第1階，
+// 不計入今日擊殺次數、不發任何獎勵，已花費的金幣/武器不退還。設為 0 代表不啟用（無上限）。
+const DEFAULT_BOSS_MAX_ATTACKS = 15;
+// ⚔️ 武器：出征以外，Boss 攻擊也能自由選用（有就用，沒有也能正常攻擊），消耗職業道具庫存 1 把，
+// 只影響「這一次」攻擊的傷害，common/uncommon 互斥、只能擇一。
+const DEFAULT_BOSS_WEAPON_DAMAGE_PCT = 0.15;
+const DEFAULT_BOSS_WEAPON_UNCOMMON_DAMAGE_PCT = 0.28;
 
 let BOSS_STAGE_HP = [...DEFAULT_BOSS_STAGE_HP];
 let BOSS_DIFFICULTY_MULT = DEFAULT_BOSS_DIFFICULTY_MULT;
@@ -2988,6 +3031,10 @@ let BOSS_REWARD_MULT = DEFAULT_BOSS_REWARD_MULT;
 let BOSS_MAX_DAILY_KILLS = DEFAULT_BOSS_MAX_DAILY_KILLS;
 let BOSS_AFFIX_CHANCE = DEFAULT_BOSS_AFFIX_CHANCE;
 let BOSS_AFFIX_BONUS_PCT = DEFAULT_BOSS_AFFIX_BONUS_PCT;
+let BOSS_AFFIX_GUARANTEED_CYCLE = DEFAULT_BOSS_AFFIX_GUARANTEED_CYCLE;
+let BOSS_MAX_ATTACKS = DEFAULT_BOSS_MAX_ATTACKS;
+let BOSS_WEAPON_DAMAGE_PCT = DEFAULT_BOSS_WEAPON_DAMAGE_PCT;
+let BOSS_WEAPON_UNCOMMON_DAMAGE_PCT = DEFAULT_BOSS_WEAPON_UNCOMMON_DAMAGE_PCT;
 
 async function loadBossConfig(){
   try{
@@ -3010,6 +3057,10 @@ async function loadBossConfig(){
       if(typeof s.maxDailyKills === 'number' && s.maxDailyKills >= 1) BOSS_MAX_DAILY_KILLS = Math.round(s.maxDailyKills);
       if(typeof s.affixChance === 'number' && s.affixChance >= 0) BOSS_AFFIX_CHANCE = s.affixChance;
       if(typeof s.affixBonusPct === 'number' && s.affixBonusPct >= 0) BOSS_AFFIX_BONUS_PCT = s.affixBonusPct;
+      if(typeof s.affixGuaranteedCycle === 'number' && s.affixGuaranteedCycle >= 1) BOSS_AFFIX_GUARANTEED_CYCLE = Math.round(s.affixGuaranteedCycle);
+      if(typeof s.maxAttacks === 'number' && s.maxAttacks >= 0) BOSS_MAX_ATTACKS = Math.round(s.maxAttacks);
+      if(typeof s.weaponDamagePct === 'number' && s.weaponDamagePct >= 0) BOSS_WEAPON_DAMAGE_PCT = s.weaponDamagePct;
+      if(typeof s.weaponUncommonDamagePct === 'number' && s.weaponUncommonDamagePct >= 0) BOSS_WEAPON_UNCOMMON_DAMAGE_PCT = s.weaponUncommonDamagePct;
     }
   }catch(e){ /* keep defaults */ }
 }
@@ -3019,24 +3070,35 @@ async function saveBossConfig(){
     burstDamage: BOSS_BURST_DAMAGE, contribRate: BOSS_CONTRIB_RATE,
     baseReward: BOSS_BASE_REWARD, bonusPool: BOSS_BONUS_POOL, rewardMult: BOSS_REWARD_MULT,
     maxDailyKills: BOSS_MAX_DAILY_KILLS, affixChance: BOSS_AFFIX_CHANCE, affixBonusPct: BOSS_AFFIX_BONUS_PCT,
+    affixGuaranteedCycle: BOSS_AFFIX_GUARANTEED_CYCLE,
+    maxAttacks: BOSS_MAX_ATTACKS, weaponDamagePct: BOSS_WEAPON_DAMAGE_PCT, weaponUncommonDamagePct: BOSS_WEAPON_UNCOMMON_DAMAGE_PCT,
   }));
 }
 // 🎯 Boss 詞綴：重生時機率套用，只在該隻 Boss（同一個 cycle）存活期間生效，打死後
-// 下一隻重新判定。目前兩種，都是「符合條件＝額外加成傷害」，不符合條件傷害維持
-// 正常（不會被打折）：
+// 下一隻重新判定。目前四種，都是「符合條件＝額外加成傷害」，不符合條件傷害維持
+// 正常（不會被打折），四種等機率均分：
 //  - weakness_number：這次攻擊「至少 1 顆骰子」擲出指定數字，觸發額外加成傷害
 //  - crit_only：這次攻擊觸發暴擊時，觸發額外加成傷害（暴擊更痛）
+//  - even_number：這次攻擊「3 顆骰子全部」是雙數（2/4/6），觸發額外加成傷害
+//  - odd_number：這次攻擊「3 顆骰子全部」是單數（1/3/5），觸發額外加成傷害
 // 判定以「整次攻擊」為單位（3 顆骰子同時擲出算一次攻擊），不拆成每顆骰子各自結算，
 // 這樣才能跟連擊/組合/事件等既有的整體傷害倍率機制相容，不用重寫傷害公式。
-function rollBossAffix(){
-  if(Math.random() >= BOSS_AFFIX_CHANCE) return null;
-  if(Math.random() < 0.5) return {type:'weakness_number', num: 1 + Math.floor(Math.random()*6)};
-  return {type:'crit_only'};
+// 🔒 保底：cycle 達到 BOSS_AFFIX_GUARANTEED_CYCLE（含）之後不再吃機率，重生必定套用詞綴。
+function rollBossAffix(cycle){
+  const guaranteed = (cycle||1) >= BOSS_AFFIX_GUARANTEED_CYCLE;
+  if(!guaranteed && Math.random() >= BOSS_AFFIX_CHANCE) return null;
+  const roll = Math.random();
+  if(roll < 0.25) return {type:'weakness_number', num: 1 + Math.floor(Math.random()*6)};
+  if(roll < 0.50) return {type:'crit_only'};
+  if(roll < 0.75) return {type:'even_number'};
+  return {type:'odd_number'};
 }
 function bossAffixLabel(affix){
   if(!affix) return null;
   if(affix.type === 'weakness_number') return {icon:'🔢', zh:`數字強化：${affix.num}`, en:`Number Boost: ${affix.num}`, descZh:`骰出 ${affix.num} 時，這次攻擊傷害額外 +${Math.round(BOSS_AFFIX_BONUS_PCT*100)}%`, descEn:`Rolling a ${affix.num} gives this attack an extra +${Math.round(BOSS_AFFIX_BONUS_PCT*100)}% damage`};
   if(affix.type === 'crit_only') return {icon:'💥', zh:'爆擊強化', en:'Crit Boost', descZh:`觸發暴擊時，這次攻擊傷害額外 +${Math.round(BOSS_AFFIX_BONUS_PCT*100)}%`, descEn:`Landing a critical hit gives this attack an extra +${Math.round(BOSS_AFFIX_BONUS_PCT*100)}% damage`};
+  if(affix.type === 'even_number') return {icon:'🔵', zh:'雙數強化', en:'Even Boost', descZh:`3 顆骰子全是雙數（2/4/6）時，這次攻擊傷害額外 +${Math.round(BOSS_AFFIX_BONUS_PCT*100)}%`, descEn:`Rolling all even (2/4/6) on all 3 dice gives this attack an extra +${Math.round(BOSS_AFFIX_BONUS_PCT*100)}% damage`};
+  if(affix.type === 'odd_number') return {icon:'🟠', zh:'單數強化', en:'Odd Boost', descZh:`3 顆骰子全是單數（1/3/5）時，這次攻擊傷害額外 +${Math.round(BOSS_AFFIX_BONUS_PCT*100)}%`, descEn:`Rolling all odd (1/3/5) on all 3 dice gives this attack an extra +${Math.round(BOSS_AFFIX_BONUS_PCT*100)}% damage`};
   return null;
 }
 // ---------- Boss 戰 Roguelike 玩法擴充 ----------
@@ -3281,13 +3343,14 @@ function bossFreshState(cycle, killCount){
     hp: bossStageMaxHp(1,cycle),
     maxHp: bossStageMaxHp(1,cycle),
     cycleDamage: 0, // 本輪（尚未破台的這個 cycle）累積造成的傷害，僅供顯示用
+    attacksUsed: 0, // 🏃 目前這個階段（stage）已用掉的攻擊次數，達 BOSS_MAX_ATTACKS 仍未擊破就會跑路重置
     comboStreak: 0, // 🔥 連續組合命中次數（對子/豹子），沒接住就歸零；已接上 rollDiceAttack/resolveBossAttack
     minion: null,   // 👹 目前存活的小怪：{typeId, hp, maxHp}，已接上 resolveBossAttack 的攻擊流程
     activeEvent: null, // ✨ 目前生效中的隨機事件：{id, hitsLeft, value}，換階/換輪時可能重抽（見 maybeTriggerBossEvent）
     pendingChest: false, // 🎁 是否有待開啟的寶箱（玩家需先 3 選 1 才能繼續攻擊，見 resolveBossChestChoice）
     killCount: killCount || 0, // 🌀 今日已擊殺次數，達到 BOSS_MAX_DAILY_KILLS 才鎖到隔天（見 clearedToday）
     clearedToday: false,
-    activeAffix: rollBossAffix(), // 🎯 這隻 Boss（本 cycle）是否帶詞綴，見 rollBossAffix/bossAffixLabel
+    activeAffix: rollBossAffix(cycle), // 🎯 這隻 Boss（本 cycle）是否帶詞綴，見 rollBossAffix/bossAffixLabel
   };
 }
 // 注意：這裡不再吞掉讀取失敗（網路抖動、API 錯誤等）。storage.get() 本身在
@@ -3369,7 +3432,7 @@ async function ensureBossState(nickname, attempt){
 // 這裡刻意不去讀 professionItems，Boss 戰的傷害完全由骰子決定。
 // 注意：這裡呼叫的骰子相關 function（ensureDiceInventory / DICE_FACE_MULT 等）
 // 在檔案稍後才定義，但因為都是 function 宣告會被提升（hoisted），提前呼叫沒有問題。
-function rollDiceAttack(p, activeEvent, comboStreak, activeAffix){
+function rollDiceAttack(p, activeEvent, comboStreak, activeAffix, weaponPct){
   ensureDiceInventory(p);
   const equippedIds = p.diceSlots.filter(id => id && p.dice[id]);
   const rolls = equippedIds.map(id => {
@@ -3455,9 +3518,14 @@ function rollDiceAttack(p, activeEvent, comboStreak, activeAffix){
     let met = false;
     if(activeAffix.type === 'weakness_number') met = rolls.some(r => r.face.num === activeAffix.num);
     else if(activeAffix.type === 'crit_only') met = isCrit;
+    else if(activeAffix.type === 'even_number') met = rolls.every(r => r.face.num % 2 === 0);
+    else if(activeAffix.type === 'odd_number') met = rolls.every(r => r.face.num % 2 === 1);
     if(met) totalDamage *= (1 + BOSS_AFFIX_BONUS_PCT);
     affixResult = {type: activeAffix.type, met};
   }
+  // ⚔️ 武器：玩家自由選用（有就用，沒有也能正常攻擊），只影響這一次攻擊的最終傷害，
+  // 套用在其他加成都算完之後（跟詞綴加成同一層級，兩者互相獨立疊加）。
+  if(weaponPct) totalDamage *= (1 + weaponPct);
   return {
     damage: Math.max(1, Math.round(totalDamage * starChartSunDamageMultiplier(p))), // ☀️ 星盤太陽節點：對最終傷害套倍率
     rolls, atkBonus, critRateBonus, critDmgBonus, isCrit, allWild,
@@ -3465,7 +3533,7 @@ function rollDiceAttack(p, activeEvent, comboStreak, activeAffix){
     comboTier: combo.tier, sameNumber: combo.tier === 'triple', // sameNumber 保留給舊程式相容，等同「豹子」
     qualityComboTier: qualityCombo.tier, // 🔷 品質對子/豹子（跟 comboTier 各自獨立），供 UI 顯示徽章用
     comboStreakUsed: comboStreak||0, comboStreakBonus,
-    eventApplied, affixResult,
+    eventApplied, affixResult, weaponPct: weaponPct||0,
   };
 }
 
@@ -3561,11 +3629,13 @@ async function resolveBossAttack(nickname, damage, comboTier){
     newBoss.cycleDamage = (boss.cycleDamage||0) + bossDamage;
     let cycleCompleteFor = null;
     let eventTriggered = null; // ✨ 這次攻擊若打進了新階段/新一輪，這裡記錄新抽到的事件卡（供顯示/發獎用）
+    let fled = false; // 🏃 這次攻擊是否導致 Boss 跑路（同階段攻擊次數用罄仍未擊破）
     if(newBoss.hp <= 0){
       if(newBoss.stage < 3){
         newBoss.stage += 1;
         newBoss.maxHp = bossStageMaxHp(newBoss.stage, newBoss.cycle);
         newBoss.hp = newBoss.maxHp;
+        newBoss.attacksUsed = 0; // 🏃 進入新階段，攻擊次數重新計算
         eventTriggered = maybeTriggerBossEvent(newBoss); // 詛咒會就地調整剛設好的 maxHp/hp
       } else {
         // 🌀 全破三階＝擊殺一次。今日擊殺次數 +1；還沒到每日上限就立刻在原地重生下一隻
@@ -3581,9 +3651,18 @@ async function resolveBossAttack(nickname, damage, comboTier){
           Object.assign(newBoss, fresh);
         }
       }
+    } else {
+      // 🏃 Boss跑路：這一階段內攻擊次數達到上限仍未擊破，Boss直接跑路，整輪重置回第1階
+      // （同一 cycle、今日已擊殺次數不變），不發任何獎勵，已花費的金幣/武器不退還。
+      newBoss.attacksUsed = (boss.attacksUsed||0) + 1;
+      if(BOSS_MAX_ATTACKS > 0 && newBoss.attacksUsed >= BOSS_MAX_ATTACKS){
+        const fresh = bossFreshState(newBoss.cycle, boss.killCount||0);
+        Object.assign(newBoss, fresh);
+        fled = true;
+      }
     }
     const applied = await savePlayerBossStateCAS(nickname, updatedAt, newBoss);
-    if(applied) return {prevBoss: boss, newBoss, cycleCompleteFor, minionResult, minionSpawned, eventTriggered};
+    if(applied) return {prevBoss: boss, newBoss, cycleCompleteFor, minionResult, minionSpawned, eventTriggered, fled};
     // 沒搶到：這段期間已經有另一次攻擊先寫入了，回到迴圈開頭重讀最新狀態再試
   }
   throw new Error('boss state contention exceeded retries');
@@ -3864,6 +3943,7 @@ function renderSettledDiceHtml(rolls, comboTier, qualityComboTier, allWild, isCr
 async function performBossAttack(){
   const p = state.player;
   ensureMaterials(p);
+  ensureProfession(p);
   ensureDiceInventory(p);
   const equippedIds = p.diceSlots.filter(id => id && p.dice[id]);
   if(equippedIds.length === 0){
@@ -3883,11 +3963,25 @@ async function performBossAttack(){
     showToast(tt(`今日已達擊殺上限（${BOSS_MAX_DAILY_KILLS} 次），請明天再來挑戰！`, `You've reached today's kill limit (${BOSS_MAX_DAILY_KILLS}) - come back tomorrow!`));
     return;
   }
-  const burst = rollDiceAttack(p, currentBoss.activeEvent, currentBoss.comboStreak||0, currentBoss.activeAffix);
+  // ⚔️ 武器：自由選用，有庫存才生效，沒選/沒庫存就當作普通攻擊，不會擋下攻擊本身。
+  const weaponSelEl = document.getElementById('boss-weapon-select');
+  const weaponTierSel = weaponSelEl ? weaponSelEl.value : '';
+  let weaponPct = 0, weaponUsedTier = null;
+  if(weaponTierSel === 'uncommon' && (p.professionItems.weapon_uncommon||0) >= 1){
+    weaponPct = BOSS_WEAPON_UNCOMMON_DAMAGE_PCT;
+    weaponUsedTier = 'uncommon';
+  } else if(weaponTierSel === 'common' && (p.professionItems.weapon_common||0) >= 1){
+    weaponPct = BOSS_WEAPON_DAMAGE_PCT;
+    weaponUsedTier = 'common';
+  }
+  const burst = rollDiceAttack(p, currentBoss.activeEvent, currentBoss.comboStreak||0, currentBoss.activeAffix, weaponPct);
   await playDiceRollAnimation(equippedIds.map(id => p.dice[id]), burst);
 
   if(!burst.coinRefunded){
     p.coins -= cost; // 觸發「金幣返還」效果時這次攻擊不扣金幣
+  }
+  if(weaponUsedTier){
+    p.professionItems[weaponUsedTier === 'uncommon' ? 'weapon_uncommon' : 'weapon_common'] -= 1;
   }
   const contribGain = Math.round(burst.damage * BOSS_CONTRIB_RATE * (1 + (burst.contribBonusPct||0)) * starChartContribMultiplier(p)); // 貢獻點依「實際造成的傷害」計算，骰子加成的傷害、貢獻點加成面效果與星盤風象加成都會反映在這裡
   p.materials.contrib += contribGain; // 賽季總貢獻點（可花費，賽季結束才歸零）
@@ -3905,12 +3999,12 @@ async function performBossAttack(){
     updateHeaderCoins();
     return;
   }
-  const { prevBoss, newBoss, cycleCompleteFor, minionResult, minionSpawned, eventTriggered } = result;
+  const { prevBoss, newBoss, cycleCompleteFor, minionResult, minionSpawned, eventTriggered, fled } = result;
 
   // 🔊 打擊感：記下這次攻擊「前」跟「後」的血量百分比，交給 renderBoss 在下次渲染完
   // 之後拿去播殘影追趕動畫。只在同一階段/同一輪內才播——一旦破階或全破，血量池
   // 本身換了一組（新階段滿血 or 明天才重置），殘影動畫套在上面只會很奇怪，直接跳過。
-  state.bossHpAnim = (newBoss.stage === prevBoss.stage && newBoss.cycle === prevBoss.cycle) ? {
+  state.bossHpAnim = (!fled && newBoss.stage === prevBoss.stage && newBoss.cycle === prevBoss.cycle) ? {
     fromPct: Math.max(0, Math.min(100, (prevBoss.hp/prevBoss.maxHp)*100)),
     stage: newBoss.stage,
     cycle: newBoss.cycle,
@@ -3937,7 +4031,9 @@ async function performBossAttack(){
   }
 
   let defeatMsg = '';
-  if(cycleCompleteFor){
+  if(fled){
+    defeatMsg = tt(`🏃 「${BOSS_STAGE_META[prevBoss.stage-1].label}」拖太久沒被打倒，跑掉了！Boss 重新回到第 1 階，本次未發放任何獎勵。`, `🏃 The "${BOSS_STAGE_META[prevBoss.stage-1].labelEn}" took too long to bring down and fled! It's back to Stage 1 - no rewards this time.`);
+  } else if(cycleCompleteFor){
     const reward = await settleBossReward(p.nickname, cycleCompleteFor);
     if(newBoss.clearedToday){
       defeatMsg = tt(`🎉 你擊敗了「終焉蛇神」！獲得 ✦${reward?reward.coins:0} 金幣、💠${reward?reward.essence:0} 骰子精華，今日已達擊殺上限（${newBoss.killCount}/${BOSS_MAX_DAILY_KILLS}），明天再來挑戰新一輪（更難）！`, `🎉 You defeated the Doomsday Serpent God! Gained ✦${reward?reward.coins:0} coins and 💠${reward?reward.essence:0} Dice Essence. You've reached today's kill limit (${newBoss.killCount}/${BOSS_MAX_DAILY_KILLS}) - come back tomorrow for a new (harder) cycle!`);
@@ -4005,6 +4101,7 @@ async function performBossAttack(){
     if(burst.isCrit) bonusTags.push(tt('💥暴擊','💥Crit'));
     if(burst.affixResult) bonusTags.push(burst.affixResult.met ? tt(`🎯詞綴強化+${Math.round(BOSS_AFFIX_BONUS_PCT*100)}%`, `🎯Affix Boost+${Math.round(BOSS_AFFIX_BONUS_PCT*100)}%`) : tt('⚪未觸發強化','⚪Boost not triggered'));
     if(burst.coinRefunded) bonusTags.push(tt('♻️金幣未消耗','♻️Coin refunded'));
+    if(burst.weaponPct > 0) bonusTags.push(tt(`⚔️武器+${Math.round(burst.weaponPct*100)}%`, `⚔️Weapon+${Math.round(burst.weaponPct*100)}%`));
     const bonusStr = bonusTags.length ? `（${bonusTags.join('、')}）` : '';
     showToast(tt(`🎲 擲出 ${diceTag}，造成 ${burst.damage.toLocaleString()} 傷害！${bonusStr}　貢獻點 +${contribGain}`, `🎲 Rolled ${diceTag}, dealt ${burst.damage.toLocaleString()} damage!${bonusStr}  Contribution +${contribGain}`) + minionMsgPart + eventMsgPart);
   }
@@ -5554,6 +5651,11 @@ function renderBoss(body){
         <div id="boss-hp-fill" class="hp-bar-fill" style="width:${pct}%;background:linear-gradient(90deg, var(--violet), var(--gold));"></div>
       </div>
       <div class="countdown" style="text-align:center;margin-bottom:12px;">${Math.max(0,boss.hp).toLocaleString()} / ${boss.maxHp.toLocaleString()} HP</div>
+      ${BOSS_MAX_ATTACKS > 0 ? (()=>{
+        const used = boss.attacksUsed||0;
+        const near = used >= BOSS_MAX_ATTACKS - 3;
+        return `<div class="countdown" style="text-align:center;margin-bottom:10px;${near?'color:var(--danger);':'color:var(--muted);'}">🏃 ${tt('本階段攻擊次數','Attacks this stage')}：${used}/${BOSS_MAX_ATTACKS}${near ? tt('　（快跑走了！）','　(About to flee!)') : ''}</div>`;
+      })() : ''}
       ${boss.minion ? (()=>{
         const mMeta = BOSS_MINION_TYPES.find(m => m.id === boss.minion.typeId) || BOSS_MINION_TYPES[0];
         const mPct = Math.max(0, Math.min(100, (boss.minion.hp/boss.minion.maxHp)*100));
@@ -5625,6 +5727,19 @@ function renderBoss(body){
                有上次結果時直接用 renderSettledDiceHtml 原樣畫出來、保持可見，直到玩家
                按下一次攻擊、playDiceRollAnimation 重新接管這個容器為止。 -->
           <div id="dice-roll-anim" class="dice-roll-anim mb-dice-anim" style="${state.bossLastAttack && state.bossLastAttack.rolls ? '' : 'display:none;'}">${state.bossLastAttack && state.bossLastAttack.rolls ? renderSettledDiceHtml(state.bossLastAttack.rolls, state.bossLastAttack.comboTier, state.bossLastAttack.qualityComboTier, state.bossLastAttack.allWild, state.bossLastAttack.isCrit) : ''}</div>
+          ${(()=>{
+            const weaponQty = p.professionItems.weapon_common||0;
+            const weaponUncommonQty = p.professionItems.weapon_uncommon||0;
+            if(weaponQty <= 0 && weaponUncommonQty <= 0) return '';
+            return `<div style="margin-bottom:8px;">
+              <label class="countdown" style="display:block;margin-bottom:4px;">⚔️ ${tt('使用武器（可不選，僅這次攻擊生效）','Use Weapon (optional, this attack only)')}</label>
+              <select id="boss-weapon-select" style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--line);background:var(--bg-void);color:var(--cream);font-family:'EB Garamond',serif;">
+                <option value="">${tt('不使用','None')}</option>
+                ${weaponQty>0 ? `<option value="common">${tt(`小武器×${weaponQty}（傷害+${Math.round(BOSS_WEAPON_DAMAGE_PCT*100)}%）`, `Small×${weaponQty} (damage +${Math.round(BOSS_WEAPON_DAMAGE_PCT*100)}%)`)}</option>` : ''}
+                ${weaponUncommonQty>0 ? `<option value="uncommon">${tt(`中武器×${weaponUncommonQty}（傷害+${Math.round(BOSS_WEAPON_UNCOMMON_DAMAGE_PCT*100)}%）`, `Medium×${weaponUncommonQty} (damage +${Math.round(BOSS_WEAPON_UNCOMMON_DAMAGE_PCT*100)}%)`)}</option>` : ''}
+              </select>
+            </div>`;
+          })()}
           <div class="mb-dice-attack">
             <button class="btn" id="boss-burst-btn" ${(p.coins < BOSS_COIN_COST) ? 'disabled' : ''}>${tt(`🎲 擲骰攻擊（消耗✦${BOSS_COIN_COST}）`, `🎲 Dice Attack (✦${BOSS_COIN_COST})`)}</button>
           </div>
@@ -7822,7 +7937,7 @@ async function confirmStartExpedition(tierId, durationKey, itemUsage){
   const rawUsage = (typeof itemUsage === 'boolean') ? {furnitureCount: itemUsage ? 1 : 0} : (itemUsage || {});
   const usage = {
     furnitureSel: rawUsage.furnitureSel !== undefined ? rawUsage.furnitureSel : (rawUsage.furnitureCount ? `common:${rawUsage.furnitureCount}` : ''),
-    weaponTier: rawUsage.weaponTier !== undefined ? rawUsage.weaponTier : (rawUsage.useWeapon ? 'common' : null),
+    weaponSel: rawUsage.weaponSel !== undefined ? rawUsage.weaponSel : (rawUsage.weaponTier ? `${rawUsage.weaponTier}:1` : (rawUsage.useWeapon ? 'common:1' : '')),
     accessorySel: rawUsage.accessorySel !== undefined ? rawUsage.accessorySel : (rawUsage.accessoryCount ? `common:${rawUsage.accessoryCount}` : ''),
     riskLevel: rawUsage.riskLevel, blessingCardId: rawUsage.blessingCardId,
   };
@@ -7842,11 +7957,14 @@ async function confirmStartExpedition(tierId, durationKey, itemUsage){
   const furnitureTiersArr = furnitureTier === 'uncommon' ? FURNITURE_UNCOMMON_SUCCESS_TIERS : FURNITURE_SUCCESS_TIERS;
   const furnitureBonus = furnitureCount>0 ? Math.min(1, furnitureTiersArr.slice(0, furnitureCount).reduce((sum,v)=>sum+v, 0)) : 0;
 
-  // ⚔️ 武器：只能用 1 把，成功時獎勵區間 +N%（結算時套用）；common／uncommon 互斥，只能擇一
-  const weaponTier = usage.weaponTier === 'uncommon' ? 'uncommon' : (usage.weaponTier === 'common' ? 'common' : null);
+  // ⚔️ 武器：可疊加最多 WEAPON_EXPEDITION_MAX_STACK 把，逐把累加獎勵區間加成，總和封頂 100%；common／uncommon 互斥，只能擇一等級疊加
+  const weaponSelParsed = parseTierSel(usage.weaponSel);
+  const weaponTier = weaponSelParsed.tier;
   const weaponStock = weaponTier === 'uncommon' ? (p.professionItems.weapon_uncommon||0) : (weaponTier === 'common' ? (p.professionItems.weapon_common||0) : 0);
-  const weaponUsed = !!weaponTier && weaponStock > 0;
-  const weaponRewardPct = weaponUsed ? (weaponTier === 'uncommon' ? WEAPON_UNCOMMON_EXPEDITION_REWARD_PCT : WEAPON_EXPEDITION_REWARD_PCT) : 0;
+  const weaponCount = Math.max(0, Math.min(WEAPON_EXPEDITION_MAX_STACK, weaponSelParsed.count, weaponStock));
+  const weaponUsed = weaponCount > 0;
+  const weaponPerItemPct = weaponTier === 'uncommon' ? WEAPON_UNCOMMON_EXPEDITION_REWARD_PCT : WEAPON_EXPEDITION_REWARD_PCT;
+  const weaponRewardPct = weaponUsed ? Math.min(1, weaponCount * weaponPerItemPct) : 0;
 
   // 💍 飾品：可疊加最多 ACCESSORY_EXPEDITION_MAX_STACK 件，把獎勵下限往上限拉近，總和封頂 100%；common／uncommon 互斥，只能擇一等級疊加
   const accessorySelParsed = parseTierSel(usage.accessorySel);
@@ -7878,7 +7996,7 @@ async function confirmStartExpedition(tierId, durationKey, itemUsage){
   }
 
   if(furnitureCount > 0) p.professionItems[furnitureTier === 'uncommon' ? 'furniture_uncommon' : 'furniture_common'] -= furnitureCount;
-  if(weaponUsed) p.professionItems[weaponTier === 'uncommon' ? 'weapon_uncommon' : 'weapon_common'] -= 1;
+  if(weaponUsed) p.professionItems[weaponTier === 'uncommon' ? 'weapon_uncommon' : 'weapon_common'] -= weaponCount;
   if(accessoryCount > 0) p.professionItems[accessoryTier === 'uncommon' ? 'accessory_uncommon' : 'accessory_common'] -= accessoryCount;
 
   const staked = {};
@@ -7890,7 +8008,7 @@ async function confirmStartExpedition(tierId, durationKey, itemUsage){
   p.expedition = {
     tierId: tier.id, durationKey, startAt: now, readyAt: now + effectiveDurationMs, staked,
     furnitureBonus, furnitureCount, furnitureTier,
-    weaponUsed, weaponRewardPct, weaponTier,
+    weaponUsed, weaponRewardPct, weaponTier, weaponCount,
     accessoryCount, accessoryFloorPct, accessoryTier,
     starChartSuccessBonus: starChartMarsSuccessBonus(p), // ♂️ 星盤火星節點：出征當下 snapshot，之後點新節點不影響已出征的這趟
     starChartRewardBonus: starChartJupiterRewardBonus(p), // ♃ 星盤木星節點：同上
@@ -7907,7 +8025,7 @@ async function confirmStartExpedition(tierId, durationKey, itemUsage){
   await savePlayer(p);
   const usedNotes = [];
   if(furnitureCount > 0) usedNotes.push(tt(`🪑家具(${furnitureTier})×${furnitureCount}（成功率+${Math.round(furnitureBonus*100)}%）`, `🪑Furniture(${furnitureTier})×${furnitureCount} (success +${Math.round(furnitureBonus*100)}%)`));
-  if(weaponUsed) usedNotes.push(tt(`⚔️武器(${weaponTier})（獎勵區間+${Math.round(weaponRewardPct*100)}%）`, `⚔️Weapon(${weaponTier}) (reward range +${Math.round(weaponRewardPct*100)}%)`));
+  if(weaponUsed) usedNotes.push(tt(`⚔️武器(${weaponTier})×${weaponCount}（獎勵區間+${Math.round(weaponRewardPct*100)}%）`, `⚔️Weapon(${weaponTier})×${weaponCount} (reward range +${Math.round(weaponRewardPct*100)}%)`));
   if(accessoryCount > 0) usedNotes.push(tt(`💍飾品(${accessoryTier})×${accessoryCount}（獎勵下限拉近${Math.round(accessoryFloorPct*100)}%）`, `💍Accessory(${accessoryTier})×${accessoryCount} (reward floor pulled ${Math.round(accessoryFloorPct*100)}% toward max)`));
   if(rogueUnlocked) usedNotes.push(tt(`🎲${riskData.labelZh}`, `🎲${riskData.labelEn}`));
   if(blessingCurse) usedNotes.push(`${blessingCurse.icon}${tt(blessingCurse.labelZh, blessingCurse.labelEn)}`);
@@ -8067,7 +8185,7 @@ async function resolveExpeditionOutcome(p, ctx, success, rescueNote){
     let coins = effectiveMin + Math.random()*(rangeMax - effectiveMin);
     const successMult = blessingCurse ? (blessingCurse.successRewardMult||1) : 1;
     coins *= successMult;
-    const streakBonusPct = Math.min(EXPEDITION_STREAK_BONUS_CAP, streakBefore * EXPEDITION_STREAK_BONUS_PER_WIN);
+    const streakBonusPct = streakBefore * EXPEDITION_STREAK_BONUS_PER_WIN; // 已移除封頂，連勝加成無上限
     coins *= (1 + streakBonusPct);
     coins = Math.max(0, Math.round(coins));
     p.coins = (p.coins||0) + coins;
@@ -8391,7 +8509,7 @@ async function renderExpedition(body){
       </div>
       <div class="countdown" style="font-size:11px;">${tt(`經驗 ${p.expExp} / ${nextExp}`, `Exp ${p.expExp} / ${nextExp}`)}</div>
     `}
-    ${(p.expeditionStreak||0) > 0 ? `<div class="countdown" style="font-size:11px;color:var(--gold-bright);margin-top:2px;">${tt(`🔥連勝 ${p.expeditionStreak} 次（下趟成功時獎勵加成 +${Math.round(Math.min(EXPEDITION_STREAK_BONUS_CAP, p.expeditionStreak*EXPEDITION_STREAK_BONUS_PER_WIN)*100)}%）`, `🔥${p.expeditionStreak}-win streak (next success reward +${Math.round(Math.min(EXPEDITION_STREAK_BONUS_CAP, p.expeditionStreak*EXPEDITION_STREAK_BONUS_PER_WIN)*100)}%)`)}</div>` : ''}
+    ${(p.expeditionStreak||0) > 0 ? `<div class="countdown" style="font-size:11px;color:var(--gold-bright);margin-top:2px;">${tt(`🔥連勝 ${p.expeditionStreak} 次（下趟成功時獎勵加成 +${Math.round(p.expeditionStreak*EXPEDITION_STREAK_BONUS_PER_WIN*100)}%）`, `🔥${p.expeditionStreak}-win streak (next success reward +${Math.round(p.expeditionStreak*EXPEDITION_STREAK_BONUS_PER_WIN*100)}%)`)}</div>` : ''}
     ${(p.expLevel||0) >= EXPEDITION_ROGUELIKE_UNLOCK_LEVEL ? `<div class="countdown" style="font-size:11px;margin-top:2px;">${tt('🔥僅「亡命」風險等級＋8小時遠征才計入連勝次數', '🔥Only Reckless risk + 8-hour expeditions count toward the win streak')}</div>` : ''}
   </div>`;
 
@@ -8585,8 +8703,14 @@ async function renderExpedition(body){
                   return `<option value="uncommon:${n}">${tt(`${n} 件・中飾品（下限拉近 ${pct}%）`, `${n}・Medium (floor pulled ${pct}%)`)}</option>`;
                 }).join('');
               const weaponOptions = `<option value="">${tt('不使用','None')}</option>` +
-                (weaponQty>0 ? `<option value="common">${tt(`小武器（獎勵區間 +${Math.round(WEAPON_EXPEDITION_REWARD_PCT*100)}%）`, `Small (reward range +${Math.round(WEAPON_EXPEDITION_REWARD_PCT*100)}%)`)}</option>` : '') +
-                (weaponUncommonQty>0 ? `<option value="uncommon">${tt(`中武器（獎勵區間 +${Math.round(WEAPON_UNCOMMON_EXPEDITION_REWARD_PCT*100)}%）`, `Medium (reward range +${Math.round(WEAPON_UNCOMMON_EXPEDITION_REWARD_PCT*100)}%)`)}</option>` : '');
+                Array.from({length: Math.min(WEAPON_EXPEDITION_MAX_STACK, weaponQty)}, (_,i)=>i+1).map(n=>{
+                  const pct = Math.round(Math.min(1, n*WEAPON_EXPEDITION_REWARD_PCT)*100);
+                  return `<option value="common:${n}">${tt(`${n} 把・小武器（獎勵區間 +${pct}%）`, `${n}・Small (reward range +${pct}%)`)}</option>`;
+                }).join('') +
+                Array.from({length: Math.min(WEAPON_EXPEDITION_MAX_STACK, weaponUncommonQty)}, (_,i)=>i+1).map(n=>{
+                  const pct = Math.round(Math.min(1, n*WEAPON_UNCOMMON_EXPEDITION_REWARD_PCT)*100);
+                  return `<option value="uncommon:${n}">${tt(`${n} 把・中武器（獎勵區間 +${pct}%）`, `${n}・Medium (reward range +${pct}%)`)}</option>`;
+                }).join('');
               const hasFurniture = furnitureQty>0 || furnitureUncommonQty>0;
               const hasWeapon = weaponQty>0 || weaponUncommonQty>0;
               const hasAccessory = accessoryQty>0 || accessoryUncommonQty>0;
@@ -8718,9 +8842,9 @@ async function renderExpedition(body){
         return;
       }
       const itemUsage = {
-        // "tier:count" 編碼（例如 "common:2"／"uncommon:1"），空字串代表不使用；武器沒有件數，直接用 "common"／"uncommon"
+        // "tier:count" 編碼（例如 "common:2"／"uncommon:1"），空字串代表不使用
         furnitureSel: furnitureSel ? furnitureSel.value : '',
-        weaponTier: weaponSel && weaponSel.value ? weaponSel.value : null,
+        weaponSel: weaponSel ? weaponSel.value : '',
         accessorySel: accessorySel ? accessorySel.value : '',
         riskLevel: draft ? draft.riskLevel : 'standard',
         blessingCardId: hasSelectedCard ? draft.drawnCards[draft.selectedIdx].id : null,
@@ -13930,11 +14054,12 @@ async function renderGM(body){
       <div><label>${tt('每輪難度倍率','Difficulty mult / cycle')}</label><input type="number" id="gm-boss-diff" value="${BOSS_DIFFICULTY_MULT}" min="1" step="0.05" style="width:90px;" /></div>
     </div>
     <div class="farm-upgrade-title" style="margin-top:10px;">${tt('每日擊殺上限 × 特殊詞綴','Daily Kills × Boss Affix')}</div>
-    <p class="sub">${tt('打死立刻重生，直到達到每日擊殺上限才鎖到隔天；重生時有機率套用詞綴（數字強化／爆擊強化），符合條件的攻擊會額外造成加成傷害，不符合條件的攻擊維持正常傷害（不會被打折）。', 'Killing the Boss respawns it immediately until the daily kill limit is reached, then it locks until tomorrow. Respawns have a chance to gain an affix (number boost / crit boost) — attacks that meet the condition deal bonus damage; attacks that don\'t still deal normal damage (never reduced).')}</p>
+    <p class="sub">${tt('打死立刻重生，直到達到每日擊殺上限才鎖到隔天；重生時有機率套用詞綴（數字強化／爆擊強化），符合條件的攻擊會額外造成加成傷害，不符合條件的攻擊維持正常傷害（不會被打折）。達到保底輪數後，重生必定套用詞綴，不再吃機率。', 'Killing the Boss respawns it immediately until the daily kill limit is reached, then it locks until tomorrow. Respawns have a chance to gain an affix (number boost / crit boost) — attacks that meet the condition deal bonus damage; attacks that don\'t still deal normal damage (never reduced). Once the guaranteed cycle is reached, every respawn is affixed regardless of chance.')}</p>
     <div class="form-row">
       <div><label>${tt('每日擊殺上限','Max kills / day')}</label><input type="number" id="gm-boss-max-kills" value="${BOSS_MAX_DAILY_KILLS}" min="1" style="width:80px;" /></div>
       <div><label>${tt('詞綴出現機率 %','Affix chance %')}</label><input type="number" id="gm-boss-affix-chance" value="${Math.round(BOSS_AFFIX_CHANCE*100)}" min="0" max="100" step="1" style="width:90px;" /></div>
       <div><label>${tt('詞綴命中加成傷害 %','Affix bonus dmg %')}</label><input type="number" id="gm-boss-affix-floor" value="${Math.round(BOSS_AFFIX_BONUS_PCT*100)}" min="0" max="500" step="1" style="width:90px;" /></div>
+      <div><label>${tt('詞綴保底輪數（達此輪必定觸發）','Guaranteed affix at cycle')}</label><input type="number" id="gm-boss-affix-guaranteed" value="${BOSS_AFFIX_GUARANTEED_CYCLE}" min="1" step="1" style="width:90px;" /></div>
     </div>
     <div class="farm-upgrade-title" style="margin-top:10px;">${tt('星象爆發設定','Astral Burst Settings')}</div>
     <div class="form-row">
@@ -13952,6 +14077,13 @@ async function renderGM(body){
     </div>
     <div class="form-row">
       <div><label>${tt('每輪獎勵倍率（基礎＋獎池皆套用，可與血量倍率不同）','Reward mult / cycle (applies to base + pool, can differ from HP mult)')}</label><input type="number" id="gm-boss-reward-mult" value="${BOSS_REWARD_MULT}" min="1" step="0.05" style="width:90px;" /></div>
+    </div>
+    <div class="farm-upgrade-title" style="margin-top:10px;">${tt('Boss跑路 × 武器加成（消耗職業道具庫存）','Boss Flee × Weapon Bonus (consumes profession item stock)')}</div>
+    <p class="sub">${tt('同一階段攻擊次數達上限仍未擊破，Boss直接跑路重置回第1階，不計今日擊殺次數、不發獎勵，已花費金幣/武器不退還（設為0代表不啟用）。武器為自由選用，有庫存才生效，只影響那一次攻擊的傷害。', 'If a stage isn\'t cleared within the attack limit, the Boss flees and resets to Stage 1 - no kill count, no rewards, spent coins/weapons are not refunded (set 0 to disable). Weapon use is optional and only affects that single attack\'s damage.')}</p>
+    <div class="form-row">
+      <div><label>${tt('每階段攻擊次數上限','Max attacks / stage')}</label><input type="number" id="gm-boss-max-attacks" value="${BOSS_MAX_ATTACKS}" min="0" style="width:90px;" /></div>
+      <div><label>${tt('小武器傷害加成 %','Small weapon dmg %')}</label><input type="number" id="gm-boss-weapon-pct" value="${Math.round(BOSS_WEAPON_DAMAGE_PCT*100)}" min="0" max="500" step="1" style="width:90px;" /></div>
+      <div><label>${tt('中武器傷害加成 %','Medium weapon dmg %')}</label><input type="number" id="gm-boss-weapon-unc-pct" value="${Math.round(BOSS_WEAPON_UNCOMMON_DAMAGE_PCT*100)}" min="0" max="500" step="1" style="width:90px;" /></div>
     </div>
     <div class="form-row" style="margin-top:10px;">
       <button class="btn small" id="gm-boss-save-btn">${tt('儲存 Boss 設定','Save Boss Settings')}</button>
@@ -14069,7 +14201,7 @@ async function renderGM(body){
       <div class="farm-upgrade-line" style="color:var(--muted);margin-bottom:6px;">${tt('僅「亡命」風險等級＋8小時遠征的成功／失敗才會累加／打斷連勝次數，其餘風險等級或時長不影響連勝數（但仍會套用當下的連勝獎勵）。', 'Only Reckless-risk + 8-hour expeditions add to or break the win streak on success/failure; other risk levels or durations don\'t affect the streak count (though the current streak bonus still applies to them).')}</div>
       <div class="form-row">
         <div><label>${tt('每連勝1次 %','Per win %')}</label><input type="number" id="gm-rogue-streak-perwin" value="${Math.round(EXPEDITION_STREAK_BONUS_PER_WIN*100)}" min="0" max="100" style="width:90px;" /></div>
-        <div><label>${tt('封頂 %','Cap %')}</label><input type="number" id="gm-rogue-streak-cap" value="${Math.round(EXPEDITION_STREAK_BONUS_CAP*100)}" min="0" max="100" style="width:90px;" /></div>
+        <div style="color:var(--muted);align-self:end;font-size:12px;">${tt('封頂已移除，加成隨連勝次數無上限累加','Cap removed - bonus now scales uncapped with streak count')}</div>
       </div>
     </div>
     <div class="form-row" style="margin-top:6px;">
@@ -14087,6 +14219,14 @@ async function renderGM(body){
         <div><label>${tt('孵化時間（小時）','Grow time (hours)')}</label><input type="number" id="gm-pet-egg-hours" value="${(PET_EGG_GROW_MS/3600000).toFixed(2)}" min="0.01" step="0.25" style="width:90px;" /></div>
         <div><label>${tt('種蛋材料消耗','Material cost to plant')}</label><input type="number" id="gm-pet-egg-cost" value="${PET_EGG_MATERIAL_COST}" min="1" style="width:90px;" /></div>
         <div><label>${tt('採集額外開蛋機率 %','Bonus egg on harvest %')}</label><input type="number" id="gm-pet-bonus-chance" value="${(PET_BONUS_EGG_CHANCE*100).toFixed(1)}" min="0" max="100" step="0.1" style="width:90px;" /></div>
+        <div><label>${tt('種蛋消耗🪑小家具','Furniture cost to plant')}</label><input type="number" id="gm-pet-egg-furniture" value="${PET_EGG_FURNITURE_COST}" min="0" style="width:90px;" /></div>
+      </div>
+    </div>
+    <div class="farm-upgrade-box" style="margin-bottom:10px;">
+      <div class="farm-upgrade-title">🪑 ${tt('尋寶派遣家具消耗','Hunt Dispatch Furniture Cost')}</div>
+      <div class="farm-upgrade-line" style="color:var(--muted);font-size:12px;">${tt('派遣尋寶時額外消耗🪑小家具庫存，依時長分別設定（時長越長建議設越多）。', 'Dispatching a hunt also consumes 🪑Small Furniture stock, set per duration (longer durations should cost more).')}</div>
+      <div class="form-row">
+        ${PET_DURATION_KEYS.map(key=>`<div><label>${petDurationLabel(key)}</label><input type="number" id="gm-pet-hunt-furniture-${key}" value="${PET_HUNT_FURNITURE_COST[key]||0}" min="0" style="width:80px;" /></div>`).join('')}
       </div>
     </div>
     <div class="farm-upgrade-box" style="margin-bottom:10px;">
@@ -14584,8 +14724,12 @@ async function renderGM(body){
     const maxKills = parseFloat(document.getElementById('gm-boss-max-kills').value);
     const affixChancePct = parseFloat(document.getElementById('gm-boss-affix-chance').value);
     const affixFloorPct = parseFloat(document.getElementById('gm-boss-affix-floor').value);
-    const nums = [...hp, diff, cost, dmg, contribRatePct, baseCoins, bonusCoins, rewardMult, maxKills, affixChancePct, affixFloorPct];
-    if(nums.some(v=>isNaN(v)||v<0) || diff <= 0 || rewardMult <= 0 || maxKills < 1){
+    const affixGuaranteedCycle = parseFloat(document.getElementById('gm-boss-affix-guaranteed').value);
+    const maxAttacks = parseFloat(document.getElementById('gm-boss-max-attacks').value);
+    const weaponPct = parseFloat(document.getElementById('gm-boss-weapon-pct').value);
+    const weaponUncPct = parseFloat(document.getElementById('gm-boss-weapon-unc-pct').value);
+    const nums = [...hp, diff, cost, dmg, contribRatePct, baseCoins, bonusCoins, rewardMult, maxKills, affixChancePct, affixFloorPct, affixGuaranteedCycle, maxAttacks, weaponPct, weaponUncPct];
+    if(nums.some(v=>isNaN(v)||v<0) || diff <= 0 || rewardMult <= 0 || maxKills < 1 || affixGuaranteedCycle < 1){
       showToast(tt('請輸入有效的非負數字','Please enter a valid non-negative number')); return;
     }
     BOSS_STAGE_HP = hp;
@@ -14599,6 +14743,10 @@ async function renderGM(body){
     BOSS_MAX_DAILY_KILLS = Math.round(maxKills);
     BOSS_AFFIX_CHANCE = affixChancePct / 100;
     BOSS_AFFIX_BONUS_PCT = affixFloorPct / 100;
+    BOSS_AFFIX_GUARANTEED_CYCLE = Math.round(affixGuaranteedCycle);
+    BOSS_MAX_ATTACKS = Math.round(maxAttacks);
+    BOSS_WEAPON_DAMAGE_PCT = weaponPct / 100;
+    BOSS_WEAPON_UNCOMMON_DAMAGE_PCT = weaponUncPct / 100;
     await saveBossConfig();
     showToast(tt('Boss 設定已更新','Boss settings updated'));
     renderTab();
@@ -14616,6 +14764,10 @@ async function renderGM(body){
     BOSS_MAX_DAILY_KILLS = DEFAULT_BOSS_MAX_DAILY_KILLS;
     BOSS_AFFIX_CHANCE = DEFAULT_BOSS_AFFIX_CHANCE;
     BOSS_AFFIX_BONUS_PCT = DEFAULT_BOSS_AFFIX_BONUS_PCT;
+    BOSS_AFFIX_GUARANTEED_CYCLE = DEFAULT_BOSS_AFFIX_GUARANTEED_CYCLE;
+    BOSS_MAX_ATTACKS = DEFAULT_BOSS_MAX_ATTACKS;
+    BOSS_WEAPON_DAMAGE_PCT = DEFAULT_BOSS_WEAPON_DAMAGE_PCT;
+    BOSS_WEAPON_UNCOMMON_DAMAGE_PCT = DEFAULT_BOSS_WEAPON_UNCOMMON_DAMAGE_PCT;
     await saveBossConfig();
     showToast(tt('已還原為預設 Boss 設定','Reverted to default boss settings'));
     renderTab();
@@ -14727,8 +14879,7 @@ async function renderGM(body){
       eventSchedule[durKey] = parts.map(v=>v/100);
     });
     const streakPerWin = parseFloat(document.getElementById('gm-rogue-streak-perwin').value);
-    const streakCap = parseFloat(document.getElementById('gm-rogue-streak-cap').value);
-    if([streakPerWin, streakCap].some(v=>isNaN(v) || v<0 || v>100)) invalid = true;
+    if(isNaN(streakPerWin) || streakPerWin<0 || streakPerWin>100) invalid = true;
     if(invalid){ showToast(tt('請輸入有效的數字（詳見各欄位範圍提示）','Please enter valid numbers (see each field\'s range)')); return; }
     EXPEDITION_ROGUELIKE_UNLOCK_LEVEL = unlockLevel;
     EXPEDITION_RISK_LEVEL_KEYS.forEach(key=>{
@@ -14736,7 +14887,6 @@ async function renderGM(body){
     });
     EXPEDITION_EVENT_SCHEDULE = eventSchedule;
     EXPEDITION_STREAK_BONUS_PER_WIN = streakPerWin/100;
-    EXPEDITION_STREAK_BONUS_CAP = streakCap/100;
     await saveExpeditionRoguelikeConfig();
     showToast(tt('遠征 Roguelike 設定已更新，即時對所有玩家生效 ⚡','Expedition roguelike settings updated, effective immediately for all players ⚡'));
     renderTab();
@@ -14757,8 +14907,9 @@ async function renderGM(body){
     const hours = parseFloat(document.getElementById('gm-pet-egg-hours').value);
     const eggCost = parseInt(document.getElementById('gm-pet-egg-cost').value, 10);
     const bonusChance = parseFloat(document.getElementById('gm-pet-bonus-chance').value);
+    const eggFurnitureCost = parseInt(document.getElementById('gm-pet-egg-furniture').value, 10);
     const rarityWeights = {};
-    let invalid = isNaN(hours) || hours <= 0 || isNaN(eggCost) || eggCost < 1 || isNaN(bonusChance) || bonusChance < 0 || bonusChance > 100;
+    let invalid = isNaN(hours) || hours <= 0 || isNaN(eggCost) || eggCost < 1 || isNaN(bonusChance) || bonusChance < 0 || bonusChance > 100 || isNaN(eggFurnitureCost) || eggFurnitureCost < 0;
     PET_RARITY_IDS.forEach(id=>{
       const w = parseFloat(document.getElementById(`gm-pet-rarity-${id}`).value);
       if(isNaN(w) || w < 0) invalid = true;
@@ -14769,6 +14920,7 @@ async function renderGM(body){
     if([rarityBonusRare, rarityBonusEpic].some(v=>isNaN(v) || v<0)) invalid = true;
     const durationRewards = {};
     const rareLootChance = {};
+    const huntFurnitureCost = {};
     PET_DURATION_KEYS.forEach(key=>{
       const coinMin = parseFloat(document.getElementById(`gm-pet-${key}-coinmin`).value);
       const coinMax = parseFloat(document.getElementById(`gm-pet-${key}-coinmax`).value);
@@ -14777,19 +14929,23 @@ async function renderGM(body){
       const matMin = parseFloat(document.getElementById(`gm-pet-${key}-matmin`).value);
       const matMax = parseFloat(document.getElementById(`gm-pet-${key}-matmax`).value);
       const rare = parseFloat(document.getElementById(`gm-pet-${key}-rare`).value);
-      const nums = [coinMin, coinMax, essMin, essMax, matMin, matMax, rare];
+      const furnitureCost = parseInt(document.getElementById(`gm-pet-hunt-furniture-${key}`).value, 10);
+      const nums = [coinMin, coinMax, essMin, essMax, matMin, matMax, rare, furnitureCost];
       if(nums.some(v=>isNaN(v) || v<0) || coinMax<coinMin || essMax<essMin || matMax<matMin || rare>100){ invalid = true; }
       durationRewards[key] = {coin:[coinMin,coinMax], essence:[essMin,essMax], material:[matMin,matMax]};
       rareLootChance[key] = rare/100;
+      huntFurnitureCost[key] = furnitureCost;
     });
     if(invalid){ showToast(tt('請確認每項數值皆為有效的非負數字，區間上限需大於等於下限','Please check all values are valid non-negative numbers, and range max ≥ min')); return; }
     PET_EGG_GROW_MS = Math.round(hours*3600000);
     PET_EGG_MATERIAL_COST = eggCost;
     PET_BONUS_EGG_CHANCE = bonusChance/100;
+    PET_EGG_FURNITURE_COST = eggFurnitureCost;
     PET_RARITY_BASE_WEIGHT = rarityWeights;
     PET_RARITY_LEVEL_BONUS = {rare:rarityBonusRare, epic:rarityBonusEpic};
     PET_DURATION_REWARDS = durationRewards;
     PET_RARE_LOOT_CHANCE = rareLootChance;
+    PET_HUNT_FURNITURE_COST = huntFurnitureCost;
     await savePetConfig();
     showToast(tt('寵物尋寶設定已更新，即時對所有玩家生效 ⚡','Pet hunt settings updated, effective immediately for all players ⚡'));
     renderTab();
@@ -14799,10 +14955,12 @@ async function renderGM(body){
     PET_EGG_GROW_MS = DEFAULT_PET_EGG_GROW_MS;
     PET_EGG_MATERIAL_COST = DEFAULT_PET_EGG_MATERIAL_COST;
     PET_BONUS_EGG_CHANCE = DEFAULT_PET_BONUS_EGG_CHANCE;
+    PET_EGG_FURNITURE_COST = DEFAULT_PET_EGG_FURNITURE_COST;
     PET_RARITY_BASE_WEIGHT = {...DEFAULT_PET_RARITY_BASE_WEIGHT};
     PET_RARITY_LEVEL_BONUS = {...DEFAULT_PET_RARITY_LEVEL_BONUS};
     PET_DURATION_REWARDS = JSON.parse(JSON.stringify(DEFAULT_PET_DURATION_REWARDS));
     PET_RARE_LOOT_CHANCE = {...DEFAULT_PET_RARE_LOOT_CHANCE};
+    PET_HUNT_FURNITURE_COST = {...DEFAULT_PET_HUNT_FURNITURE_COST};
     await savePetConfig();
     showToast(tt('已還原為預設寵物尋寶設定','Reverted to default pet hunt settings'));
     renderTab();
