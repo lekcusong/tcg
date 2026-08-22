@@ -1731,21 +1731,21 @@ const DEFAULT_PROFESSION_DEFS = [
     materialId:'herb', materialIcon:'🌿', materialLabelZh:'藥草', materialLabelEn:'Herb',
     recipes:[
       {itemId:'potion_small', icon:'🧪', labelZh:'小藥水', labelEn:'Small Potion', materialCost:3, staminaCost:10, exp:10},
-      {itemId:'potion_medium', icon:'🧪', labelZh:'中藥水', labelEn:'Medium Potion', materialCost:8, staminaCost:15, exp:25, unlockLevel:PROFESSION_UNCOMMON_UNLOCK_LEVEL, consumeItemId:'potion_small', consumeQty:1},
+      {itemId:'potion_medium', icon:'🧪', labelZh:'中藥水', labelEn:'Medium Potion', materialCost:3, staminaCost:10, exp:25, unlockLevel:PROFESSION_UNCOMMON_UNLOCK_LEVEL, consumeItemId:'potion_small', consumeQty:1},
     ]},
   {id:'blacksmith', icon:'⚒️', labelZh:'鍛造師', labelEn:'Blacksmith',
     materialId:'ore', materialIcon:'⛏️', materialLabelZh:'礦石', materialLabelEn:'Ore',
     recipes:[
       {itemId:'weapon_common', icon:'⚔️', labelZh:'小武器', labelEn:'Small Weapon', materialCost:5, staminaCost:10, exp:15},
       {itemId:'accessory_common', icon:'💍', labelZh:'小飾品', labelEn:'Small Accessory', materialCost:3, staminaCost:10, exp:10},
-      {itemId:'weapon_uncommon', icon:'⚔️', labelZh:'中武器', labelEn:'Medium Weapon', materialCost:9, staminaCost:15, exp:30, unlockLevel:PROFESSION_UNCOMMON_UNLOCK_LEVEL, consumeItemId:'weapon_common', consumeQty:1},
-      {itemId:'accessory_uncommon', icon:'💍', labelZh:'中飾品', labelEn:'Medium Accessory', materialCost:6, staminaCost:12, exp:20, unlockLevel:PROFESSION_UNCOMMON_UNLOCK_LEVEL, consumeItemId:'accessory_common', consumeQty:1},
+      {itemId:'weapon_uncommon', icon:'⚔️', labelZh:'中武器', labelEn:'Medium Weapon', materialCost:5, staminaCost:10, exp:30, unlockLevel:PROFESSION_UNCOMMON_UNLOCK_LEVEL, consumeItemId:'weapon_common', consumeQty:1},
+      {itemId:'accessory_uncommon', icon:'💍', labelZh:'中飾品', labelEn:'Medium Accessory', materialCost:3, staminaCost:10, exp:20, unlockLevel:PROFESSION_UNCOMMON_UNLOCK_LEVEL, consumeItemId:'accessory_common', consumeQty:1},
     ]},
   {id:'carpenter', icon:'🔨', labelZh:'木匠', labelEn:'Carpenter',
     materialId:'lumber', materialIcon:'🌳', materialLabelZh:'木料', materialLabelEn:'Lumber',
     recipes:[
       {itemId:'furniture_common', icon:'🪑', labelZh:'小家具', labelEn:'Small Furniture', materialCost:5, staminaCost:10, exp:15},
-      {itemId:'furniture_uncommon', icon:'🪑', labelZh:'中家具', labelEn:'Medium Furniture', materialCost:9, staminaCost:15, exp:30, unlockLevel:PROFESSION_UNCOMMON_UNLOCK_LEVEL, consumeItemId:'furniture_common', consumeQty:1},
+      {itemId:'furniture_uncommon', icon:'🪑', labelZh:'中家具', labelEn:'Medium Furniture', materialCost:5, staminaCost:10, exp:30, unlockLevel:PROFESSION_UNCOMMON_UNLOCK_LEVEL, consumeItemId:'furniture_common', consumeQty:1},
     ]},
 ];
 // 材料成本/體力成本/經驗值是 GM 可調的部分；icon/label/itemId 等展示用資料維持不變，只複製數值欄位
@@ -2074,8 +2074,8 @@ const PET_DURATION_META = {
   '12h': {ms:12*60*60*1000, labelZh:'12 小時', labelEn:'12 hr'},
 };
 
-// 尋寶派遣地點：出戰寵物負責解鎖門檻判斷（花園等級 OR 出戰寵物星級，vault 額外要求出戰寵物稀有度），
-// 實際派去尋寶的可以是任何一隻沒在忙的寵物，跟出戰寵物是否為同一隻無關。
+// 尋寶派遣地點：鎮守寵物負責解鎖門檻判斷（花園等級 OR 鎮守寵物星級，vault 額外要求鎮守寵物稀有度），
+// 鎮守寵物本身只能留在家裡負責解鎖門檻，不能被派去尋寶；實際派去尋寶的是任何一隻「沒在忙、且不是鎮守寵物」的寵物。
 const PET_LOCATION_KEYS = ['trail', 'ruins', 'vault'];
 const PET_LOCATION_META = {
   trail: {
@@ -2097,7 +2097,7 @@ const PET_LOCATION_META = {
     rareChanceBonus: 0.08,
   },
 };
-// 尋寶派遣格數：目前固定 2 格（出戰寵物與尋寶寵物已拆開，多格才能真正發揮地點差異化）。
+// 尋寶派遣格數：目前固定 2 格（鎮守寵物與尋寶寵物已拆開且互斥，多格才能真正發揮地點差異化）。
 const PET_HUNT_SLOT_COUNT = 2;
 // 好友互動：一鍵幫全部好友加速尋寶中的格子，比照花園「一鍵幫好友澆水」的比例與一人一格限一次的規則。
 const PET_HUNT_HELP_RATIO = 0.15; // 每次幫忙，縮短該格「當時剩餘時間」的 15%
@@ -2119,16 +2119,15 @@ function petLocationUnlockHint(locationKey){
   const req = meta.unlock;
   const orParts = [];
   if(req.farmLevel) orParts.push(tt(`花園 Lv.${req.farmLevel}`, `Garden Lv.${req.farmLevel}`));
-  if(req.petStar) orParts.push(tt(`出戰寵物 ★${req.petStar}`, `active pet ★${req.petStar}`));
+  if(req.petStar) orParts.push(tt(`鎮守寵物 ★${req.petStar}`, `guardian pet ★${req.petStar}`));
   let text = orParts.join(tt(' 或 ', ' or '));
-  if(req.petRarity) text += tt(`（且出戰寵物需為${petRarityLabel(req.petRarity)}）`, ` (active pet must also be ${petRarityLabel(req.petRarity)})`);
+  if(req.petRarity) text += tt(`（且鎮守寵物需為${petRarityLabel(req.petRarity)}）`, ` (guardian pet must also be ${petRarityLabel(req.petRarity)})`);
   return text;
 }
 
 // 以下數值皆為規格書「尚待拍板的數字」的草案值，全部開放 GM 後台即時調整。
 const DEFAULT_PET_EGG_GROW_MS = 4*60*60*1000; // 蛋孵化時間草案：4 小時
 const DEFAULT_PET_EGG_MATERIAL_COST = 20; // 種蛋消耗材料數量草案
-const DEFAULT_PET_SWAP_COST = 5000; // 更換出戰寵物花費（比照轉職手感：開放但收費、無冷卻）
 const DEFAULT_PET_BONUS_EGG_CHANCE = 0.03; // 花園收成掉落職業材料時，額外直接開出寵物的機率草案
 const DEFAULT_PET_RARITY_BASE_WEIGHT = {common:70, rare:25, epic:5}; // 孵化稀有度基礎權重
 const DEFAULT_PET_RARITY_LEVEL_BONUS = {rare:1.5, epic:0.6}; // 每花園等級 +多少百分點權重（從 common 扣除）
@@ -2144,7 +2143,6 @@ const PET_RARE_LOOT_MULT = 2; // 稀有掉落觸發時的獎勵倍率，固定�
 
 let PET_EGG_GROW_MS = DEFAULT_PET_EGG_GROW_MS;
 let PET_EGG_MATERIAL_COST = DEFAULT_PET_EGG_MATERIAL_COST;
-let PET_SWAP_COST = DEFAULT_PET_SWAP_COST;
 let PET_BONUS_EGG_CHANCE = DEFAULT_PET_BONUS_EGG_CHANCE;
 let PET_RARITY_BASE_WEIGHT = {...DEFAULT_PET_RARITY_BASE_WEIGHT};
 let PET_RARITY_LEVEL_BONUS = {...DEFAULT_PET_RARITY_LEVEL_BONUS};
@@ -2159,7 +2157,6 @@ async function loadPetConfig(){
     const pick = (val, fallback, min=0)=> (typeof val==='number' && !isNaN(val) && val>=min) ? val : fallback;
     PET_EGG_GROW_MS = pick(s.eggGrowMs, DEFAULT_PET_EGG_GROW_MS, 1000);
     PET_EGG_MATERIAL_COST = pick(s.eggMaterialCost, DEFAULT_PET_EGG_MATERIAL_COST, 1);
-    PET_SWAP_COST = pick(s.swapCost, DEFAULT_PET_SWAP_COST, 0);
     PET_BONUS_EGG_CHANCE = pick(s.bonusEggChance, DEFAULT_PET_BONUS_EGG_CHANCE, 0);
     if(s.rarityBaseWeight && typeof s.rarityBaseWeight === 'object'){
       PET_RARITY_IDS.forEach(id=>{ PET_RARITY_BASE_WEIGHT[id] = pick(s.rarityBaseWeight[id], DEFAULT_PET_RARITY_BASE_WEIGHT[id], 0); });
@@ -2188,7 +2185,6 @@ async function savePetConfig(){
   await storage.set('config:pet_hunt', JSON.stringify({
     eggGrowMs: PET_EGG_GROW_MS,
     eggMaterialCost: PET_EGG_MATERIAL_COST,
-    swapCost: PET_SWAP_COST,
     bonusEggChance: PET_BONUS_EGG_CHANCE,
     rarityBaseWeight: PET_RARITY_BASE_WEIGHT,
     rarityLevelBonus: PET_RARITY_LEVEL_BONUS,
@@ -2210,7 +2206,7 @@ function ensurePets(p){
   if(p.petActiveId && !p.pets.some(pet=>pet.id===p.petActiveId)) p.petActiveId = null;
   if(!p.petNest || typeof p.petNest !== 'object') p.petNest = {element:null, plantedAt:null, readyAt:null};
   // 舊資料相容：原本尋寶只有單一 p.petHunt 物件（出戰寵物兼尋寶），改版後拆成
-  // 出戰寵物（petActiveId，功能不變）＋多個尋寶派遣格（p.petHunts 陣列）。
+  // 鎮守寵物（petActiveId，現在與尋寶互斥）＋多個尋寶派遣格（p.petHunts 陣列）。
   // 若偵測到舊格式且當時正在尋寶中，搬進 slot 0、地點一律當作古道結算（無門檻，安全預設），
   // 確保沒有人會因為這次更新卡在無法領獎的狀態。
   if(!Array.isArray(p.petHunts)){
@@ -2228,6 +2224,9 @@ function ensurePets(p){
     if(slot.active && !PET_LOCATION_KEYS.includes(slot.locationKey)) slot.locationKey = 'trail';
     if(!slot.helpLog || typeof slot.helpLog !== 'object') slot.helpLog = {}; // 舊資料相容：補上好友加速紀錄欄位
   });
+  if(p.rentedGuardian === undefined) p.rentedGuardian = null;
+  if(p.rentedGuardian && Date.now() >= p.rentedGuardian.expiresAt) p.rentedGuardian = null; // 到期自動清空
+  if(!p.guardianRentLog || typeof p.guardianRentLog !== 'object') p.guardianRentLog = {}; // {friendNick: 'YYYY-MM-DD'}，同好友一天只能租一次
   return p;
 }
 function isPetHunting(p, petId){ return p.petHunts.some(h=>h.active && h.petId===petId); }
@@ -2245,6 +2244,76 @@ function petEffects(pet){
     durationReduction: Math.min(0.18, steps*0.045),
     rewardMult: 1 + Math.min(0.45, steps*0.1125),
     rareChanceBonus: Math.min(0.135, steps*0.03375),
+  };
+}
+// 鎮守光環：鎮守寵物本身不會被派去尋寶，但牠的星級／稀有度／屬性會對「所有尋寶格」疊加一層被動加成，
+// 疊加在派出去那隻寵物自己的星級加成（petEffects）之上。這組數值先寫死，不開放 GM 後台調整。
+const GUARDIAN_AURA_STAR_CAP = {durationReduction:0.14, rewardMult:0.32, rareChanceBonus:0.10}; // ★5 封頂（不含稀有度加成）
+const GUARDIAN_AURA_STAR_STEP = {durationReduction:0.035, rewardMult:0.08, rareChanceBonus:0.025}; // 每星增量
+const GUARDIAN_AURA_RARITY_BONUS = {
+  common: {durationReduction:0,    rewardMult:0,    rareChanceBonus:0},
+  rare:   {durationReduction:0.03, rewardMult:0.07, rareChanceBonus:0.015},
+  epic:   {durationReduction:0.07, rewardMult:0.16, rareChanceBonus:0.04},
+};
+const GUARDIAN_AURA_ELEMENT_RESOURCE = {herb:'material', ore:'coin', lumber:'essence'}; // 鎮守寵物屬性決定加成哪種資源
+const GUARDIAN_AURA_ELEMENT_BONUS = 0.25; // 對應資源額外 +25%
+const GUARDIAN_AURA_TOTAL_DURATION_REDUCTION_CAP = 0.5; // 跟派出去寵物自己的時間縮短疊加後，總縮短封頂 50%
+function guardianAuraEffects(guardianPet){
+  if(!guardianPet) return {durationReduction:0, rewardMult:0, rareChanceBonus:0, resourceKey:null, resourceBonus:0};
+  const steps = Math.max(0, (guardianPet.star||1) - 1);
+  const rarityBonus = GUARDIAN_AURA_RARITY_BONUS[guardianPet.rarity] || GUARDIAN_AURA_RARITY_BONUS.common;
+  const durationReduction = Math.min(GUARDIAN_AURA_STAR_CAP.durationReduction, steps*GUARDIAN_AURA_STAR_STEP.durationReduction) + rarityBonus.durationReduction;
+  const rewardMult = Math.min(GUARDIAN_AURA_STAR_CAP.rewardMult, steps*GUARDIAN_AURA_STAR_STEP.rewardMult) + rarityBonus.rewardMult;
+  const rareChanceBonus = Math.min(GUARDIAN_AURA_STAR_CAP.rareChanceBonus, steps*GUARDIAN_AURA_STAR_STEP.rareChanceBonus) + rarityBonus.rareChanceBonus;
+  const resourceKey = GUARDIAN_AURA_ELEMENT_RESOURCE[guardianPet.element] || null;
+  return {durationReduction, rewardMult, rareChanceBonus, resourceKey, resourceBonus: resourceKey ? GUARDIAN_AURA_ELEMENT_BONUS : 0};
+}
+// ---------- 租借副鎮守（Rent-a-Guardian）----------
+// 設計定案（見規格討論）：效果不打折、跟主鎮守光環直接相加；唯一的平衡閥是租金。
+// 租用中不能中途解約換人，一定要等到期；同一位好友一天只能租一次；租金 100% 全額付給好友，
+// 對整體金幣供給中性（不做沉澱）。租借的是「數值快照」，不是真的把好友的寵物搬走——
+// 完全不影響好友本人的鎮守寵物與尋寶。
+const RENT_GUARDIAN_DURATION_MS = 8 * 60 * 60 * 1000; // 8 小時
+const RENT_GUARDIAN_COST_MIN = 500;
+const RENT_GUARDIAN_COST_MAX = 5000;
+const RENT_GUARDIAN_COST_EXP = 1.5; // 指數曲線：越接近滿星滿稀有度，租金跳得越快
+// 強度分數（0~1）的三項封頂值＝主鎮守光環在 ★5 + epic 稀有度下的封頂總和
+const RENT_GUARDIAN_SCORE_CAPS = {
+  durationReduction: GUARDIAN_AURA_STAR_CAP.durationReduction + GUARDIAN_AURA_RARITY_BONUS.epic.durationReduction,
+  rewardMult: GUARDIAN_AURA_STAR_CAP.rewardMult + GUARDIAN_AURA_RARITY_BONUS.epic.rewardMult,
+  rareChanceBonus: GUARDIAN_AURA_STAR_CAP.rareChanceBonus + GUARDIAN_AURA_RARITY_BONUS.epic.rareChanceBonus,
+};
+// 0~1：拿鎮守寵物的三項光環數值分別除以各自封頂值再取平均，用來換算租金
+function guardianAuraPowerScore(guardianPet){
+  if(!guardianPet) return 0;
+  const eff = guardianAuraEffects(guardianPet);
+  const parts = [
+    eff.durationReduction / RENT_GUARDIAN_SCORE_CAPS.durationReduction,
+    eff.rewardMult / RENT_GUARDIAN_SCORE_CAPS.rewardMult,
+    eff.rareChanceBonus / RENT_GUARDIAN_SCORE_CAPS.rareChanceBonus,
+  ];
+  return Math.min(1, parts.reduce((a,b)=>a+b, 0) / parts.length);
+}
+function rentGuardianCost(guardianPet){
+  const score = guardianAuraPowerScore(guardianPet);
+  return Math.round(RENT_GUARDIAN_COST_MIN + (RENT_GUARDIAN_COST_MAX - RENT_GUARDIAN_COST_MIN) * Math.pow(score, RENT_GUARDIAN_COST_EXP));
+}
+// 主鎮守 + 副鎮守（租來的）效果直接相加。屬性資源加成（resourceKey/resourceBonus）比較特殊：
+// 兩邊屬性可能不同，各自獨立判斷各自命不命中對應資源，所以分開回傳成 own/rented 兩組，
+// 結算時各自套用，不能直接相加成一個 resourceBonus 數字。
+function combinedGuardianAuraEffects(p){
+  const own = guardianAuraEffects(getActivePet(p));
+  if(!p.rentedGuardian || Date.now() >= p.rentedGuardian.expiresAt){
+    return {durationReduction: own.durationReduction, rewardMult: own.rewardMult, rareChanceBonus: own.rareChanceBonus,
+      ownResourceKey: own.resourceKey, ownResourceBonus: own.resourceBonus, rentedResourceKey: null, rentedResourceBonus: 0};
+  }
+  const rented = guardianAuraEffects(p.rentedGuardian); // rentedGuardian 快照只存 element/rarity/star，形狀跟 pet 一致
+  return {
+    durationReduction: own.durationReduction + rented.durationReduction,
+    rewardMult: own.rewardMult + rented.rewardMult,
+    rareChanceBonus: own.rareChanceBonus + rented.rareChanceBonus,
+    ownResourceKey: own.resourceKey, ownResourceBonus: own.resourceBonus,
+    rentedResourceKey: rented.resourceKey, rentedResourceBonus: rented.resourceBonus,
   };
 }
 function createPet(elementId, rarity){
@@ -2308,21 +2377,20 @@ async function setActivePet(petId){
   if(p.petActiveId === petId) return;
   const pet = p.pets.find(pt=>pt.id===petId);
   if(!pet) return;
+  if(isPetHunting(p, petId)){
+    showToast(tt('這隻寵物正在尋寶中，無法設為鎮守，請等牠回來後再設定','This pet is out on a hunt - recall it before setting it as guardian'));
+    return;
+  }
   if(p.petActiveId){
-    if((p.coins||0) < PET_SWAP_COST){
-      showToast(tt(`金幣不足，更換出戰寵物需要 ✦${PET_SWAP_COST}`, `Not enough coins - switching pets costs ✦${PET_SWAP_COST}`));
-      return;
-    }
-    if(!confirm(tt(`確定要花費 ✦${PET_SWAP_COST} 更換出戰寵物嗎？（換下場的寵物等級與經驗會保留）`, `Switch active pet for ✦${PET_SWAP_COST}? (The pet you swap out keeps its level/exp)`))) return;
-    p.coins -= PET_SWAP_COST;
+    if(!confirm(tt('確定要更換鎮守寵物嗎？（換下場的寵物等級與經驗會保留，且換下場後就能被派去尋寶）', 'Switch guardian pet? (The pet you swap out keeps its level/exp, and becomes available for hunts)'))) return;
   }
   p.petActiveId = petId;
   await savePlayer(p);
-  showToast(tt('已更換出戰寵物','Active pet switched'));
+  showToast(tt('已更換鎮守寵物','Guardian pet switched'));
   renderTab();
 }
 // 合成升星面板狀態：目前展開中的目標寵物 id，以及已勾選的素材寵物 id 集合。
-// 素材＝與目標寵物「同名」（同屬性＋同稀有度＋同星級）的其他寵物，出戰中／尋寶中的寵物不可被選為素材。
+// 素材＝與目標寵物「同名」（同屬性＋同稀有度＋同星級）的其他寵物，鎮守中／尋寶中的寵物不可被選為素材。
 let petSynthesisOpenId = null;
 let petSynthesisSelected = new Set();
 
@@ -2403,7 +2471,7 @@ async function synthesizePet(petId){
 let petHuntDraft = {};
 function petHuntAvailablePets(p){
   ensurePets(p);
-  return p.pets.filter(pt=>!isPetHunting(p, pt.id));
+  return p.pets.filter(pt=>!isPetHunting(p, pt.id) && pt.id !== p.petActiveId);
 }
 function pickHuntPet(slotId, petId){
   petHuntDraft[slotId] = {petId, locationKey:null};
@@ -2436,10 +2504,13 @@ async function startPetHunt(slotId, durationKey){
   const pet = p.pets.find(pt=>pt.id===draft.petId);
   if(!pet){ showToast(tt('請先選擇要派遣的寵物','Pick a pet to dispatch first')); return; }
   if(isPetHunting(p, pet.id)){ showToast(tt('這隻寵物已經在尋寶中了','This pet is already out on a hunt')); delete petHuntDraft[slotId]; renderTab(); return; }
+  if(pet.id === p.petActiveId){ showToast(tt('鎮守中的寵物只能留在家裡，無法派去尋寶','Guardian pets stay home - they can\'t be dispatched on hunts')); delete petHuntDraft[slotId]; renderTab(); return; }
   if(!isPetLocationUnlocked(p, draft.locationKey)){ showToast(tt('這個地點尚未解鎖','This location is not unlocked yet')); return; }
   const eff = petEffects(pet);
+  const guardianEff = combinedGuardianAuraEffects(p); // 主鎮守 + 租來的副鎮守（若租用中）直接相加
+  const totalDurationReduction = Math.min(GUARDIAN_AURA_TOTAL_DURATION_REDUCTION_CAP, eff.durationReduction + guardianEff.durationReduction);
   const baseMs = PET_DURATION_META[durationKey].ms;
-  const actualMs = Math.round(baseMs * (1 - eff.durationReduction));
+  const actualMs = Math.round(baseMs * (1 - totalDurationReduction));
   const now = Date.now();
   p.petHunts[slotId] = {slotId, active:true, locationKey:draft.locationKey, durationKey, startAt:now, readyAt:now+actualMs, petId:pet.id, helpLog:{}};
   delete petHuntDraft[slotId];
@@ -2454,8 +2525,9 @@ async function claimPetHunt(slotId){
   const hunt = p.petHunts[slotId];
   if(!hunt || !hunt.active) return;
   if(Date.now() < hunt.readyAt){ showToast(tt('尋寶還沒結束','The hunt is not finished yet')); return; }
-  const pet = p.pets.find(pt=>pt.id===hunt.petId) || getActivePet(p);
+  const pet = p.pets.find(pt=>pt.id===hunt.petId) || null;
   const eff = petEffects(pet);
+  const guardianEff = combinedGuardianAuraEffects(p); // 主鎮守 + 租來的副鎮守（若租用中）直接相加
   const locMeta = PET_LOCATION_META[hunt.locationKey] || PET_LOCATION_META.trail;
   const cfg = PET_DURATION_REWARDS[hunt.durationKey] || DEFAULT_PET_DURATION_REWARDS['15m'];
   const roll = (range)=> Math.floor(range[0] + Math.random()*(range[1]-range[0]+1));
@@ -2467,11 +2539,20 @@ async function claimPetHunt(slotId){
   if(element === 'herb'){ material = Math.round(material*1.6); coin = Math.round(coin*0.6); essence = Math.round(essence*0.5); }
   else if(element === 'ore'){ coin = Math.round(coin*1.6); material = Math.round(material*0.8); essence = Math.round(essence*0.4); }
   else if(element === 'lumber'){ essence = Math.round(essence*1.6); material = Math.round(material*0.8); coin = Math.round(coin*0.5); }
-  // 地點偏向（第三層乘數，疊在屬性偏向與星級加成之上）
-  coin = Math.round(coin * eff.rewardMult * locMeta.rewardBias.coin);
-  essence = Math.round(essence * eff.rewardMult * locMeta.rewardBias.essence);
-  material = Math.round(material * eff.rewardMult * locMeta.rewardBias.material);
-  const rareChance = (PET_RARE_LOOT_CHANCE[hunt.durationKey]||0) + eff.rareChanceBonus + locMeta.rareChanceBonus;
+  // 地點偏向 ＋ 鎮守光環的全域獎勵倍率（第三層乘數，疊在屬性偏向與派出去寵物自己的星級加成之上）
+  const combinedRewardMult = eff.rewardMult + guardianEff.rewardMult;
+  coin = Math.round(coin * combinedRewardMult * locMeta.rewardBias.coin);
+  essence = Math.round(essence * combinedRewardMult * locMeta.rewardBias.essence);
+  material = Math.round(material * combinedRewardMult * locMeta.rewardBias.material);
+  // 鎮守光環的屬性加成：只加成鎮守寵物屬性對應的那一種資源。主鎮守跟租來的副鎮守
+  // 屬性可能不同，各自獨立判斷、各自加成（不是相加成單一數字，見 combinedGuardianAuraEffects 註解）
+  if(guardianEff.ownResourceKey === 'coin') coin = Math.round(coin * (1 + guardianEff.ownResourceBonus));
+  else if(guardianEff.ownResourceKey === 'essence') essence = Math.round(essence * (1 + guardianEff.ownResourceBonus));
+  else if(guardianEff.ownResourceKey === 'material') material = Math.round(material * (1 + guardianEff.ownResourceBonus));
+  if(guardianEff.rentedResourceKey === 'coin') coin = Math.round(coin * (1 + guardianEff.rentedResourceBonus));
+  else if(guardianEff.rentedResourceKey === 'essence') essence = Math.round(essence * (1 + guardianEff.rentedResourceBonus));
+  else if(guardianEff.rentedResourceKey === 'material') material = Math.round(material * (1 + guardianEff.rentedResourceBonus));
+  const rareChance = (PET_RARE_LOOT_CHANCE[hunt.durationKey]||0) + eff.rareChanceBonus + guardianEff.rareChanceBonus + locMeta.rareChanceBonus;
   const rareHit = Math.random() < rareChance;
   if(rareHit){ coin *= PET_RARE_LOOT_MULT; essence *= PET_RARE_LOOT_MULT; material *= PET_RARE_LOOT_MULT; }
   p.coins = (p.coins||0) + coin;
@@ -2528,18 +2609,48 @@ function petSectionHtml(p){
   }
   html += `</div></div>`;
 
-  // ---------- 出戰寵物 ----------
-  html += `<div class="panel"><h2>${tt('🧭 出戰寵物','🧭 Active Pet')}</h2>`;
+  // ---------- 鎮守寵物 ----------
+  html += `<div class="panel"><h2>${tt('🛡️ 鎮守寵物','🛡️ Guardian Pet')}</h2>`;
   if(!activePet){
-    html += `<p class="sub">${tt('目前沒有出戰中的寵物，請到下方庫存選一隻出戰。出戰寵物不影響尋寶派遣，但決定進階尋寶地點的解鎖門檻。','No active pet yet - pick one from your inventory below. It doesn\'t affect hunt dispatch directly, but its star/rarity decides which advanced hunt locations you can unlock.')}</p>`;
+    html += `<p class="sub">${tt('目前沒有鎮守中的寵物，請到下方庫存選一隻鎮守。鎮守寵物只能留在家裡，無法被派去尋寶，但牠會給所有尋寶格加一層被動光環（時間縮短／獎勵倍率／稀有掉落），並決定進階尋寶地點的解鎖門檻。','No guardian pet yet - pick one from your inventory below. A guardian pet stays home and can\'t be sent on hunts, but it grants a passive aura to every hunt slot (duration cut / reward mult / rare bonus), and its star/rarity decides which advanced hunt locations you can unlock.')}</p>`;
   } else {
-    const eff = petEffects(activePet);
     const meta = PET_ELEMENT_META[activePet.element];
+    const gEff = guardianAuraEffects(activePet);
+    const resourceLabel = gEff.resourceKey==='coin' ? tt('金幣','coins') : gEff.resourceKey==='essence' ? tt('骰子精華','essence') : gEff.resourceKey==='material' ? tt('材料','material') : '';
+    const lockLines = PET_LOCATION_KEYS.map(key=>{
+      const locMeta = PET_LOCATION_META[key];
+      const unlocked = isPetLocationUnlocked(p, key);
+      const color = unlocked ? 'var(--gold-bright)' : 'var(--muted)';
+      const status = unlocked ? tt('已解鎖','Unlocked') : tt(`未解鎖 — 還差：${petLocationUnlockHint(key)}`, `Locked - need: ${petLocationUnlockHint(key)}`);
+      return `<div style="color:${color};">${locMeta.icon} ${petLocationLabel(key)}：${status}</div>`;
+    }).join('');
     html += `<div class="farm-upgrade-box">
       <div class="farm-upgrade-title">${meta.icon} ${petRarityLabel(activePet.rarity)}${petElementLabel(activePet.element)} · ${'★'.repeat(activePet.star)}${'☆'.repeat(PET_STAR_MAX-activePet.star)}</div>
-      <div class="farm-upgrade-line" style="color:var(--muted);font-size:12px;">
-        ${tt('若派牠尋寶：時間縮短','If dispatched: duration cut')} -${Math.round(eff.durationReduction*100)}% · ${tt('獎勵倍率','reward mult')} +${Math.round((eff.rewardMult-1)*100)}% · ${tt('稀有掉落加成','rare bonus')} +${(eff.rareChanceBonus*100).toFixed(1)}%
+      <div class="farm-upgrade-line" style="color:var(--muted);font-size:12px;margin-bottom:4px;">${tt('牠只負責鎮守，不會被派去尋寶，但對所有尋寶格提供被動光環：','Stays home and is never dispatched, but grants a passive aura to every hunt slot:')}</div>
+      <div class="farm-upgrade-line" style="font-size:12px;color:var(--gold-bright);margin-bottom:6px;">
+        ${tt('時間縮短','duration cut')} +${(gEff.durationReduction*100).toFixed(1)}% · ${tt('獎勵倍率','reward mult')} +${(gEff.rewardMult*100).toFixed(1)}% · ${tt('稀有掉落','rare bonus')} +${(gEff.rareChanceBonus*100).toFixed(1)}%${gEff.resourceKey?tt(` · ${resourceLabel} 額外 +${(gEff.resourceBonus*100).toFixed(0)}%`, ` · extra +${(gEff.resourceBonus*100).toFixed(0)}% ${resourceLabel}`):''}
       </div>
+      <div class="farm-upgrade-line" style="font-size:12px;display:flex;flex-direction:column;gap:2px;">${lockLines}</div>
+    </div>`;
+  }
+  html += `</div>`;
+
+  // ---------- 副鎮守（跟好友租借）----------
+  html += `<div class="panel"><h2>${tt('🤝 副鎮守（好友租借）','🤝 Rented Guardian (from a Friend)')}</h2>`;
+  if(!p.rentedGuardian || now >= p.rentedGuardian.expiresAt){
+    html += `<p class="sub">${tt('目前沒有租借中的副鎮守。到「好友」頁面可以花金幣租借好友正在鎮守的寵物，效果跟主鎮守一樣（不打折），直接疊加在主鎮守光環上，時效 8 小時，租用中無法中途換人。', 'No rented guardian right now. Head to the Friends tab to rent a friend\'s guardian pet with coins - full effect, no discount, stacks on top of your own guardian aura. Lasts 8 hours, and can\'t be switched early once rented.')}</p>`;
+  } else {
+    const rg = p.rentedGuardian;
+    const rgMeta = PET_ELEMENT_META[rg.element];
+    const rgEff = guardianAuraEffects(rg);
+    const rgResourceLabel = rgEff.resourceKey==='coin' ? tt('金幣','coins') : rgEff.resourceKey==='essence' ? tt('骰子精華','essence') : rgEff.resourceKey==='material' ? tt('材料','material') : '';
+    html += `<div class="farm-upgrade-box">
+      <div class="farm-upgrade-title">${rgMeta.icon} ${petRarityLabel(rg.rarity)}${petElementLabel(rg.element)} · ${'★'.repeat(rg.star)}${'☆'.repeat(PET_STAR_MAX-rg.star)}</div>
+      <div class="farm-upgrade-line" style="color:var(--muted);font-size:12px;margin-bottom:4px;">${tt(`租自：${rg.fromNick}`, `Rented from: ${rg.fromNick}`)}</div>
+      <div class="farm-upgrade-line" style="font-size:12px;color:var(--gold-bright);margin-bottom:6px;">
+        ${tt('時間縮短','duration cut')} +${(rgEff.durationReduction*100).toFixed(1)}% · ${tt('獎勵倍率','reward mult')} +${(rgEff.rewardMult*100).toFixed(1)}% · ${tt('稀有掉落','rare bonus')} +${(rgEff.rareChanceBonus*100).toFixed(1)}%${rgEff.resourceKey?tt(` · ${rgResourceLabel} 額外 +${(rgEff.resourceBonus*100).toFixed(0)}%`, ` · extra +${(rgEff.resourceBonus*100).toFixed(0)}% ${rgResourceLabel}`):''}
+      </div>
+      <div class="countdown" id="rented-guardian-countdown">${tt('到期倒數：','Expires in: ')}${formatDuration(rg.expiresAt-now)}</div>
     </div>`;
   }
   html += `</div>`;
@@ -2547,7 +2658,7 @@ function petSectionHtml(p){
   // ---------- 尋寶派遣（多格，任一沒在忙的寵物皆可派遣） ----------
   const busySlots = p.petHunts.filter(h=>h.active).length;
   html += `<div class="panel"><h2>${tt('🐾 尋寶派遣','🐾 Hunt Dispatch')}（${busySlots}/${PET_HUNT_SLOT_COUNT}）</h2>
-    <p class="sub">${tt('選一隻沒在忙的寵物、一個地點、一個時長，時間到即可回來領取獎勵。出戰寵物也可以同時被派去尋寶。', 'Pick an idle pet, a location, and a duration - claim your reward once it\'s done. Your active pet can be dispatched too.')}</p>
+    <p class="sub">${tt('選一隻沒在忙、且不是鎮守中的寵物、一個地點、一個時長，時間到即可回來領取獎勵。鎮守中的寵物無法被派去尋寶，但牠的光環會疊加在每一格派遣的寵物身上。', 'Pick an idle, non-guardian pet, a location, and a duration - claim your reward once it\'s done. Guardian pets can\'t be dispatched, but their aura stacks onto every pet you send out.')}</p>
     <button class="btn small" id="pet-help-all-btn">${tt('🐾 一鍵幫好友加速尋寶','🐾 Speed up all friends\' hunts')}</button>
     <p class="sub" style="margin-top:6px;font-size:12px;">${tt(`每幫一格加速 ${Math.round(PET_HUNT_HELP_RATIO*100)}%，每位好友的同一格只能幫一次，獲得精華 × ${PET_HUNT_HELP_REWARD_ESSENCE}／格作為謝禮。`, `Each help cuts ${Math.round(PET_HUNT_HELP_RATIO*100)}% off a slot's remaining time - once per friend per slot. You earn ${PET_HUNT_HELP_REWARD_ESSENCE} Essence per slot helped.`)}</p>`;
   p.petHunts.forEach(slot=>{ html += petHuntSlotHtml(p, slot, now); });
@@ -2569,10 +2680,10 @@ function petSectionHtml(p){
       const huntingSlot = p.petHunts.find(h=>h.active && h.petId===pet.id);
       const synthBtnLabel = isMaxStar ? tt('合併突破品質','Merge to Upgrade Quality') : tt('合成升星','Synthesize');
       html += `<div class="farm-upgrade-box" style="border-color:${isActive?'var(--gold)':'var(--line)'};">
-        <div class="farm-upgrade-title">${meta.icon} ${petRarityLabel(pet.rarity)}${petElementLabel(pet.element)} · ${starLabel}${isActive?tt(' （出戰中）',' (Active)'):''}${huntingSlot?tt(` （尋寶中：${petLocationLabel(huntingSlot.locationKey)}）`, ` (Hunting: ${petLocationLabel(huntingSlot.locationKey)})`):''}</div>
+        <div class="farm-upgrade-title">${meta.icon} ${petRarityLabel(pet.rarity)}${petElementLabel(pet.element)} · ${starLabel}${isActive?tt(' （鎮守中）',' (Guardian)'):''}${huntingSlot?tt(` （尋寶中：${petLocationLabel(huntingSlot.locationKey)}）`, ` (Hunting: ${petLocationLabel(huntingSlot.locationKey)})`):''}</div>
         <div class="farm-upgrade-line" style="color:var(--muted);font-size:12px;">${fullyMaxed ? tt('已滿星且為最高品質','Max star and max quality') : (isMaxStar ? tt('已滿星，可與另一隻★5同名寵物合併突破品質','Max star - merge with another ★5 matching pet to upgrade quality') : '')}</div>
         <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap;">
-          ${isActive ? '' : `<button class="btn small secondary" data-set-active="${pet.id}">${tt('設為出戰','Set Active')}</button>`}
+          ${isActive ? '' : (huntingSlot ? '' : `<button class="btn small secondary" data-set-active="${pet.id}">${tt('設為鎮守','Set Guardian')}</button>`)}
           ${fullyMaxed ? '' : `<button class="btn small secondary" data-open-synth="${pet.id}">${isOpen ? tt('收起合成面板','Close Synthesis') : synthBtnLabel}</button>`}
         </div>
         ${(!fullyMaxed && isOpen) ? petSynthesisPanelHtml(p, pet) : ''}
@@ -2663,7 +2774,7 @@ function petSynthesisPanelHtml(p, pet){
       : tt(`兩隻 ★${pet.star} 合併升到 ★${pet.star+1}，保證成功`, `Merging two ★${pet.star} pets reaches ★${pet.star+1} - guaranteed success`)
     }</div>`;
   if(!eligible.length){
-    html += `<p class="sub" style="margin:8px 0 0;">${tt('目前沒有可用的同名寵物（需同屬性＋同稀有度＋同星級，且不在出戰／尋寶中）','No matching pets available (needs same element + rarity + star, and must not be active or on a hunt)')}</p>`;
+    html += `<p class="sub" style="margin:8px 0 0;">${tt('目前沒有可用的同名寵物（需同屬性＋同稀有度＋同星級，且不在鎮守／尋寶中）','No matching pets available (needs same element + rarity + star, and must not be the guardian or on a hunt)')}</p>`;
   } else {
     html += `<div style="display:flex;flex-direction:column;gap:4px;margin-top:8px;">`;
     eligible.forEach(mat=>{
@@ -4601,9 +4712,9 @@ async function doRefineDice(diceId, lockedFaceIndexes, payMethod){
 }
 
 // 洗練基礎攻擊力：獨立按鈕、固定費用（不隨等級/品質遞增），跟面數字/效果洗練分開計費。
-// 注意：這裡是直接在 quality 對應的隨機範圍內重骰一個全新的 baseAttack，會連同強化
-// （doEnhanceDice）已經疊加上去的等級加成一併覆蓋掉——如果要保留「已強化的部分」，
-// 之後要改成在重骰後另外把等級加成補回去；目前先照最直覺的「重骰基礎值」實作。
+// 只重骰「初抽範圍」那部分的隨機值，強化（doEnhanceDice）疊加的等級加成
+// （d.enhanceBonusAttack）會加回去，不會被洗練覆蓋掉——修正原本「滿級骰洗練後
+// 攻擊力/傷害暴跌回未強化水準」的 bug。
 async function doRefineDiceBaseAttack(diceId, payMethod){
   const p = state.player;
   ensureDiceInventory(p);
@@ -4639,7 +4750,10 @@ async function doRefineDiceBaseAttack(diceId, payMethod){
         player.coins -= cost;
       }
       const [minAtk, maxAtk] = d.quality === 'epic' ? DICE_EPIC_BASE_ATTACK_RANGE : DICE_BASE_ATTACK_RANGE;
-      d.baseAttack = minAtk + Math.floor(Math.random()*(maxAtk - minAtk + 1));
+      // 🛠️ 修正：洗練基礎攻擊力只重骰「初抽那部分」的隨機值，強化（doEnhanceDice）
+      // 已經疊加上去的等級加成（d.enhanceBonusAttack）要加回去，避免滿級骰洗練後
+      // 攻擊力（進而傷害）暴跌回沒強化過的水準。
+      d.baseAttack = minAtk + Math.floor(Math.random()*(maxAtk - minAtk + 1)) + (d.enhanceBonusAttack || 0);
       bumpQuest(player, 'dice_refine', 1);
     });
   }catch(e){
@@ -4766,6 +4880,14 @@ function ensureDiceInventory(p){
   Object.values(p.dice).forEach(d=>{
     if(typeof d.level !== 'number' || d.level < 1) d.level = 1; // 舊資料補上等級欄位
     if(typeof d.favorite !== 'boolean') d.favorite = false; // 舊資料補上最愛欄位，預設不是最愛
+    // 修正 bug：洗練基礎攻擊力會把「強化已疊加的攻擊力」一併洗掉。這裡補上獨立欄位
+    // enhanceBonusAttack 追蹤強化總共加了多少攻擊力，讓洗練時可以把這部分加回去。
+    // 舊資料沒有這個欄位，用 level 反推一個近似值（無法還原已經被洗掉的部分，但至少
+    // 從現在開始不會再流失），之後每次強化都會同步累加，值就會愈來愈準。
+    if(typeof d.enhanceBonusAttack !== 'number'){
+      const perLevel = DICE_ENHANCE_ATK_PER_LEVEL[d.quality] || 6;
+      d.enhanceBonusAttack = Math.max(0, (d.level - 1)) * perLevel;
+    }
     if(Array.isArray(d.faces)) d.faces.forEach(f=>{ f.effect = resolveDiceFaceEffect(f.effect); });
   });
   if(!Array.isArray(p.diceSlots) || p.diceSlots.length !== DICE_EQUIP_SLOTS) p.diceSlots = [null, null, null];
@@ -4833,7 +4955,7 @@ function rollNewDice(quality){
   const faces = nums.map((num, i)=>({num, effect: effectIdxs.has(i) ? rollFaceEffect() : null}));
   const [minAtk, maxAtk] = quality === 'epic' ? DICE_EPIC_BASE_ATTACK_RANGE : DICE_BASE_ATTACK_RANGE;
   const baseAttack = minAtk + Math.floor(Math.random()*(maxAtk - minAtk + 1));
-  return {id: uid(), quality, baseAttack, faces, level: 1, createdAt: new Date().toISOString()};
+  return {id: uid(), quality, baseAttack, faces, level: 1, enhanceBonusAttack: 0, createdAt: new Date().toISOString()};
 }
 
 // 抽骰：用 CAS 保護「扣卡 + 產生骰子」這整個讀-改-寫，避免玩家手滑連點兩次
@@ -4930,7 +5052,9 @@ async function doEnhanceDice(diceId){
       if(player.materials.diceEssence < c) throw new Error('insufficient essence');
       player.materials.diceEssence -= c;
       d.level += 1;
-      d.baseAttack += (DICE_ENHANCE_ATK_PER_LEVEL[d.quality] || 6);
+      const atkPerLevel = DICE_ENHANCE_ATK_PER_LEVEL[d.quality] || 6;
+      d.baseAttack += atkPerLevel;
+      d.enhanceBonusAttack = (d.enhanceBonusAttack || 0) + atkPerLevel; // 累計強化加成，供洗練時保留
       let gotNewEffectFace = false;
       if(d.level % DICE_ENHANCE_EFFECT_FACE_INTERVAL === 0){
         const blankIdxs = d.faces.map((f,i)=> f.effect ? null : i).filter(i=> i!==null);
@@ -4940,7 +5064,8 @@ async function doEnhanceDice(diceId){
           gotNewEffectFace = true;
         } else {
           // 六面都已經有效果了，改發額外基礎攻擊力當作獎勵，避免升級變成純浪費
-          d.baseAttack += (DICE_ENHANCE_ATK_PER_LEVEL[d.quality] || 6);
+          d.baseAttack += atkPerLevel;
+          d.enhanceBonusAttack = (d.enhanceBonusAttack || 0) + atkPerLevel;
         }
       }
       leveledUp = {level: d.level, gotNewEffectFace};
@@ -5993,6 +6118,23 @@ async function saveSlotJackpot(newValue){
   SLOT_JACKPOT = newValue;
   await storage.set('config:slot_jackpot', JSON.stringify(SLOT_JACKPOT));
 }
+// 🔒 修正「頭獎重置被覆蓋」的漏洞：原本 pullSlot 裡不管是中頭獎重置、還是沒中獎時
+// 疊加貢獻，都是先 syncSlotJackpot() 讀一次最新值、算完新值後再用 saveSlotJackpot()
+// 整個覆蓋寫回——這中間沒有鎖，兩個玩家幾乎同時抽獎時，後寫入的那個可能是用著
+// 「別人重置/貢獻之前」的舊資料去覆蓋，導致頭獎明明中了、獎池金額卻沒有真的清空。
+// 改用 updateKvCAS：讀到的目前值有被別人搶先動過時，會自動重讀最新值、重新算一次
+// mutator 再重試，保證最終寫入的一定是疊在「當下真正最新」的獎池金額上。
+// mutator(currentJackpot) 回傳這次應該寫入的新獎池金額。
+async function applySlotJackpotCAS(mutator){
+  const newRaw = await updateKvCAS('config:slot_jackpot', (currentRaw)=>{
+    const current = currentRaw!=null ? parseFloat(currentRaw) : NaN;
+    const base = (!isNaN(current) && current >= 0) ? current : SLOT_SETTINGS.jackpotBase;
+    return JSON.stringify(mutator(base));
+  }, JSON.stringify(SLOT_SETTINGS.jackpotBase));
+  const v = parseFloat(newRaw);
+  if(!isNaN(v)) SLOT_JACKPOT = v;
+  return SLOT_JACKPOT;
+}
 // 每次要「讀取」或「疊加」獎池前，先向 storage 重新抓最新值，
 // 避免用分頁自己記憶體裡過期的 SLOT_JACKPOT 去覆蓋別人剛存進去的貢獻
 // （這個 KV storage 是 last-write-wins，沒有原子疊加，所以這裡用「盡量縮短讀寫間隔」
@@ -6109,8 +6251,21 @@ async function recordFortuneStarEntry(nickname, cardIds){
   // 鎖定時間之後才抽的人不算這次參賽者（維持跟現有存檔一致的「最後寫入生效」邏輯，
   // 這裡用寫入前的即時時間判斷即可，不需要額外鎖）。
   if(gmt8MinutesOfDay() >= FORTUNE_STAR_SETTINGS.lockHour*60 + FORTUNE_STAR_SETTINGS.lockMinute) return 'locked';
+  const key = fortuneStarEntryKey(dateStr, nickname);
+  // 🛠️ 修正 bug：canClaimToday() 判斷「今天是否已簽到」用的是玩家瀏覽器的本地日期
+  // （todayStr()），跟這裡鎖定用的 GMT+8 日期不是同一套曆法。只要玩家所在時區跟
+  // GMT+8 有落差（幾乎所有非 GMT+8 玩家都符合），本地日期換日的時間點會落在同一個
+  // GMT+8 星運之星輪次「中間」，導致同一輪內可以再次觸發 claimDaily() 拿到「今天」
+  // 資格——原本這裡是直接覆寫參賽紀錄，等於免費重骰一次三張塔羅牌，變相重骰中獎
+  // 機率（手動調整裝置時區/時鐘也能達到一樣效果）。這裡先查一次這個 GMT+8 日期
+  // 是否已經有正式紀錄，若有就不覆寫，維持「當天第一次成功記錄的三張牌」才算數，
+  // 避免此輪被重複洗牌。
   try{
-    await storage.set(fortuneStarEntryKey(dateStr, nickname), JSON.stringify({nickname, cardIds, enteredAt: Date.now()}));
+    const existing = await storage.get(key);
+    if(existing) return 'ok';
+  }catch(e){ /* 查不到就當作還沒有紀錄，照原本流程寫入 */ }
+  try{
+    await storage.set(key, JSON.stringify({nickname, cardIds, enteredAt: Date.now()}));
     return 'ok';
   }catch(e){ /* best effort：頂多這次沒被記錄到參賽名單，不影響其餘抽卡流程 */ return 'error'; }
 }
@@ -8410,28 +8565,28 @@ async function renderExpedition(body){
               const weaponUncommonQty = p.professionItems.weapon_uncommon||0;
               const accessoryQty = p.professionItems.accessory_common||0;
               const accessoryUncommonQty = p.professionItems.accessory_uncommon||0;
-              // 家具／飾品：common 與 uncommon 互斥堆疊（不可混插），用單一 select 以 "tier:count" 編碼避免同時選兩層
+              // 家具／飾品：小／中互斥堆疊（不可混插），用單一 select 以 "tier:count" 編碼避免同時選兩層
               const furnitureOptions = `<option value="">${tt('不使用','None')}</option>` +
                 Array.from({length: Math.min(FURNITURE_MAX_STACK, furnitureQty)}, (_,i)=>i+1).map(n=>{
                   const bonus = Math.round(FURNITURE_SUCCESS_TIERS.slice(0,n).reduce((s,v)=>s+v,0)*100);
-                  return `<option value="common:${n}">${tt(`${n} 件・common（成功率 +${bonus}%）`, `${n}・Common (success +${bonus}%)`)}</option>`;
+                  return `<option value="common:${n}">${tt(`${n} 件・小家具（成功率 +${bonus}%）`, `${n}・Small (success +${bonus}%)`)}</option>`;
                 }).join('') +
                 Array.from({length: Math.min(FURNITURE_MAX_STACK, furnitureUncommonQty)}, (_,i)=>i+1).map(n=>{
                   const bonus = Math.round(FURNITURE_UNCOMMON_SUCCESS_TIERS.slice(0,n).reduce((s,v)=>s+v,0)*100);
-                  return `<option value="uncommon:${n}">${tt(`${n} 件・uncommon（成功率 +${bonus}%）`, `${n}・Uncommon (success +${bonus}%)`)}</option>`;
+                  return `<option value="uncommon:${n}">${tt(`${n} 件・中家具（成功率 +${bonus}%）`, `${n}・Medium (success +${bonus}%)`)}</option>`;
                 }).join('');
               const accessoryOptions = `<option value="">${tt('不使用','None')}</option>` +
                 Array.from({length: Math.min(ACCESSORY_EXPEDITION_MAX_STACK, accessoryQty)}, (_,i)=>i+1).map(n=>{
                   const pct = Math.round(Math.min(1, n*ACCESSORY_EXPEDITION_FLOOR_PCT)*100);
-                  return `<option value="common:${n}">${tt(`${n} 件・common（下限拉近 ${pct}%）`, `${n}・Common (floor pulled ${pct}%)`)}</option>`;
+                  return `<option value="common:${n}">${tt(`${n} 件・小飾品（下限拉近 ${pct}%）`, `${n}・Small (floor pulled ${pct}%)`)}</option>`;
                 }).join('') +
                 Array.from({length: Math.min(ACCESSORY_EXPEDITION_MAX_STACK, accessoryUncommonQty)}, (_,i)=>i+1).map(n=>{
                   const pct = Math.round(Math.min(1, n*ACCESSORY_UNCOMMON_EXPEDITION_FLOOR_PCT)*100);
-                  return `<option value="uncommon:${n}">${tt(`${n} 件・uncommon（下限拉近 ${pct}%）`, `${n}・Uncommon (floor pulled ${pct}%)`)}</option>`;
+                  return `<option value="uncommon:${n}">${tt(`${n} 件・中飾品（下限拉近 ${pct}%）`, `${n}・Medium (floor pulled ${pct}%)`)}</option>`;
                 }).join('');
               const weaponOptions = `<option value="">${tt('不使用','None')}</option>` +
-                (weaponQty>0 ? `<option value="common">${tt(`common（獎勵區間 +${Math.round(WEAPON_EXPEDITION_REWARD_PCT*100)}%）`, `Common (reward range +${Math.round(WEAPON_EXPEDITION_REWARD_PCT*100)}%)`)}</option>` : '') +
-                (weaponUncommonQty>0 ? `<option value="uncommon">${tt(`uncommon（獎勵區間 +${Math.round(WEAPON_UNCOMMON_EXPEDITION_REWARD_PCT*100)}%）`, `Uncommon (reward range +${Math.round(WEAPON_UNCOMMON_EXPEDITION_REWARD_PCT*100)}%)`)}</option>` : '');
+                (weaponQty>0 ? `<option value="common">${tt(`小武器（獎勵區間 +${Math.round(WEAPON_EXPEDITION_REWARD_PCT*100)}%）`, `Small (reward range +${Math.round(WEAPON_EXPEDITION_REWARD_PCT*100)}%)`)}</option>` : '') +
+                (weaponUncommonQty>0 ? `<option value="uncommon">${tt(`中武器（獎勵區間 +${Math.round(WEAPON_UNCOMMON_EXPEDITION_REWARD_PCT*100)}%）`, `Medium (reward range +${Math.round(WEAPON_UNCOMMON_EXPEDITION_REWARD_PCT*100)}%)`)}</option>` : '');
               const hasFurniture = furnitureQty>0 || furnitureUncommonQty>0;
               const hasWeapon = weaponQty>0 || weaponUncommonQty>0;
               const hasAccessory = accessoryQty>0 || accessoryUncommonQty>0;
@@ -8439,17 +8594,17 @@ async function renderExpedition(body){
                 <label style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;${hasFurniture?'':'opacity:0.5;'}">
                   🪑 ${tt('家具','Furniture')}
                   <select id="furniture-sel-${uid}" ${hasFurniture?'':'disabled'} style="min-width:170px;">${furnitureOptions}</select>
-                  <span style="color:var(--muted);font-size:11px;">${tt(`庫存 common ${furnitureQty}／uncommon ${furnitureUncommonQty}`, `Stock Common ${furnitureQty} / Uncommon ${furnitureUncommonQty}`)}</span>
+                  <span style="color:var(--muted);font-size:11px;">${tt(`庫存 小 ${furnitureQty}／中 ${furnitureUncommonQty}`, `Stock Small ${furnitureQty} / Medium ${furnitureUncommonQty}`)}</span>
                 </label>
                 <label style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;${hasWeapon?'':'opacity:0.5;'}">
                   ⚔️ ${tt('武器','Weapon')}
                   <select id="weapon-sel-${uid}" ${hasWeapon?'':'disabled'} style="min-width:170px;">${weaponOptions}</select>
-                  <span style="color:var(--muted);font-size:11px;">${tt(`庫存 common ${weaponQty}／uncommon ${weaponUncommonQty}`, `Stock Common ${weaponQty} / Uncommon ${weaponUncommonQty}`)}</span>
+                  <span style="color:var(--muted);font-size:11px;">${tt(`庫存 小 ${weaponQty}／中 ${weaponUncommonQty}`, `Stock Small ${weaponQty} / Medium ${weaponUncommonQty}`)}</span>
                 </label>
                 <label style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;${hasAccessory?'':'opacity:0.5;'}">
                   💍 ${tt('飾品','Accessory')}
                   <select id="accessory-sel-${uid}" ${hasAccessory?'':'disabled'} style="min-width:170px;">${accessoryOptions}</select>
-                  <span style="color:var(--muted);font-size:11px;">${tt(`庫存 common ${accessoryQty}／uncommon ${accessoryUncommonQty}`, `Stock Common ${accessoryQty} / Uncommon ${accessoryUncommonQty}`)}</span>
+                  <span style="color:var(--muted);font-size:11px;">${tt(`庫存 小 ${accessoryQty}／中 ${accessoryUncommonQty}`, `Stock Small ${accessoryQty} / Medium ${accessoryUncommonQty}`)}</span>
                 </label>
               </div>${(p.expLevel||0) >= EXPEDITION_ROGUELIKE_UNLOCK_LEVEL ? renderExpeditionRogueDraftUI(uid) : ''}`;
             })() : ''}
@@ -8983,6 +9138,53 @@ async function helpAllFriendsPetHunts(){
   }
 }
 
+// 租借副鎮守：見 combinedGuardianAuraEffects / rentGuardianCost 上方註解的設計定案。
+// 用 updatePlayerCAS 包住「檢查＋扣款＋寫入 rentedGuardian」，理由跟 waterFriendPlot/
+// stealFriendPlot 的 🔒 修法一致：避免連點兩下在讀寫中間的空檔各自通過檢查、租兩份。
+async function rentGuardianFromFriend(friendNick){
+  if(!state.nickname) return;
+  if(friendNick === state.nickname){ showToast(tt('不能租借自己的鎮守寵物','You can\'t rent your own guardian pet')); return; }
+  const friend = await loadPlayer(friendNick);
+  if(!friend){ showToast(tt('找不到這位好友的資料',"Couldn't find this friend's data")); return; }
+  const friendGuardian = getActivePet(friend);
+  if(!friendGuardian){ showToast(tt('這位好友目前沒有鎮守中的寵物可以租','This friend has no guardian pet to rent right now')); return; }
+  const cost = rentGuardianCost(friendGuardian);
+  const hours = RENT_GUARDIAN_DURATION_MS / 3600000;
+  if(!confirm(tt(
+    `花費 ✦${cost} 租借「${friendNick}」的鎮守寵物 ${hours} 小時嗎？效果全額疊加在你自己的主鎮守光環上，租用中無法中途解約換人，租金會全額付給對方。`,
+    `Spend ✦${cost} to rent "${friendNick}"'s guardian pet for ${hours} hours? Full effect stacks on your own guardian aura, you can't cancel or switch early, and the full cost goes to them.`
+  ))) return;
+
+  const today = todayStr(); // 本地日期字串，純粹拿來判斷「今天」有沒有租過這位好友
+  let failReason = null;
+  let rentInfo = null;
+  const appliedSelf = await updatePlayerCAS(state.nickname, (self)=>{
+    ensurePets(self);
+    if(self.rentedGuardian && Date.now() < self.rentedGuardian.expiresAt){ failReason = 'active'; return; }
+    if(self.guardianRentLog[friendNick] === today){ failReason = 'daily_limit'; return; }
+    if((self.coins||0) < cost){ failReason = 'coins'; return; }
+    const now = Date.now();
+    self.coins -= cost;
+    self.rentedGuardian = {fromNick: friendNick, element: friendGuardian.element, rarity: friendGuardian.rarity, star: friendGuardian.star, rentedAt: now, expiresAt: now + RENT_GUARDIAN_DURATION_MS};
+    self.guardianRentLog[friendNick] = today;
+    rentInfo = self.rentedGuardian;
+  });
+  if(!appliedSelf) return;
+  if(failReason === 'active'){ showToast(tt('副鎮守租用中，要等到期才能重租','A rented guardian is already active - wait until it expires before renting again')); return; }
+  if(failReason === 'daily_limit'){ showToast(tt('今天已經租過這位好友的鎮守寵物了，明天再來吧',"You've already rented this friend's guardian pet today - come back tomorrow")); return; }
+  if(failReason === 'coins'){ showToast(tt(`金幣不足，需要 ✦${cost}`, `Not enough coins - need ✦${cost}`)); return; }
+  if(!rentInfo) return;
+
+  state.player = appliedSelf;
+  await updatePlayerCAS(friendNick, (owner)=>{ owner.coins = (owner.coins||0) + cost; });
+  await createNotification(friendNick, state.nickname, 'rent_guardian', {cost, hours});
+
+  showToast(tt(`✅ 已租借「${friendNick}」的鎮守寵物 ${hours} 小時`, `✅ Rented "${friendNick}"'s guardian pet for ${hours} hours`));
+  const coinEl = document.getElementById('player-coin');
+  if(coinEl) coinEl.textContent = `✦ ${state.player.coins}`;
+  await renderTab();
+}
+
 async function stealFriendPlot(friendNick, plotIndex){
   if(!state.nickname){ return; }
   // 🔒 修正重複偷菜漏洞：原本先 loadPlayer 讀好友資料、檢查完才 savePlayer 寫回，
@@ -9255,6 +9457,51 @@ async function updatePlayerCAS(nick, mutator){
   }
   throw new Error('player state contention exceeded retries');
 }
+// 通用版 CAS「讀-改-寫」，套用在非玩家專屬、全服共用的單一 KV 值上（例如三牌共鳴／
+// 幸運之星獎池）。修法思路跟 updatePlayerCAS／savePlayerCAS 完全一樣，只是對象換成
+// kv_store 裡任意一個 key，而不是固定的玩家紀錄。
+// 【背景】原本這類全服共用數字都是「先 storage.get() 讀一次、算完新值、再 storage.set()
+// 整個覆蓋寫回」，兩次操作之間沒有任何鎖。多人同時抽三牌共鳴時，可能發生：玩家 A 中頭獎、
+// 把獎池重置成保底值剛寫入；但玩家 B 稍早（重置前）就已經讀到重置前的舊獎池金額，
+// 這時候才緊接著把「舊金額 + 這次貢獻」寫回去，等於用舊資料把 A 的重置蓋掉——玩家看到的
+// 結果就是「頭獎明明中了，獎池金額卻沒有變小」。這裡改用跟玩家存檔一樣的 updated_at
+// 版本比對，寫入前若發現版本被別人搶先動過，就重讀最新值、重新用 mutator 算一次再重試，
+// 保證不會有任何一次寫入是「用著別人寫入之前的舊資料去覆蓋別人剛寫入的結果」。
+// mutator(currentValue) 回傳這個 key 應該被更新成的新值；currentValue 在 key 還不存在時
+// 會是 fallbackValue。
+async function updateKvCAS(key, mutator, fallbackValue){
+  for(let attempt = 0; attempt < 8; attempt++){
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/kv_store?key=eq.${encodeURIComponent(key)}&select=value,updated_at`,
+      { headers: SB_HEADERS }
+    );
+    if(!res.ok) throw new Error('kv CAS read failed: ' + res.status);
+    const rows = await res.json();
+    const exists = Array.isArray(rows) && rows.length > 0;
+    const prevUpdatedAt = exists ? (rows[0].updated_at || null) : null;
+    const currentValue = exists ? rows[0].value : fallbackValue;
+    const newValue = mutator(currentValue);
+    if(!exists){
+      // key 從沒建立過：用 upsert 建立即可，沒有舊版本可能被覆蓋，不需要 CAS 比對
+      await storage.set(key, newValue);
+      return newValue;
+    }
+    const filter = prevUpdatedAt ? `updated_at=eq.${encodeURIComponent(prevUpdatedAt)}` : `updated_at=is.null`;
+    const patchRes = await fetch(
+      `${SUPABASE_URL}/rest/v1/kv_store?key=eq.${encodeURIComponent(key)}&${filter}`,
+      {
+        method: 'PATCH',
+        headers: { ...SB_HEADERS, 'Content-Type': 'application/json', Prefer: 'return=representation' },
+        body: JSON.stringify({ value: newValue, updated_at: new Date().toISOString() }),
+      }
+    );
+    if(!patchRes.ok) throw new Error('kv CAS write failed: ' + patchRes.status);
+    const patchRows = await patchRes.json();
+    if(Array.isArray(patchRows) && patchRows.length > 0) return newValue;
+    // 沒搶到：這段期間已經有別人先寫入了（例如頭獎重置），重讀最新資料、用 mutator 重新算一次再試
+  }
+  throw new Error('kv state contention exceeded retries');
+}
 function newPlayer(nick, passwordHash){
   return {nickname:nick, passwordHash, coins:START_COINS, cards:{}, lastClaim:null, lastDrawCards:[], streak:0, joinedAt:Date.now(), slotSpend:0, farmLevel:0, avatarId:DEFAULT_AVATAR_ID, unlockedAvatars:[], stats:{totalHarvests:0, totalAuctionTrades:0, totalAuctionVolume:0}, equippedBadges:[], unlockedBadges:[], lastSeenChatAt:0, lastActiveAt:Date.now(), materials:{}, seasonCards:{}, expLevel:0, expExp:0, expedition:null, expeditionRolls:{},
     profession:null,
@@ -9263,6 +9510,7 @@ function newPlayer(nick, passwordHash){
     professionItems:{potion_small:0, weapon_common:0, accessory_common:0, furniture_common:0, potion_medium:0, weapon_uncommon:0, accessory_uncommon:0, furniture_uncommon:0},
     stamina:PROFESSION_STAMINA_MAX, staminaMax:PROFESSION_STAMINA_MAX, lastStaminaRegenAt:Date.now(),
     pets:[], petActiveId:null,
+    rentedGuardian:null, guardianRentLog:{},
     petNest:{element:null, plantedAt:null, readyAt:null},
     petHunts:Array.from({length:PET_HUNT_SLOT_COUNT}, (_,i)=>({slotId:i, active:false, locationKey:null, durationKey:null, startAt:null, readyAt:null, petId:null, helpLog:{}}))};
 }
@@ -10232,7 +10480,7 @@ async function pullSlot(isMega){
     // 不會出現獎池已經清空、全服都收到中獎公告，但贏家自己卻沒拿到錢的情況。
     await savePlayer(state.player);
     if(jackpotAfterWin !== null){
-      await saveSlotJackpot(jackpotAfterWin);
+      await applySlotJackpotCAS(()=>jackpotAfterWin); // 🔒 CAS 寫入，不會被別人剛好卡在同一瞬間的舊資料覆蓋掉這次重置
       // 中頭獎的贏家本人，先前只靠畫面上 1.7 秒後彈出的 toast 得知中獎——
       // 如果那個當下切出畫面、網路延遲、或手機螢幕鎖了，toast 一閃即逝，
       // 信箱裡完全不會留下任何紀錄（即使錢確實已經存進帳號）。
@@ -10240,11 +10488,9 @@ async function pullSlot(isMega){
       await createNotification(state.nickname, 'system', 'jackpot_self_win', {amount: winAmount, mega: isMega, mult: SLOT_SETTINGS.megaJackpotMult}).catch(()=>{});
       broadcastJackpotWin(state.nickname, winAmount).catch(()=>{});
     } else if(isJackpotContrib){
-      // 重新 sync 到緊貼著寫入前的最新值，而不是沿用 savePlayer 之前、可能已經過期的舊快照——
-      // 避免這次「沒中獎的貢獻」用舊金額算出的結果，蓋掉這段等待期間可能發生的頭獎重置
-      // 或其他玩家剛存進去的貢獻（storage 是 last-write-wins，讀寫間隔越短，競態窗口越小）。
-      await syncSlotJackpot();
-      await saveSlotJackpot(SLOT_JACKPOT + slotContrib);
+      // 用 CAS 疊加，理由同上：確保這筆「沒中獎的貢獻」一定是疊在當下真正最新的獎池金額上，
+      // 不會因為讀寫間隔中間夾了別人的頭獎重置或貢獻，而把對方的結果覆蓋掉
+      await applySlotJackpotCAS(current=>current + slotContrib);
       await syncFortuneStarJackpot();
       await saveFortuneStarJackpot(FORTUNE_STAR_JACKPOT + fsContrib);
     }
@@ -10610,7 +10856,7 @@ async function markAllNotificationsRead(notifs){
   await Promise.all(notifs.filter(n=>!n.read).map(n=>markNotificationRead(n.to, n.id)));
 }
 const NOTIF_CATEGORY_MAP = {
-  friend_request: 'friends', water: 'friends', water_bulk: 'friends', steal: 'friends', steal_bulk: 'friends', pet_help_bulk: 'friends',
+  friend_request: 'friends', water: 'friends', water_bulk: 'friends', steal: 'friends', steal_bulk: 'friends', pet_help_bulk: 'friends', rent_guardian: 'friends',
   auction_sold: 'auction', auction_unsold: 'auction', auction_outbid: 'auction', auction_won: 'auction', wtb_filled: 'auction',
   boss_reward: 'boss',
   gm_grant: 'gm',
@@ -10627,6 +10873,7 @@ function notifText(n){
   if(n.type==='water') return tt(`${n.from} 幫你的${seed}澆了水，縮短了 ${formatDuration(n.speedup||0)}`, `${n.from} watered your ${seed}, cutting ${formatDuration(n.speedup||0)} off the timer`);
   if(n.type==='water_bulk') return tt(`${n.from} 用一鍵澆水幫你澆了 ${n.plotCount||0} 塊地，共縮短了 ${formatDuration(n.totalSpeedup||0)}`, `${n.from} watered ${n.plotCount||0} of your plot(s) with one tap, cutting a total of ${formatDuration(n.totalSpeedup||0)} off the timers`);
   if(n.type==='pet_help_bulk') return tt(`${n.from} 用一鍵加速幫你的 ${n.slotCount||0} 格尋寶加速，共縮短了 ${formatDuration(n.totalSpeedup||0)}`, `${n.from} sped up ${n.slotCount||0} of your hunt(s) with one tap, cutting a total of ${formatDuration(n.totalSpeedup||0)} off the timers`);
+  if(n.type==='rent_guardian') return tt(`${n.from} 租借了你的鎮守寵物 ${n.hours||8} 小時，付了 ✦${n.cost} 給你`, `${n.from} rented your guardian pet for ${n.hours||8} hours and paid you ✦${n.cost}`);
   if(n.type==='steal') return tt(`${n.from} 偷偷順走了一點你的${seed}（不影響你的收成）`, `${n.from} sneaked a bit of your ${seed} (doesn't affect your harvest)`);
   if(n.type==='steal_bulk') return tt(`${n.from} 用一鍵偷菜順走了你 ${n.plotCount||0} 塊地的作物，共 ✦${n.amount||0}（不影響你的收成）`, `${n.from} took from ${n.plotCount||0} of your plot(s) with one tap, ✦${n.amount||0} total (doesn't affect your harvest)`);
   if(n.type==='auction_sold') return tt(`${n.from} 以 ${n.price} 枚金幣${n.viaBuyout?'一口價直接購買了':'買走了'}你的『${n.cardName}』`, `${n.from} ${n.viaBuyout?'bought':'won'} your "${n.cardName}" for ✦${n.price}`);
@@ -11803,7 +12050,7 @@ async function render(){
         // 不會因為跳過重繪而遺失，但如果照常每秒重繪，勾選框會被整個換新，
         // 玩家點擊的瞬間可能剛好撞上重繪，點擊被吃掉，感覺像是「遲鈍」。
         if(!state.farmUpgradeMode && !petSynthesisOpenId){
-          // 每秒重繪整個花園分頁（含出戰夥伴區塊）沒有保留捲動位置，
+          // 每秒重繪整個花園分頁（含鎮守寵物區塊）沒有保留捲動位置，
           // 會讓畫面看起來一直在跳動；重繪前後記住/還原捲動位置修掉這個問題。
           const farmScrollY = window.scrollY;
           renderTab();
@@ -12261,10 +12508,28 @@ async function renderFriends(body){
     <h2>${t('myFriendsHeader')} (${friends.length})</h2>
     ${friends.length===0 ? `<div class="empty-note">${tt('尚未加入任何好友，先送出邀請吧 ✦','No friends yet - send a request first ✦')}</div>` : friends.map(f=>{
       const fp = friendPlayersByNick[f];
+      const friendGuardian = fp ? getActivePet(fp) : null;
+      // 副鎮守租借按鈕：只有好友「目前正在鎮守」才能租；自己的租用中/今日已租過這位好友時停用，
+      // 理由分別顯示在按鈕文字上，不用另外彈窗解釋
+      let rentBtnHtml = '';
+      if(friendGuardian){
+        const rentCost = rentGuardianCost(friendGuardian);
+        const rentStarLabel = '★'.repeat(friendGuardian.star);
+        const selfRentedActive = state.player && state.player.rentedGuardian && Date.now() < state.player.rentedGuardian.expiresAt;
+        const alreadyRentedToday = state.player && state.player.guardianRentLog && state.player.guardianRentLog[f] === todayStr();
+        const rentDisabled = selfRentedActive || alreadyRentedToday;
+        const rentLabel = selfRentedActive
+          ? tt('副鎮守租用中','Rental active')
+          : alreadyRentedToday
+            ? tt('今天已租過','Rented today')
+            : tt(`🛡️ 租借鎮守（${petRarityLabel(friendGuardian.rarity)}${rentStarLabel} · ✦${rentCost}）`, `🛡️ Rent Guardian (${petRarityLabel(friendGuardian.rarity)}${rentStarLabel} · ✦${rentCost})`);
+        rentBtnHtml = `<button class="btn small secondary" data-rent-guardian="${escapeHtml(f)}" ${rentDisabled?'disabled':''}>${rentLabel}</button>`;
+      }
       return `
       <div class="listing">
         <div class="left"><div class="icon-box" data-view-profile="${escapeHtml(f)}">${avatarBoxHtml(fp && fp.avatarId)}</div><div class="meta"><div data-view-profile="${escapeHtml(f)}">${escapeHtml(f)}${fp ? nameWithBadgesHtml(fp, 16) : ''}</div><div class="who">${fp ? presenceHtml(fp) : ''}</div></div></div>
         <div class="right">
+          ${rentBtnHtml}
           <button class="btn small secondary" data-remove-friend="${escapeHtml(f)}">${t('remove')}</button>
         </div>
       </div>
@@ -12290,6 +12555,9 @@ async function renderFriends(body){
   });
   document.querySelectorAll('[data-remove-friend]').forEach(b=>{
     b.onclick = ()=>removeFriend(b.dataset.removeFriend);
+  });
+  document.querySelectorAll('[data-rent-guardian]').forEach(b=>{
+    b.onclick = ()=>rentGuardianFromFriend(b.dataset.rentGuardian);
   });
   bindProfileClickTargets(body);
 }
@@ -12331,7 +12599,7 @@ async function renderMailbox(body){
   html += `<div class="panel">
     ${recentNotifs.length===0 ? `<div class="empty-note">${t('mailboxEmpty')}</div>` : recentNotifs.map(n=>`
       <div class="listing">
-        <div class="left"><div class="icon-box">${n.type==='friend_request'?'🕊':(n.type==='steal'||n.type==='steal_bulk')?'🌾':(n.type==='water'||n.type==='water_bulk')?'🚿':n.type==='pet_help_bulk'?'🐾':(n.type.startsWith('auction')||n.type.startsWith('wtb'))?'💰':n.type==='gm_grant'?'⚡':n.type==='boss_reward'?'⚔️':(n.type==='jackpot_win'||n.type==='jackpot_self_win')?'💫':'🔔'}</div><div class="meta"><div>${escapeHtml(notifText(n))}</div><div class="who">${timeAgo(n.createdAt)}</div></div></div>
+        <div class="left"><div class="icon-box">${n.type==='friend_request'?'🕊':(n.type==='steal'||n.type==='steal_bulk')?'🌾':(n.type==='water'||n.type==='water_bulk')?'🚿':n.type==='pet_help_bulk'?'🐾':n.type==='rent_guardian'?'🛡️':(n.type.startsWith('auction')||n.type.startsWith('wtb'))?'💰':n.type==='gm_grant'?'⚡':n.type==='boss_reward'?'⚔️':(n.type==='jackpot_win'||n.type==='jackpot_self_win')?'💫':'🔔'}</div><div class="meta"><div>${escapeHtml(notifText(n))}</div><div class="who">${timeAgo(n.createdAt)}</div></div></div>
       </div>
     `).join('')}
     ${notifTotalPages > 1 ? `
@@ -13819,7 +14087,6 @@ async function renderGM(body){
         <div><label>${tt('孵化時間（小時）','Grow time (hours)')}</label><input type="number" id="gm-pet-egg-hours" value="${(PET_EGG_GROW_MS/3600000).toFixed(2)}" min="0.01" step="0.25" style="width:90px;" /></div>
         <div><label>${tt('種蛋材料消耗','Material cost to plant')}</label><input type="number" id="gm-pet-egg-cost" value="${PET_EGG_MATERIAL_COST}" min="1" style="width:90px;" /></div>
         <div><label>${tt('採集額外開蛋機率 %','Bonus egg on harvest %')}</label><input type="number" id="gm-pet-bonus-chance" value="${(PET_BONUS_EGG_CHANCE*100).toFixed(1)}" min="0" max="100" step="0.1" style="width:90px;" /></div>
-        <div><label>${tt('更換出戰寵物花費','Swap active pet cost')}</label><input type="number" id="gm-pet-swap-cost" value="${PET_SWAP_COST}" min="0" style="width:100px;" /></div>
       </div>
     </div>
     <div class="farm-upgrade-box" style="margin-bottom:10px;">
@@ -14490,9 +14757,8 @@ async function renderGM(body){
     const hours = parseFloat(document.getElementById('gm-pet-egg-hours').value);
     const eggCost = parseInt(document.getElementById('gm-pet-egg-cost').value, 10);
     const bonusChance = parseFloat(document.getElementById('gm-pet-bonus-chance').value);
-    const swapCost = parseInt(document.getElementById('gm-pet-swap-cost').value, 10);
     const rarityWeights = {};
-    let invalid = isNaN(hours) || hours <= 0 || isNaN(eggCost) || eggCost < 1 || isNaN(bonusChance) || bonusChance < 0 || bonusChance > 100 || isNaN(swapCost) || swapCost < 0;
+    let invalid = isNaN(hours) || hours <= 0 || isNaN(eggCost) || eggCost < 1 || isNaN(bonusChance) || bonusChance < 0 || bonusChance > 100;
     PET_RARITY_IDS.forEach(id=>{
       const w = parseFloat(document.getElementById(`gm-pet-rarity-${id}`).value);
       if(isNaN(w) || w < 0) invalid = true;
@@ -14520,7 +14786,6 @@ async function renderGM(body){
     PET_EGG_GROW_MS = Math.round(hours*3600000);
     PET_EGG_MATERIAL_COST = eggCost;
     PET_BONUS_EGG_CHANCE = bonusChance/100;
-    PET_SWAP_COST = swapCost;
     PET_RARITY_BASE_WEIGHT = rarityWeights;
     PET_RARITY_LEVEL_BONUS = {rare:rarityBonusRare, epic:rarityBonusEpic};
     PET_DURATION_REWARDS = durationRewards;
@@ -14533,7 +14798,6 @@ async function renderGM(body){
   if(petResetBtn) petResetBtn.onclick = async ()=>{
     PET_EGG_GROW_MS = DEFAULT_PET_EGG_GROW_MS;
     PET_EGG_MATERIAL_COST = DEFAULT_PET_EGG_MATERIAL_COST;
-    PET_SWAP_COST = DEFAULT_PET_SWAP_COST;
     PET_BONUS_EGG_CHANCE = DEFAULT_PET_BONUS_EGG_CHANCE;
     PET_RARITY_BASE_WEIGHT = {...DEFAULT_PET_RARITY_BASE_WEIGHT};
     PET_RARITY_LEVEL_BONUS = {...DEFAULT_PET_RARITY_LEVEL_BONUS};
