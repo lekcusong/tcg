@@ -2249,15 +2249,22 @@ function petElementLabel(id){ const m = PET_ELEMENT_META[id]; return m ? tt(m.la
 function petRarityLabel(id){ const m = PET_RARITY_META[id]; return m ? tt(m.labelZh, m.labelEn) : id; }
 function petDurationLabel(key){ const m = PET_DURATION_META[key]; return m ? tt(m.labelZh, m.labelEn) : key; }
 function getActivePet(p){ ensurePets(p); return p.pets.find(pet=>pet.id===p.petActiveId) || null; }
+// 稀有度基礎被動：不用合成升星就直接生效，讓「養一隻 epic」從一開始就比「養一隻 common」更好，
+// 也讓稀有度本身有即戰力意義（而不只是合成時的品質天花板）。這組數值先寫死，不開放 GM 後台調整
+// （跟 GUARDIAN_AURA_RARITY_BONUS 是同一種設計取捨）。
+const PET_RARITY_REWARD_BONUS = {common:0, rare:0.05, epic:0.12};
 // 每星效果線性疊加，從 ★1（起始）算起，★5 封頂共疊加 4 星：
 // 尋寶時間縮短 -4.5%/星（封頂 -18%）、獎勵倍率 +11.25%/星（封頂 +45%）、稀有掉落機率 +3.375%/星（封頂 +13.5%）
 // （封頂數值與改版前的 Lv.10 系統一致，只是把 9 級的成長曲線換算成 4 星）
+// 星級加成與稀有度基礎被動疊加：例如 epic ★1 = 1 + 0（星）+ 0.12（稀有度）= 1.12x，
+// epic ★5 = 1 + 0.45（星封頂）+ 0.12（稀有度）= 1.57x。
 function petEffects(pet){
   if(!pet) return {durationReduction:0, rewardMult:1, rareChanceBonus:0};
   const steps = Math.max(0, (pet.star||1) - 1);
+  const rarityBonus = PET_RARITY_REWARD_BONUS[pet.rarity] || 0;
   return {
     durationReduction: Math.min(0.18, steps*0.045),
-    rewardMult: 1 + Math.min(0.45, steps*0.1125),
+    rewardMult: 1 + Math.min(0.45, steps*0.1125) + rarityBonus,
     rareChanceBonus: Math.min(0.135, steps*0.03375),
   };
 }
@@ -2487,6 +2494,72 @@ async function synthesizePet(petId){
   showToast(resultMsg);
   renderTab();
 }
+// 🔄 一鍵自動合成：自動掃描庫存中所有「非鎮守中、非尋寶中」的寵物，只要湊得到 2 隻同名
+// （同屬性＋同稀有度＋同星級）就直接合併，合併後若又剛好湊到下一組同名（例如連續好幾隻
+// 低星寵物一路往上疊），會連環繼續合併，直到沒有任何可合併的組合為止。跟手動合成共用
+// 同一套升星／品質突破規則（保證成功、無法復原），差別只在於一次處理所有能合的組合。
+// 全程先在記憶體中模擬跑完整個連鎖，最後才一次性寫入存檔，避免中途某一步失敗導致資料
+// 只改了一半。
+function autoSynthesizePetsPlan(p){
+  const lockedIds = new Set([p.petActiveId].filter(Boolean));
+  p.petHunts.forEach(h=>{ if(h.active && h.petId) lockedIds.add(h.petId); });
+  let pets = p.pets.map(pt=>({...pt})); // 深拷貝一份工作用陣列，鎖定中的寵物原封不動保留在裡面
+  let mergeCount = 0;
+  let breakthroughCount = 0;
+  let changed = true;
+  while(changed){
+    changed = false;
+    // 依「屬性＋稀有度＋星級」分組，只看未鎖定、且尚未滿星滿品質的寵物
+    const groups = {};
+    for(const pt of pets){
+      if(lockedIds.has(pt.id) || isPetFullyMaxed(pt)) continue;
+      const key = `${pt.element}|${pt.rarity}|${pt.star}`;
+      (groups[key] = groups[key] || []).push(pt);
+    }
+    for(const key in groups){
+      const group = groups[key];
+      while(group.length >= 2){
+        const target = group.shift(); // 保留這隻作為合成後的本體
+        const material = group.shift(); // 這隻會被消耗
+        pets = pets.filter(pt => pt.id !== material.id);
+        const isBreakthrough = target.star >= PET_STAR_MAX;
+        if(isBreakthrough){
+          const nextRarity = petNextRarity(target.rarity);
+          target.rarity = nextRarity; // 已用 isPetFullyMaxed 篩過，這裡一定存在下一級稀有度
+          target.star = 1;
+          breakthroughCount++;
+        } else {
+          target.star += 1;
+          mergeCount++;
+        }
+        changed = true; // target 星級/稀有度變了，可能跟其他組別重新湊到一起，交給外層重新分組
+      }
+    }
+  }
+  return {pets, mergeCount, breakthroughCount};
+}
+async function autoSynthesizeAllPets(){
+  const p = state.player;
+  if(!p) return;
+  ensurePets(p);
+  const {pets, mergeCount, breakthroughCount} = autoSynthesizePetsPlan(p);
+  if(mergeCount === 0 && breakthroughCount === 0){
+    showToast(tt('目前沒有可以自動合成的同名寵物組合', 'No matching pet pairs available to auto-synthesize right now'));
+    return;
+  }
+  const parts = [];
+  if(mergeCount > 0) parts.push(tt(`升星 ${mergeCount} 次`, `${mergeCount} star merge(s)`));
+  if(breakthroughCount > 0) parts.push(tt(`品質突破 ${breakthroughCount} 次`, `${breakthroughCount} quality breakthrough(es)`));
+  const confirmMsg = tt(`即將自動合成：${parts.join('、')}。鎮守中與尋寶中的寵物不受影響，此動作無法復原，確定要繼續嗎？`,
+    `About to auto-synthesize: ${parts.join(', ')}. Guardian and hunting pets are untouched. This cannot be undone - continue?`);
+  if(!confirm(confirmMsg)) return;
+  p.pets = pets;
+  petSynthesisOpenId = null;
+  petSynthesisSelected = new Set();
+  await savePlayer(p);
+  showToast(tt(`✨ 自動合成完成！${parts.join('、')}`, `✨ Auto-synthesis complete! ${parts.join(', ')}`));
+  renderTab();
+}
 // 尋寶派遣格的「選擇中」草稿狀態（尚未正式派遣）：slotId -> {petId, locationKey}
 // 選寵物 → 選地點 → 選時長 三步驟走完才會真正呼叫 startPetHunt 寫入 p.petHunts。
 let petHuntDraft = {};
@@ -2700,7 +2773,9 @@ function petSectionHtml(p){
   if(!p.pets.length){
     html += `<p class="sub">${tt('目前還沒有寵物，先去花園種蛋孵化一隻吧！','No pets yet - plant an egg in the garden to hatch one!')}</p>`;
   } else {
-    html += `<div style="display:flex;flex-direction:column;gap:10px;">`;
+    html += `<button class="btn small" id="pet-auto-synth-btn">${tt('🔄 一鍵自動合成','🔄 Auto-Synthesize All')}</button>
+    <p class="sub" style="margin:6px 0 0;font-size:12px;">${tt('自動掃描所有非鎮守、非尋寶中的寵物，只要湊得到 2 隻同名（同屬性＋同稀有度＋同星級）就自動合併，可連環升星／突破品質，直到沒有可合的組合為止。', 'Automatically merges any 2 matching (same element + rarity + star) idle, non-guardian pets, chaining through multiple star ups or quality breakthroughs until no more matches remain.')}</p>
+    <div style="display:flex;flex-direction:column;gap:10px;margin-top:10px;">`;
     p.pets.forEach(pet=>{
       const meta = PET_ELEMENT_META[pet.element];
       const isActive = pet.id === p.petActiveId;
@@ -2855,6 +2930,8 @@ function wirePetEvents(){
     };
   });
   document.querySelectorAll('[data-synth-confirm]').forEach(btn=>{ btn.onclick = ()=>synthesizePet(btn.dataset.synthConfirm); });
+  const petAutoSynthBtn = document.getElementById('pet-auto-synth-btn');
+  if(petAutoSynthBtn) petAutoSynthBtn.onclick = autoSynthesizeAllPets;
 }
 
 
@@ -3015,6 +3092,10 @@ const DEFAULT_BOSS_AFFIX_GUARANTEED_CYCLE = 5; // 保底輪數：達到此輪數
 // 🏃 Boss跑路：同一階段（stage）內攻擊次數達到上限仍未擊破，Boss直接跑路，整輪重置回第1階，
 // 不計入今日擊殺次數、不發任何獎勵，已花費的金幣/武器不退還。設為 0 代表不啟用（無上限）。
 const DEFAULT_BOSS_MAX_ATTACKS = 15;
+// 🏃 連續失敗鎖定：今日「跑路（未擊敗被迫重置）」累積達到這個次數，就直接鎖定
+// 今日的 Boss 挑戰（跟達到擊殺上限一樣鎖到隔天 00:00），避免無限重打同一輪。
+// 設為 0 代表不啟用（不會因跑路被鎖，僅受擊殺上限限制）。
+const DEFAULT_BOSS_MAX_DAILY_FLEES = 2;
 // ⚔️ 武器：出征以外，Boss 攻擊也能自由選用（有就用，沒有也能正常攻擊），消耗職業道具庫存 1 把，
 // 只影響「這一次」攻擊的傷害，common/uncommon 互斥、只能擇一。
 const DEFAULT_BOSS_WEAPON_DAMAGE_PCT = 0.15;
@@ -3033,6 +3114,7 @@ let BOSS_AFFIX_CHANCE = DEFAULT_BOSS_AFFIX_CHANCE;
 let BOSS_AFFIX_BONUS_PCT = DEFAULT_BOSS_AFFIX_BONUS_PCT;
 let BOSS_AFFIX_GUARANTEED_CYCLE = DEFAULT_BOSS_AFFIX_GUARANTEED_CYCLE;
 let BOSS_MAX_ATTACKS = DEFAULT_BOSS_MAX_ATTACKS;
+let BOSS_MAX_DAILY_FLEES = DEFAULT_BOSS_MAX_DAILY_FLEES;
 let BOSS_WEAPON_DAMAGE_PCT = DEFAULT_BOSS_WEAPON_DAMAGE_PCT;
 let BOSS_WEAPON_UNCOMMON_DAMAGE_PCT = DEFAULT_BOSS_WEAPON_UNCOMMON_DAMAGE_PCT;
 
@@ -3059,6 +3141,7 @@ async function loadBossConfig(){
       if(typeof s.affixBonusPct === 'number' && s.affixBonusPct >= 0) BOSS_AFFIX_BONUS_PCT = s.affixBonusPct;
       if(typeof s.affixGuaranteedCycle === 'number' && s.affixGuaranteedCycle >= 1) BOSS_AFFIX_GUARANTEED_CYCLE = Math.round(s.affixGuaranteedCycle);
       if(typeof s.maxAttacks === 'number' && s.maxAttacks >= 0) BOSS_MAX_ATTACKS = Math.round(s.maxAttacks);
+      if(typeof s.maxDailyFlees === 'number' && s.maxDailyFlees >= 0) BOSS_MAX_DAILY_FLEES = Math.round(s.maxDailyFlees);
       if(typeof s.weaponDamagePct === 'number' && s.weaponDamagePct >= 0) BOSS_WEAPON_DAMAGE_PCT = s.weaponDamagePct;
       if(typeof s.weaponUncommonDamagePct === 'number' && s.weaponUncommonDamagePct >= 0) BOSS_WEAPON_UNCOMMON_DAMAGE_PCT = s.weaponUncommonDamagePct;
     }
@@ -3072,6 +3155,7 @@ async function saveBossConfig(){
     maxDailyKills: BOSS_MAX_DAILY_KILLS, affixChance: BOSS_AFFIX_CHANCE, affixBonusPct: BOSS_AFFIX_BONUS_PCT,
     affixGuaranteedCycle: BOSS_AFFIX_GUARANTEED_CYCLE,
     maxAttacks: BOSS_MAX_ATTACKS, weaponDamagePct: BOSS_WEAPON_DAMAGE_PCT, weaponUncommonDamagePct: BOSS_WEAPON_UNCOMMON_DAMAGE_PCT,
+    maxDailyFlees: BOSS_MAX_DAILY_FLEES,
   }));
 }
 // 🎯 Boss 詞綴：重生時機率套用，只在該隻 Boss（同一個 cycle）存活期間生效，打死後
@@ -3349,7 +3433,9 @@ function bossFreshState(cycle, killCount){
     activeEvent: null, // ✨ 目前生效中的隨機事件：{id, hitsLeft, value}，換階/換輪時可能重抽（見 maybeTriggerBossEvent）
     pendingChest: false, // 🎁 是否有待開啟的寶箱（玩家需先 3 選 1 才能繼續攻擊，見 resolveBossChestChoice）
     killCount: killCount || 0, // 🌀 今日已擊殺次數，達到 BOSS_MAX_DAILY_KILLS 才鎖到隔天（見 clearedToday）
+    fleeCount: 0, // 🏃 今日已跑路（未擊敗）次數，達到 BOSS_MAX_DAILY_FLEES 也會鎖到隔天（見 clearedToday／lockedByFlee）
     clearedToday: false,
+    lockedByFlee: false, // 今日是否是「因連續失敗被鎖」而非「擊殺上限已達成」，UI 顯示訊息用
     activeAffix: rollBossAffix(cycle), // 🎯 這隻 Boss（本 cycle）是否帶詞綴，見 rollBossAffix/bossAffixLabel
   };
 }
@@ -3656,9 +3742,17 @@ async function resolveBossAttack(nickname, damage, comboTier){
       // （同一 cycle、今日已擊殺次數不變），不發任何獎勵，已花費的金幣/武器不退還。
       newBoss.attacksUsed = (boss.attacksUsed||0) + 1;
       if(BOSS_MAX_ATTACKS > 0 && newBoss.attacksUsed >= BOSS_MAX_ATTACKS){
+        const fleeCount = (boss.fleeCount||0) + 1;
         const fresh = bossFreshState(newBoss.cycle, boss.killCount||0);
         Object.assign(newBoss, fresh);
+        newBoss.fleeCount = fleeCount;
         fled = true;
+        // 🏃 今日累積跑路次數達到上限：直接鎖定今日挑戰（跟達到擊殺上限一樣鎖到隔天 00:00），
+        // 用 lockedByFlee 跟「擊殺上限已達成」的鎖定訊息區分開來。
+        if(BOSS_MAX_DAILY_FLEES > 0 && fleeCount >= BOSS_MAX_DAILY_FLEES){
+          newBoss.clearedToday = true;
+          newBoss.lockedByFlee = true;
+        }
       }
     }
     const applied = await savePlayerBossStateCAS(nickname, updatedAt, newBoss);
@@ -3937,9 +4031,8 @@ function renderSettledDiceHtml(rolls, comboTier, qualityComboTier, allWild, isCr
 }
 
 // 攻擊流程：擲 3 顆骰子取代原本的「一般爆發／超爆發」雙按鈕設計。
-// 攻擊消耗金幣：預設固定扣 BOSS_COIN_COST，但骰子若開出「金幣返還」效果面，
-// 這次攻擊有機率不扣（見 burst.coinRefunded）；CAS 重試、貢獻結算、
-// 破關發獎、UI 訊息與階段二/三完全共用。
+// 攻擊不消耗金幣，只有擊殺（三階全破）才會發放獎勵（見 settleBossReward）；
+// CAS 重試、貢獻結算、破關發獎、UI 訊息與階段二/三完全共用。
 async function performBossAttack(){
   const p = state.player;
   ensureMaterials(p);
@@ -3950,17 +4043,14 @@ async function performBossAttack(){
     showToast(tt('請先到「骰子」分頁裝備至少 1 顆骰子', 'Equip at least 1 die in the Dice tab first'));
     return;
   }
-  const cost = BOSS_COIN_COST;
-  if(p.coins < cost){
-    showToast(tt(`金幣不足，需要 ${cost}`, `Not enough coins, need ${cost}`));
-    return;
-  }
   // ✨ 先確保/讀取今日 Boss 狀態，才知道目前是否有生效中的隨機事件（祝福/風暴/迷霧）
   // 要套用到這次攻擊上；接著才算出這次攻擊的真實結果（純運算，無副作用），
   // 動畫只負責把它「揭曉」出來。
   const currentBoss = await ensureBossState(p.nickname);
   if(currentBoss.clearedToday){
-    showToast(tt(`今日已達擊殺上限（${BOSS_MAX_DAILY_KILLS} 次），請明天再來挑戰！`, `You've reached today's kill limit (${BOSS_MAX_DAILY_KILLS}) - come back tomorrow!`));
+    showToast(currentBoss.lockedByFlee
+      ? tt(`今日已連續跑路 ${BOSS_MAX_DAILY_FLEES} 次，挑戰已結束，請明天再來！`, `You've fled ${BOSS_MAX_DAILY_FLEES} times today - the challenge has ended, come back tomorrow!`)
+      : tt(`今日已達擊殺上限（${BOSS_MAX_DAILY_KILLS} 次），請明天再來挑戰！`, `You've reached today's kill limit (${BOSS_MAX_DAILY_KILLS}) - come back tomorrow!`));
     return;
   }
   // ⚔️ 武器：自由選用，有庫存才生效，沒選/沒庫存就當作普通攻擊，不會擋下攻擊本身。
@@ -3977,9 +4067,6 @@ async function performBossAttack(){
   const burst = rollDiceAttack(p, currentBoss.activeEvent, currentBoss.comboStreak||0, currentBoss.activeAffix, weaponPct);
   await playDiceRollAnimation(equippedIds.map(id => p.dice[id]), burst);
 
-  if(!burst.coinRefunded){
-    p.coins -= cost; // 觸發「金幣返還」效果時這次攻擊不扣金幣
-  }
   if(weaponUsedTier){
     p.professionItems[weaponUsedTier === 'uncommon' ? 'weapon_uncommon' : 'weapon_common'] -= 1;
   }
@@ -4032,7 +4119,11 @@ async function performBossAttack(){
 
   let defeatMsg = '';
   if(fled){
-    defeatMsg = tt(`🏃 「${BOSS_STAGE_META[prevBoss.stage-1].label}」拖太久沒被打倒，跑掉了！Boss 重新回到第 1 階，本次未發放任何獎勵。`, `🏃 The "${BOSS_STAGE_META[prevBoss.stage-1].labelEn}" took too long to bring down and fled! It's back to Stage 1 - no rewards this time.`);
+    const fleeSuffixZh = BOSS_MAX_DAILY_FLEES > 0 ? `（今日已跑路 ${newBoss.fleeCount}/${BOSS_MAX_DAILY_FLEES} 次）` : '';
+    const fleeSuffixEn = BOSS_MAX_DAILY_FLEES > 0 ? ` (Fled ${newBoss.fleeCount}/${BOSS_MAX_DAILY_FLEES} times today)` : '';
+    defeatMsg = newBoss.lockedByFlee
+      ? tt(`🏃 「${BOSS_STAGE_META[prevBoss.stage-1].label}」拖太久沒被打倒，跑掉了！本次未發放任何獎勵。今日已連續跑路 ${newBoss.fleeCount}/${BOSS_MAX_DAILY_FLEES} 次，挑戰已結束，明天再來吧！`, `🏃 The "${BOSS_STAGE_META[prevBoss.stage-1].labelEn}" took too long to bring down and fled! No rewards this time. You've fled ${newBoss.fleeCount}/${BOSS_MAX_DAILY_FLEES} times today - the challenge has ended, come back tomorrow!`)
+      : tt(`🏃 「${BOSS_STAGE_META[prevBoss.stage-1].label}」拖太久沒被打倒，跑掉了！Boss 重新回到第 1 階，本次未發放任何獎勵。${fleeSuffixZh}`, `🏃 The "${BOSS_STAGE_META[prevBoss.stage-1].labelEn}" took too long to bring down and fled! It's back to Stage 1 - no rewards this time.${fleeSuffixEn}`);
   } else if(cycleCompleteFor){
     const reward = await settleBossReward(p.nickname, cycleCompleteFor);
     if(newBoss.clearedToday){
@@ -4100,7 +4191,6 @@ async function performBossAttack(){
     if(burst.comboStreakBonus > 0) bonusTags.push(tt(`🔥連擊+${Math.round(burst.comboStreakBonus*100)}%`, `🔥Streak+${Math.round(burst.comboStreakBonus*100)}%`));
     if(burst.isCrit) bonusTags.push(tt('💥暴擊','💥Crit'));
     if(burst.affixResult) bonusTags.push(burst.affixResult.met ? tt(`🎯詞綴強化+${Math.round(BOSS_AFFIX_BONUS_PCT*100)}%`, `🎯Affix Boost+${Math.round(BOSS_AFFIX_BONUS_PCT*100)}%`) : tt('⚪未觸發強化','⚪Boost not triggered'));
-    if(burst.coinRefunded) bonusTags.push(tt('♻️金幣未消耗','♻️Coin refunded'));
     if(burst.weaponPct > 0) bonusTags.push(tt(`⚔️武器+${Math.round(burst.weaponPct*100)}%`, `⚔️Weapon+${Math.round(burst.weaponPct*100)}%`));
     const bonusStr = bonusTags.length ? `（${bonusTags.join('、')}）` : '';
     showToast(tt(`🎲 擲出 ${diceTag}，造成 ${burst.damage.toLocaleString()} 傷害！${bonusStr}　貢獻點 +${contribGain}`, `🎲 Rolled ${diceTag}, dealt ${burst.damage.toLocaleString()} damage!${bonusStr}  Contribution +${contribGain}`) + minionMsgPart + eventMsgPart);
@@ -5559,13 +5649,23 @@ function renderBoss(body){
     const boss = await ensureBossState(p.nickname);
     if(boss.clearedToday){
       const clearedMeta = BOSS_STAGE_META[2];
+      const lockedByFlee = !!boss.lockedByFlee;
+      const subLine = lockedByFlee
+        ? tt(`第 ${boss.cycle} 輪　·　今日已跑路 ${boss.fleeCount||0}/${BOSS_MAX_DAILY_FLEES} 次`, `Cycle ${boss.cycle} · Fled ${boss.fleeCount||0}/${BOSS_MAX_DAILY_FLEES} times today`)
+        : tt(`第 ${boss.cycle} 輪　·　今日已擊殺 ${boss.killCount||0}/${BOSS_MAX_DAILY_KILLS} 次`, `Cycle ${boss.cycle} · Kills today ${boss.killCount||0}/${BOSS_MAX_DAILY_KILLS}`);
+      const titleLine = lockedByFlee
+        ? tt('🏃 連續失敗次數過多，今日挑戰已結束！','🏃 Too many failed attempts - today\'s challenge has ended!')
+        : tt('🎉 今日擊殺上限已達成！','🎉 Daily kill limit reached!');
+      const bodyLine = lockedByFlee
+        ? tt(`你今天已經跑路 ${boss.fleeCount||0} 次，Boss 挑戰已鎖定，明天再來重新挑戰吧！`, `You've fled ${boss.fleeCount||0} times today - the Boss challenge is locked, come back tomorrow to try again!`)
+        : tt(`你今天已經擊殺了 ${boss.killCount||0} 隻 Boss，明天再來挑戰新一輪（更難）吧！`, `You've slain ${boss.killCount||0} Bosses today - come back tomorrow for a new, harder cycle!`);
       const html = `<div class="panel">
         <h2>⚔️ ${tt(SEASON_LABEL_ZH, SEASON_LABEL_EN)} · ${tt('Boss 戰','Boss Battle')}</h2>
-        <p class="sub">${tt(`第 ${boss.cycle} 輪　·　今日已擊殺 ${boss.killCount||0}/${BOSS_MAX_DAILY_KILLS} 次`, `Cycle ${boss.cycle} · Kills today ${boss.killCount||0}/${BOSS_MAX_DAILY_KILLS}`)}</p>
+        <p class="sub">${subLine}</p>
         <div style="text-align:center;">
           <img src="${clearedMeta.img}" style="width:100%;border-radius:14px;border:1px solid var(--gold);box-shadow:0 0 22px rgba(139,107,209,0.4);margin-bottom:10px;filter:grayscale(0.6) brightness(0.7);" alt="${clearedMeta.label}" />
-          <div style="font-family:'Cinzel Decorative',serif;color:var(--gold-bright);font-size:16px;">🎉 ${tt('今日擊殺上限已達成！','Daily kill limit reached!')}</div>
-          <p class="sub" style="margin-top:8px;">${tt(`你今天已經擊殺了 ${boss.killCount||0} 隻 Boss，明天再來挑戰新一輪（更難）吧！`, `You've slain ${boss.killCount||0} Bosses today - come back tomorrow for a new, harder cycle!`)}</p>
+          <div style="font-family:'Cinzel Decorative',serif;color:var(--gold-bright);font-size:16px;">${titleLine}</div>
+          <p class="sub" style="margin-top:8px;">${bodyLine}</p>
         </div>
       </div>`;
       if(myGen !== bossRenderGen) return;
@@ -5632,7 +5732,7 @@ function renderBoss(body){
     const pct = Math.max(0, Math.min(100, (boss.hp/boss.maxHp)*100));
     let html = `<div class="panel">
       <h2>⚔️ ${tt(SEASON_LABEL_ZH, SEASON_LABEL_EN)} · ${tt('Boss 戰','Boss Battle')}</h2>
-      <p class="sub">${tt(`第 ${boss.cycle} 輪　第 ${boss.stage}/3 階段　·　今日已擊殺 ${boss.killCount||0}/${BOSS_MAX_DAILY_KILLS} 次　·　每日 00:00 重置`, `Cycle ${boss.cycle} · Stage ${boss.stage}/3 · Kills today ${boss.killCount||0}/${BOSS_MAX_DAILY_KILLS} · Resets daily at 00:00`)}</p>
+      <p class="sub">${tt(`第 ${boss.cycle} 輪　第 ${boss.stage}/3 階段　·　今日已擊殺 ${boss.killCount||0}/${BOSS_MAX_DAILY_KILLS} 次${BOSS_MAX_DAILY_FLEES>0?`　·　今日已跑路 ${boss.fleeCount||0}/${BOSS_MAX_DAILY_FLEES} 次`:''}　·　每日 00:00 重置`, `Cycle ${boss.cycle} · Stage ${boss.stage}/3 · Kills today ${boss.killCount||0}/${BOSS_MAX_DAILY_KILLS}${BOSS_MAX_DAILY_FLEES>0?` · Fled ${boss.fleeCount||0}/${BOSS_MAX_DAILY_FLEES} times today`:''} · Resets daily at 00:00`)}</p>
       ${(()=>{
         const affixMeta = bossAffixLabel(boss.activeAffix);
         if(!affixMeta) return '';
@@ -5741,7 +5841,7 @@ function renderBoss(body){
             </div>`;
           })()}
           <div class="mb-dice-attack">
-            <button class="btn" id="boss-burst-btn" ${(p.coins < BOSS_COIN_COST) ? 'disabled' : ''}>${tt(`🎲 擲骰攻擊（消耗✦${BOSS_COIN_COST}）`, `🎲 Dice Attack (✦${BOSS_COIN_COST})`)}</button>
+            <button class="btn" id="boss-burst-btn">${tt(`🎲 擲骰攻擊`, `🎲 Dice Attack`)}</button>
           </div>
         </div>
       </div>
@@ -11001,7 +11101,9 @@ function notifText(n){
   if(n.type==='steal') return tt(`${n.from} 偷偷順走了一點你的${seed}（不影響你的收成）`, `${n.from} sneaked a bit of your ${seed} (doesn't affect your harvest)`);
   if(n.type==='steal_bulk') return tt(`${n.from} 用一鍵偷菜順走了你 ${n.plotCount||0} 塊地的作物，共 ✦${n.amount||0}（不影響你的收成）`, `${n.from} took from ${n.plotCount||0} of your plot(s) with one tap, ✦${n.amount||0} total (doesn't affect your harvest)`);
   if(n.type==='auction_sold') return tt(`${n.from} 以 ${n.price} 枚金幣${n.viaBuyout?'一口價直接購買了':'買走了'}你的『${n.cardName}』`, `${n.from} ${n.viaBuyout?'bought':'won'} your "${n.cardName}" for ✦${n.price}`);
-  if(n.type==='auction_unsold') return tt(`你的『${n.cardName}』拍賣流標了，已退回你的收藏`, `Your "${n.cardName}" auction ended with no bids and was returned to your collection`);
+  if(n.type==='auction_unsold') return (n.qty && n.qty > 1)
+    ? tt(`你的『${n.cardName}』x${n.qty} 拍賣流標了，已退回你的收藏`, `Your "${n.cardName}" x${n.qty} auction ended with no bids and was returned to your collection`)
+    : tt(`你的『${n.cardName}』拍賣流標了，已退回你的收藏`, `Your "${n.cardName}" auction ended with no bids and was returned to your collection`);
   if(n.type==='auction_outbid') return tt(`你在『${n.cardName}』的出價已被 ${n.from} 超過（目前 ${n.price} 枚金幣）`, `Your bid on "${n.cardName}" was outbid by ${n.from} (now ✦${n.price})`);
   if(n.type==='wtb_filled') return tt(`${n.from} 賣給了你 x${n.qty}『${n.cardName}』，花費 ${n.price*n.qty} 枚金幣`, `${n.from} sold you x${n.qty} "${n.cardName}" for ✦${n.price*n.qty}`);
   if(n.type==='auction_won') return tt(`恭喜！你以 ✦${n.price} 枚金幣贏得了『${n.cardName}』的拍賣`, `Congratulations! You won the auction for "${n.cardName}" for ✦${n.price}`);
@@ -11699,20 +11801,50 @@ async function resolveAuction(auction){
   if(auction.status !== 'active' || Date.now() < auction.endsAt) return;
   const itemName = auctionDisplayInfo(auction).nameOnly;
   if(auction.currentBidder){
-    await grantAuctionItem(auction.currentBidder, auction.itemType, auction.itemId, auction.qty, auction.diceData);
-    await createPendingReward(auction.currentBidder, 'auction_trade_stat', {price: auction.currentBid});
-    const sellerForFee = await loadPlayer(auction.seller);
-    const fee = auctionFeeAmount(auction.currentBid, sellerForFee ? starChartVenusFeeReductionPct(sellerForFee) : 0);
-    const payout = auction.currentBid - fee;
-    // 這裡是背景自動結算（沒有明確的「操作中玩家」可以跳 toast），
-    // 失敗時 createPendingReward 內部會重試、寫 failedreward: 記錄並 console.error，
-    // 之後可在 GM 後台或 storage 查 failedreward: 前綴找出所有未成功發放的收款。
-    await createPendingReward(auction.seller, 'auction_sale', {amount: payout, price: auction.currentBid});
-    await createNotification(auction.seller, auction.currentBidder, 'auction_sold', {cardName: itemName, price: payout});
+    // 🔒 得標結算拆成兩個關鍵轉移：①物品給買家 ②扣手續費後的金額給賣家。
+    // 每一步成功後都立刻把旗標（itemGranted/payoutGranted）存回 storage 再往下走，
+    // 這樣如果中途失敗（例如發完物品後，算錢或寫入payout那步才失敗），下次
+    // resolveAuction 重新跑到這場拍賣時，能靠旗標知道「物品已經給過了，不要
+    // 再給一次」，只需要接著補完還沒做完的那一步——避免重試造成物品被重複
+    // 發放，同時也不會有「錢或物品其中一邊發了、另一邊沒發」卻被標記完成的情況。
+    if(!auction.itemGranted){
+      const itemOk = await grantAuctionItem(auction.currentBidder, auction.itemType, auction.itemId, auction.qty, auction.diceData);
+      if(!itemOk){ console.error('[resolveAuction] buyer item grant failed, will retry later', auction.id); return; }
+      auction.itemGranted = true;
+      await storage.set(`auction:${auction.id}`, JSON.stringify(auction)); // 先落盤旗標，才能安全繼續下一步
+    }
+    if(!auction.payoutGranted){
+      // trade_stat 只是排行榜用的交易量統計，不是金幣/物品本體，重試時就算
+      // 極端情況下被重複計一次也只是排行榜數字略有誤差，不影響玩家實際資產，
+      // 不需要跟 itemGranted/payoutGranted 一樣嚴格把關。
+      await createPendingReward(auction.currentBidder, 'auction_trade_stat', {price: auction.currentBid});
+      const sellerForFee = await loadPlayer(auction.seller);
+      const fee = auctionFeeAmount(auction.currentBid, sellerForFee ? starChartVenusFeeReductionPct(sellerForFee) : 0);
+      const payout = auction.currentBid - fee;
+      // 失敗時 createPendingReward 內部會重試、寫 failedreward: 記錄並 console.error，
+      // 之後可在 GM 後台或 storage 查 failedreward: 前綴找出所有未成功發放的收款。
+      const payoutOk = await createPendingReward(auction.seller, 'auction_sale', {amount: payout, price: auction.currentBid});
+      if(!payoutOk){ console.error('[resolveAuction] seller payout failed, will retry later', auction.id); return; }
+      auction.payoutGranted = true;
+      auction.payoutAmount = payout; // 給下面通知用，也讓重試時不用重算一次手續費
+      await storage.set(`auction:${auction.id}`, JSON.stringify(auction));
+    }
+    await createNotification(auction.seller, auction.currentBidder, 'auction_sold', {cardName: itemName, price: auction.payoutAmount});
     await createNotification(auction.currentBidder, auction.seller, 'auction_won', {cardName: itemName, price: auction.currentBid});
   } else {
-    await grantAuctionItem(auction.seller, auction.itemType, auction.itemId, auction.qty, auction.diceData);
-    await createNotification(auction.seller, 'system', 'auction_unsold', {cardName: itemName});
+    // 🔒 修正「流標物品憑空消失」的漏洞：grantAuctionItem 底層的 createPendingReward
+    // 重試完仍可能失敗（只回傳 false，不會 throw），若不檢查回傳值就無條件往下把
+    // auction.status 設成 completed，會導致物品沒真的退回去、也常常連通知都沒發出去，
+    // 這場拍賣卻已經被標記結算完成、從清單消失——玩家看到的就是東西無聲無息不見了。
+    // 這裡只有單一一次發放呼叫，失敗直接 return（不標記 completed）是安全的重試：
+    // 沒有成功建立 pendingReward 就等於這次結算沒發生過，下次任何人打開拍賣頁
+    // 觸發 resolveAuction 時會再試一次，不會造成物品重複發放。
+    const itemGranted = await grantAuctionItem(auction.seller, auction.itemType, auction.itemId, auction.qty, auction.diceData);
+    if(!itemGranted){
+      console.error('[resolveAuction] unsold item grant failed, will retry later', auction.id);
+      return;
+    }
+    await createNotification(auction.seller, 'system', 'auction_unsold', {cardName: itemName, qty: auction.qty});
   }
   auction.status = 'completed';
   await storage.set(`auction:${auction.id}`, JSON.stringify(auction));
@@ -14063,7 +14195,6 @@ async function renderGM(body){
     </div>
     <div class="farm-upgrade-title" style="margin-top:10px;">${tt('星象爆發設定','Astral Burst Settings')}</div>
     <div class="form-row">
-      <div><label>${tt('消耗金幣','Coin cost')}</label><input type="number" id="gm-boss-cost" value="${BOSS_COIN_COST}" min="0" style="width:80px;" /></div>
       <div><label>${tt('固定傷害','Fixed damage')}</label><input type="number" id="gm-boss-dmg" value="${BOSS_BURST_DAMAGE}" min="0" style="width:90px;" /></div>
       <div><label>${tt('貢獻轉換率 %（依實際傷害）','Contribution rate % (per damage dealt)')}</label><input type="number" id="gm-boss-contrib" value="${Math.round(BOSS_CONTRIB_RATE*100)}" min="0" step="0.1" style="width:80px;" /></div>
     </div>
@@ -14082,6 +14213,7 @@ async function renderGM(body){
     <p class="sub">${tt('同一階段攻擊次數達上限仍未擊破，Boss直接跑路重置回第1階，不計今日擊殺次數、不發獎勵，已花費金幣/武器不退還（設為0代表不啟用）。武器為自由選用，有庫存才生效，只影響那一次攻擊的傷害。', 'If a stage isn\'t cleared within the attack limit, the Boss flees and resets to Stage 1 - no kill count, no rewards, spent coins/weapons are not refunded (set 0 to disable). Weapon use is optional and only affects that single attack\'s damage.')}</p>
     <div class="form-row">
       <div><label>${tt('每階段攻擊次數上限','Max attacks / stage')}</label><input type="number" id="gm-boss-max-attacks" value="${BOSS_MAX_ATTACKS}" min="0" style="width:90px;" /></div>
+      <div><label>${tt('每日跑路次數上限（達到即鎖今日挑戰）','Max flees / day (locks challenge when reached)')}</label><input type="number" id="gm-boss-max-flees" value="${BOSS_MAX_DAILY_FLEES}" min="0" style="width:90px;" /></div>
       <div><label>${tt('小武器傷害加成 %','Small weapon dmg %')}</label><input type="number" id="gm-boss-weapon-pct" value="${Math.round(BOSS_WEAPON_DAMAGE_PCT*100)}" min="0" max="500" step="1" style="width:90px;" /></div>
       <div><label>${tt('中武器傷害加成 %','Medium weapon dmg %')}</label><input type="number" id="gm-boss-weapon-unc-pct" value="${Math.round(BOSS_WEAPON_UNCOMMON_DAMAGE_PCT*100)}" min="0" max="500" step="1" style="width:90px;" /></div>
     </div>
@@ -14715,7 +14847,6 @@ async function renderGM(body){
   if(bossSaveBtn) bossSaveBtn.onclick = async ()=>{
     const hp = [0,1,2].map(i=>parseFloat(document.getElementById(`gm-boss-hp-${i}`).value));
     const diff = parseFloat(document.getElementById('gm-boss-diff').value);
-    const cost = parseFloat(document.getElementById('gm-boss-cost').value);
     const dmg = parseFloat(document.getElementById('gm-boss-dmg').value);
     const contribRatePct = parseFloat(document.getElementById('gm-boss-contrib').value);
     const baseCoins = parseFloat(document.getElementById('gm-boss-base-coins').value);
@@ -14726,15 +14857,15 @@ async function renderGM(body){
     const affixFloorPct = parseFloat(document.getElementById('gm-boss-affix-floor').value);
     const affixGuaranteedCycle = parseFloat(document.getElementById('gm-boss-affix-guaranteed').value);
     const maxAttacks = parseFloat(document.getElementById('gm-boss-max-attacks').value);
+    const maxFlees = parseFloat(document.getElementById('gm-boss-max-flees').value);
     const weaponPct = parseFloat(document.getElementById('gm-boss-weapon-pct').value);
     const weaponUncPct = parseFloat(document.getElementById('gm-boss-weapon-unc-pct').value);
-    const nums = [...hp, diff, cost, dmg, contribRatePct, baseCoins, bonusCoins, rewardMult, maxKills, affixChancePct, affixFloorPct, affixGuaranteedCycle, maxAttacks, weaponPct, weaponUncPct];
+    const nums = [...hp, diff, dmg, contribRatePct, baseCoins, bonusCoins, rewardMult, maxKills, affixChancePct, affixFloorPct, affixGuaranteedCycle, maxAttacks, maxFlees, weaponPct, weaponUncPct];
     if(nums.some(v=>isNaN(v)||v<0) || diff <= 0 || rewardMult <= 0 || maxKills < 1 || affixGuaranteedCycle < 1){
       showToast(tt('請輸入有效的非負數字','Please enter a valid non-negative number')); return;
     }
     BOSS_STAGE_HP = hp;
     BOSS_DIFFICULTY_MULT = diff;
-    BOSS_COIN_COST = cost;
     BOSS_BURST_DAMAGE = dmg;
     BOSS_CONTRIB_RATE = contribRatePct / 100;
     BOSS_BASE_REWARD = {coins: baseCoins};
@@ -14745,6 +14876,7 @@ async function renderGM(body){
     BOSS_AFFIX_BONUS_PCT = affixFloorPct / 100;
     BOSS_AFFIX_GUARANTEED_CYCLE = Math.round(affixGuaranteedCycle);
     BOSS_MAX_ATTACKS = Math.round(maxAttacks);
+    BOSS_MAX_DAILY_FLEES = Math.round(maxFlees);
     BOSS_WEAPON_DAMAGE_PCT = weaponPct / 100;
     BOSS_WEAPON_UNCOMMON_DAMAGE_PCT = weaponUncPct / 100;
     await saveBossConfig();
@@ -14766,6 +14898,7 @@ async function renderGM(body){
     BOSS_AFFIX_BONUS_PCT = DEFAULT_BOSS_AFFIX_BONUS_PCT;
     BOSS_AFFIX_GUARANTEED_CYCLE = DEFAULT_BOSS_AFFIX_GUARANTEED_CYCLE;
     BOSS_MAX_ATTACKS = DEFAULT_BOSS_MAX_ATTACKS;
+    BOSS_MAX_DAILY_FLEES = DEFAULT_BOSS_MAX_DAILY_FLEES;
     BOSS_WEAPON_DAMAGE_PCT = DEFAULT_BOSS_WEAPON_DAMAGE_PCT;
     BOSS_WEAPON_UNCOMMON_DAMAGE_PCT = DEFAULT_BOSS_WEAPON_UNCOMMON_DAMAGE_PCT;
     await saveBossConfig();
