@@ -453,6 +453,25 @@
     box-shadow:0 6px 24px rgba(0,0,0,0.4);z-index:999;opacity:0;transition:opacity .3s ease;
   }
   .toast.show{opacity:1;}
+  /* 自製確認視窗：不能依賴瀏覽器原生 confirm()，因為部分內嵌瀏覽器/webview
+     （例如某些 App 內建瀏覽器、iframe 沙盒）會直接封鎖 window.confirm，
+     此時 confirm() 會「不跳出任何視窗、直接回傳 false」，造成玩家點擊按鈕
+     後完全沒有任何畫面反應（連確認框都不會跳出來）——這是「拆解按了沒反應」
+     這類問題最常見的成因，改用純 DOM 蓋版來實作可以保證一定會顯示。 */
+  .confirm-overlay{
+    position:fixed;inset:0;z-index:1300;background:rgba(0,0,0,0.6);
+    display:flex;align-items:center;justify-content:center;padding:20px;
+    opacity:0;transition:opacity .15s ease;
+  }
+  .confirm-overlay.show{opacity:1;}
+  .confirm-box{
+    background:var(--bg-panel-raised);border:1px solid var(--gold);border-radius:14px;
+    padding:22px 20px;max-width:360px;width:100%;box-shadow:0 12px 40px rgba(0,0,0,0.5);
+    transform:translateY(8px);transition:transform .15s ease;
+  }
+  .confirm-overlay.show .confirm-box{transform:translateY(0);}
+  .confirm-box p{color:var(--text);font-size:14px;line-height:1.6;margin:0 0 18px;white-space:pre-wrap;}
+  .confirm-box .confirm-btn-row{display:flex;gap:10px;justify-content:flex-end;}
   .loading-line{color:var(--muted);font-size:13px;text-align:center;padding:30px;}
   .bgm-toggle{
     position:fixed;bottom:20px;right:20px;z-index:998;
@@ -5298,7 +5317,10 @@ async function doDismantleDice(diceId){
     }
     const meta = DICE_QUALITY_META[dice.quality] || DICE_QUALITY_META.common; // fallback：避免舊資料 quality 缺值時直接炸掉
     const previewRefund = diceDismantleRefund(dice);
-    if(!confirm(tt(`確定要拆解這顆${meta.label}骰子嗎？將獲得 ${previewRefund} 骰子精華，此動作無法復原。`, `Dismantle this ${meta.labelEn} die? You'll receive ${previewRefund} Dice Essence. This cannot be undone.`))) return;
+    // 改用自製 showConfirmModal 而非原生 confirm()：原生 confirm 在部分內嵌瀏覽器/webview
+    // 會被封鎖、不顯示任何畫面直接回傳 false，正是「按了拆解沒反應」的成因。
+    const ok = await showConfirmModal(tt(`確定要拆解這顆${meta.label}骰子嗎？將獲得 ${previewRefund} 骰子精華，此動作無法復原。`, `Dismantle this ${meta.labelEn} die? You'll receive ${previewRefund} Dice Essence. This cannot be undone.`));
+    if(!ok) return;
     let refund = 0;
     let applied;
     try{
@@ -5342,7 +5364,9 @@ async function doDismantleAllDice(){
       return;
     }
     const previewRefund = targets.reduce((sum,d)=> sum + diceDismantleRefund(d), 0);
-    if(!confirm(tt(`確定要拆解 ${targets.length} 顆骰子嗎？將獲得約 ${previewRefund} 骰子精華，裝備中與最愛的骰子不會被拆解，此動作無法復原。`, `Dismantle ${targets.length} dice? You'll receive about ${previewRefund} Dice Essence. Equipped and favorited dice are skipped. This cannot be undone.`))) return;
+    // 同上，改用自製確認視窗取代原生 confirm()
+    const ok = await showConfirmModal(tt(`確定要拆解 ${targets.length} 顆骰子嗎？將獲得約 ${previewRefund} 骰子精華，裝備中與最愛的骰子不會被拆解，此動作無法復原。`, `Dismantle ${targets.length} dice? You'll receive about ${previewRefund} Dice Essence. Equipped and favorited dice are skipped. This cannot be undone.`));
+    if(!ok) return;
     let refund = 0;
     let count = 0;
     let applied;
@@ -6413,6 +6437,27 @@ async function saveFortuneStarJackpot(newValue){
   FORTUNE_STAR_JACKPOT = newValue;
   await storage.set('config:fortunestar_jackpot', JSON.stringify(FORTUNE_STAR_JACKPOT));
 }
+// 🔒 修正「幸運之星獎池沒有 CAS 保護」的漏洞：這裡舊版邏輯（跟 SLOT_JACKPOT 曾經
+// 發生過、後來被 applySlotJackpotCAS 修掉的問題一模一樣）是「syncFortuneStarJackpot()
+// 讀一次最新值 → 用記憶體變數算完新值 → saveFortuneStarJackpot() 整包覆蓋寫回」，
+// 中間完全沒有鎖。只要「公布結果把獎池加回下一輪」「三牌共鳴沒中獎時的抽成貢獻」
+// 「另一位玩家剛好同時間也在公布/抽卡」這幾件事的時間點稍微重疊，後寫入的那一次
+// 就會用「別人動過之前」的舊數字去覆蓋，導致其中一筆金額像是憑空消失──畫面上
+// 顯示「沒人中獎，獎池留到下一輪」，但因為同時間另一次寫入把這次的加總蓋掉，
+// 獎池金額看起來完全沒有變化（有人明明中獎拿到錢了，獎池卻沒有真的被扣掉）。
+// 改用 updateKvCAS：寫入時若發現版本被別人搶先動過，會自動重讀最新值、重新用
+// mutator 算一次再重試，保證最終結果一定疊在「當下真正最新」的獎池金額上，
+// 不會遺失任何一筆貢獻或回補。mutator(currentPool) 回傳這次應該寫入的新獎池金額。
+async function applyFortuneStarJackpotCAS(mutator){
+  const newRaw = await updateKvCAS('config:fortunestar_jackpot', (currentRaw)=>{
+    const current = currentRaw!=null ? parseFloat(currentRaw) : NaN;
+    const base = (!isNaN(current) && current >= 0) ? current : 0;
+    return JSON.stringify(mutator(base));
+  }, JSON.stringify(0));
+  const v = parseFloat(newRaw);
+  if(!isNaN(v)) FORTUNE_STAR_JACKPOT = v;
+  return FORTUNE_STAR_JACKPOT;
+}
 // 跟 syncSlotJackpot 同樣道理：讀取／疊加幸運之星獎池前先重新抓一次最新值，
 // 縮短「讀舊值→算新值→寫回」之間的競態窗口。
 async function syncFortuneStarJackpot(){
@@ -6520,14 +6565,15 @@ async function lockFortuneStarRound(dateStr){
     if(existing && existing.phase !== 'open'){
       return existing;
     }
-    await syncFortuneStarJackpot();
     const entries = await listFortuneStarEntries(dateStr);
     const lucky = DECK[Math.floor(Math.random()*DECK.length)]; // 均勻隨機，不套用稀有度加權
-    const pool = FORTUNE_STAR_JACKPOT;
+    // 用 CAS 原子性地「讀取當下獎池金額同時歸零」：避免讀取跟歸零這兩步中間，
+    // 剛好夾了其他玩家同一時間三牌共鳴沒中獎的抽成貢獻，導致那筆貢獻被這裡的
+    // 歸零動作直接覆蓋掉、憑空消失（不影響「三牌共鳴」自己的獎池）。
+    let pool = 0;
+    await applyFortuneStarJackpotCAS(current=>{ pool = current; return 0; });
     const round = {date: dateStr, phase:'locked', pool, luckyCardId: lucky.id, participantCount: entries.length, lockedAt: Date.now()};
     await saveFortuneStarRound(dateStr, round);
-    // 幸運之星獎池歸零重置，重新從下一輪的抽成累積（不影響「三牌共鳴」自己的獎池）
-    await saveFortuneStarJackpot(0);
     return round;
   }catch(e){ return null; }
 }
@@ -6555,11 +6601,12 @@ async function revealFortuneStarRound(dateStr, round){
       await Promise.all(winners.map(w=>createPendingReward(w.nickname, 'stat_bump', {statKey:'totalFortuneStarWins', amount:1})));
       winnerPayload = winners.map(w=>({nickname: w.nickname, amount: share}));
       // 除不盡的餘數留在幸運之星自己的獎池，累加到下一輪，不會憑空消失
-      if(remainder > 0){ await syncFortuneStarJackpot(); await saveFortuneStarJackpot(FORTUNE_STAR_JACKPOT + remainder); }
+      // （用 CAS 疊加，避免跟其他玩家同時間的抽成貢獻互相覆蓋）
+      if(remainder > 0){ await applyFortuneStarJackpotCAS(current=>current + remainder); }
     } else if(round.pool > 0){
       // 無人中獎：獎池退回幸運之星自己的獎池，累加到下一輪（不會流回「三牌共鳴」獎池）
-      await syncFortuneStarJackpot();
-      await saveFortuneStarJackpot(FORTUNE_STAR_JACKPOT + round.pool);
+      // 同樣改用 CAS 疊加，避免跟其他玩家同時間的抽成貢獻互相覆蓋
+      await applyFortuneStarJackpotCAS(current=>current + round.pool);
     }
     const newRound = {...round, phase:'revealed', winners: winnerPayload, revealedAt: Date.now()};
     await saveFortuneStarRound(dateStr, newRound);
@@ -9864,6 +9911,48 @@ function showToast(msg, opts){
   state.toastTimer = setTimeout(()=>t.classList.remove('show'), toastDurationForMsg(msg, opts.legendary));
 }
 
+// 自製確認視窗，取代原生 window.confirm()。
+// 【背景】原本拆解骰子等危險操作直接用 confirm(訊息) 判斷 if(!confirm(...)) return，
+// 但 window.confirm 在部分內嵌瀏覽器/webview（許多手機遊戲透過 App 內建瀏覽器或
+// iframe 分享時會遇到）會被直接封鎖：呼叫後不會顯示任何畫面、直接同步回傳 false，
+// 導致玩家點擊按鈕後「完全沒有任何反應、連確認視窗都不會跳出來」——這正是本次
+// 回報的拆解沒反應的成因。改用純 DOM 蓋版 + Promise，不依賴瀏覽器原生 API，
+// 保證按下按鈕後一定會看到畫面反應。
+// 用法：if(!(await showConfirmModal('確定要...嗎？'))) return;
+function showConfirmModal(message, opts){
+  opts = opts || {};
+  const confirmText = opts.confirmText || tt('確定','Confirm');
+  const cancelText = opts.cancelText || tt('取消','Cancel');
+  return new Promise(resolve=>{
+    const overlay = document.createElement('div');
+    overlay.className = 'confirm-overlay';
+    overlay.innerHTML = `<div class="confirm-box">
+      <p></p>
+      <div class="confirm-btn-row">
+        <button class="btn small secondary" data-confirm-cancel>${cancelText}</button>
+        <button class="btn small" data-confirm-ok>${confirmText}</button>
+      </div>
+    </div>`;
+    // 訊息文字用 textContent 塞入，避免呼叫端傳入的骰子名稱等字串被當成 HTML 解析
+    overlay.querySelector('p').textContent = message;
+    document.body.appendChild(overlay);
+    // 用一個 rAF 讓瀏覽器先套用初始樣式，再加上 show class 觸發淡入動畫
+    requestAnimationFrame(()=> overlay.classList.add('show'));
+    let done = false;
+    const finish = (result)=>{
+      if(done) return; // 避免快速連點 取消/確定 兩顆按鈕造成 resolve 被呼叫兩次
+      done = true;
+      overlay.classList.remove('show');
+      setTimeout(()=> overlay.remove(), 150);
+      resolve(result);
+    };
+    overlay.querySelector('[data-confirm-ok]').onclick = ()=> finish(true);
+    overlay.querySelector('[data-confirm-cancel]').onclick = ()=> finish(false);
+    // 點擊蓋版背景（非白色卡片本體）視同取消
+    overlay.onclick = (e)=>{ if(e.target === overlay) finish(false); };
+  });
+}
+
 function playLegendaryRevealFx(){
   const flash = document.createElement('div');
   flash.className = 'legendary-flash';
@@ -10814,8 +10903,7 @@ async function pullSlot(isMega, onDone){
       // 用 CAS 疊加，理由同上：確保這筆「沒中獎的貢獻」一定是疊在當下真正最新的獎池金額上，
       // 不會因為讀寫間隔中間夾了別人的頭獎重置或貢獻，而把對方的結果覆蓋掉
       await applySlotJackpotCAS(current=>current + slotContrib);
-      await syncFortuneStarJackpot();
-      await saveFortuneStarJackpot(FORTUNE_STAR_JACKPOT + fsContrib);
+      await applyFortuneStarJackpotCAS(current=>current + fsContrib); // 改用 CAS 疊加，理由同上一行
     }
   }catch(e){
     // 存檔失敗：整組復原本地狀態，不套用任何本次抽卡效果，提示玩家重試
