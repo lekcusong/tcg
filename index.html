@@ -1717,33 +1717,64 @@ function regenStamina(p){
   p.lastStaminaRegenAt = p.lastStaminaRegenAt + ticks * PROFESSION_STAMINA_REGEN_MS;
 }
 
+// 🔒 只初始化缺失的欄位，不修改已存在的值；調用時檢查返回值 shouldSave，
+// 只有當確實初始化了新欄位時才寫回資料庫，避免無意中覆蓋服務器上的新數據
 function ensureProfession(p){
-  if(p.profession === undefined) p.profession = null;
-  if(p.profession !== null && !PROFESSION_IDS.includes(p.profession)) p.profession = null;
+  let modified = false;
+  if(p.profession === undefined){
+    p.profession = null;
+    modified = true;
+  }
+  if(p.profession !== null && !PROFESSION_IDS.includes(p.profession)){
+    p.profession = null;
+    modified = true;
+  }
 
-  if(!p.professionProgress || typeof p.professionProgress !== 'object') p.professionProgress = {};
+  if(!p.professionProgress || typeof p.professionProgress !== 'object'){
+    p.professionProgress = {};
+    modified = true;
+  }
   PROFESSION_IDS.forEach(id=>{
     const prog = p.professionProgress[id];
     if(!prog || typeof prog !== 'object'){
       p.professionProgress[id] = {level:1, exp:0};
+      modified = true;
     } else {
-      if(typeof prog.level !== 'number' || prog.level < 1) prog.level = 1;
-      if(typeof prog.exp !== 'number' || prog.exp < 0) prog.exp = 0;
+      if(typeof prog.level !== 'number' || prog.level < 1){
+        prog.level = 1;
+        modified = true;
+      }
+      if(typeof prog.exp !== 'number' || prog.exp < 0){
+        prog.exp = 0;
+        modified = true;
+      }
     }
   });
 
-  if(!p.professionMaterials || typeof p.professionMaterials !== 'object') p.professionMaterials = {};
+  if(!p.professionMaterials || typeof p.professionMaterials !== 'object'){
+    p.professionMaterials = {};
+    modified = true;
+  }
   PROFESSION_MATERIAL_IDS.forEach(id=>{
-    if(typeof p.professionMaterials[id] !== 'number') p.professionMaterials[id] = 0;
+    if(typeof p.professionMaterials[id] !== 'number'){
+      p.professionMaterials[id] = 0;
+      modified = true;
+    }
   });
 
-  if(!p.professionItems || typeof p.professionItems !== 'object') p.professionItems = {};
+  if(!p.professionItems || typeof p.professionItems !== 'object'){
+    p.professionItems = {};
+    modified = true;
+  }
   PROFESSION_ITEM_IDS.forEach(id=>{
-    if(typeof p.professionItems[id] !== 'number') p.professionItems[id] = 0;
+    if(typeof p.professionItems[id] !== 'number'){
+      p.professionItems[id] = 0;
+      modified = true;
+    }
   });
 
   regenStamina(p);
-  return p;
+  return {profession: p.profession, shouldSave: modified};
 }
 
 // ---------- 職業玩法（階段二：職業選擇 + 生產頁面）----------
@@ -3336,13 +3367,19 @@ function pickBossEvent(cycle){
 function maybeTriggerBossEvent(newBoss){
   newBoss.activeEvent = null; // 進新階段一律先清掉上一階殘留的事件效果，同時間只會有一張事件卡生效
   const treasureMeta = BOSS_EVENT_TYPES.find(e => e.id === 'treasure');
-  if(Math.random() < BOSS_CHEST_TRIGGER_CHANCE){
-    // 階段C：不再當場自動決定獎勵，改成標記「待開啟」，由玩家在 Boss 分頁 3 選 1
-    // （金幣／骰子精華／職業材料），實際發放走 resolveBossChestChoice。
+  // 🎁 寶箱和其他事件在同一次判定中互斥：先掷骰決定「是否觸發任何事件」
+  // 然後在事件池中區分「寶箱 vs 祝福/風暴/詛咒/迷霧」。
+  // 寶箱權重佔總池的 30%，其他事件佔 70%（不再分別各掷一次）
+  const totalEventChance = BOSS_CHEST_TRIGGER_CHANCE + BOSS_EVENT_TRIGGER_CHANCE;
+  if(Math.random() >= totalEventChance) return null;
+  
+  const eventRoll = Math.random() * totalEventChance;
+  if(eventRoll < BOSS_CHEST_TRIGGER_CHANCE){
+    // 觸發寶箱
     newBoss.pendingChest = true;
     return {id: 'treasure', kind: treasureMeta ? treasureMeta.kind : 'instant'};
   }
-  if(Math.random() >= BOSS_EVENT_TRIGGER_CHANCE) return null;
+  // 觸發其他事件卡（祝福/風暴/詛咒/迷霧）
   const ev = pickBossEvent(newBoss.cycle);
   if(ev.kind === 'buff' || ev.kind === 'debuff'){
     newBoss.activeEvent = {id: ev.id, hitsLeft: ev.hits, value: ev.value || 0};
@@ -3525,6 +3562,9 @@ async function ensureBossState(nickname, attempt){
     if(raw){
       const applied = await savePlayerBossStateCAS(nickname, updatedAt, fresh);
       if(applied) return fresh;
+      // 🔄 失敗重試時加入指數退避策略，避免高並發下持續重複查詢
+      const backoffMs = 50 * Math.pow(2, Math.min(attempt, 3));
+      await new Promise(r => setTimeout(r, backoffMs));
       return ensureBossState(nickname, attempt + 1);
     }
     await savePlayerBossState(nickname, fresh);
@@ -3669,7 +3709,8 @@ function computeQualityCombo(rolls){
   if(rolls.length < 2) return {tier:null, mult:1};
   const counts = {};
   rolls.forEach(r => { counts[r.quality] = (counts[r.quality]||0) + 1; });
-  const maxCount = Math.max(...Object.values(counts));
+  const values = Object.values(counts);
+  const maxCount = values.length ? Math.max(...values) : 0;
   if(maxCount >= 3) return {tier:'triple', mult: DICE_QUALITY_COMBO_MULT.triple};
   if(maxCount === 2) return {tier:'pair', mult: DICE_QUALITY_COMBO_MULT.pair};
   return {tier:null, mult:1};
@@ -3686,6 +3727,11 @@ function computeQualityCombo(rolls){
 // 另外走 updatePlayerCAS 發放，這裡只負責 boss/小怪血量本身的讀-改-寫。
 async function resolveBossAttack(nickname, damage, comboTier){
   for(let attempt = 0; attempt < 8; attempt++){
+    // 🔄 重試時加入指數退避：第1次立刻，第2次等50ms，第3次等100ms，第4+次等200ms
+    if(attempt > 0){
+      const backoffMs = 50 * Math.pow(2, Math.min(attempt - 1, 2));
+      await new Promise(r => setTimeout(r, backoffMs));
+    }
     const {state: boss, raw, updatedAt} = await loadPlayerBossStateRaw(nickname);
     if(!boss || !raw){
       await ensureBossState(nickname);
@@ -6868,6 +6914,7 @@ const ACHIEVEMENT_IMAGES = {
   major_collector: 'https://lekcusong.github.io/tcg/assets/major_collector.jpg',
   tarot_tycoon: 'https://lekcusong.github.io/tcg/assets/tarot_tycoon.jpg',
   millionaire: 'https://lekcusong.github.io/tcg/assets/millionaire.png',
+  super_millionaire: 'https://lekcusong.github.io/tcg/assets/super_millionaire.png',
   minor_arcana_master: 'https://lekcusong.github.io/tcg/assets/minor_arcana_master.jpg',
   grand_tarot_master: 'https://lekcusong.github.io/tcg/assets/grand_tarot_master.jpg',
   market_mogul: 'https://lekcusong.github.io/tcg/assets/market_mogul.jpg',
@@ -6924,6 +6971,15 @@ const ACHIEVEMENTS = [
     glow: true,
     check(p){ return (p.coins||0) >= 1000000; },
     progress(p){ return `${Math.min(1000000, p.coins||0).toLocaleString()}/1,000,000`; },
+  },
+  {
+    key: 'super_millionaire',
+    nameZh: '千萬富翁', nameEn: 'Super Millionaire',
+    descZh: '個人資產累積達到 10,000,000 金幣', descEn: 'Accumulate 10,000,000 coins',
+    image: ACHIEVEMENT_IMAGES.super_millionaire,
+    glow: 'red',
+    check(p){ return (p.coins||0) >= 10000000; },
+    progress(p){ return `${Math.min(10000000, p.coins||0).toLocaleString()}/10,000,000`; },
   },
   {
     key: 'minor_arcana_master',
@@ -7893,6 +7949,8 @@ function buildExpeditionDurations(tier){
       durationMs: meta.ms,
       commonCount: tier.commonCount,
       uncommonCount: tier.uncommonCount,
+      rareCount: tier.rareCount,
+      epicCount: tier.epicCount,
       successRate: Math.round(rate * 100) / 100,
       rewardCoinsMin: Math.max(1, Math.round(tier.coinPerMinMin * minutes * factor)),
       rewardCoinsMax: Math.max(1, Math.round(tier.coinPerMinMax * minutes * factor)),
@@ -7917,6 +7975,8 @@ const EXPEDITION_TIER_BASE = [
 const DEFAULT_EXPEDITION_QUESTS = EXPEDITION_TIER_BASE.map(tier=>({
   id: tier.id,
   unlockLevel: tier.unlockLevel,
+  commonCount: tier.commonCount,
+  uncommonCount: tier.uncommonCount,
   rareCount: tier.rareCount,
   epicCount: tier.epicCount,
   durations: buildExpeditionDurations(tier),
@@ -7925,6 +7985,8 @@ function cloneExpeditionQuests(list){
   return list.map(q=>({
     id: q.id,
     unlockLevel: q.unlockLevel,
+    commonCount: q.commonCount||0,
+    uncommonCount: q.uncommonCount||0,
     rareCount: q.rareCount||0,
     epicCount: q.epicCount||0,
     durations: Object.fromEntries(Object.entries(q.durations).map(([k,v])=>[k,{...v}])),
@@ -7940,10 +8002,12 @@ async function loadExpeditionConfig(){
       if(Array.isArray(saved)){
         EXPEDITION_QUESTS = DEFAULT_EXPEDITION_QUESTS.map(def=>{
           const s = saved.find(x=>x.id===def.id);
-          if(!s) return {id:def.id, unlockLevel:def.unlockLevel, rareCount:def.rareCount, epicCount:def.epicCount, durations:Object.fromEntries(Object.entries(def.durations).map(([k,v])=>[k,{...v}]))};
+          if(!s) return {id:def.id, unlockLevel:def.unlockLevel, commonCount:def.commonCount, uncommonCount:def.uncommonCount, rareCount:def.rareCount, epicCount:def.epicCount, durations:Object.fromEntries(Object.entries(def.durations).map(([k,v])=>[k,{...v}]))};
           const pick = (val, fallback, min)=> (typeof val==='number' && !isNaN(val) && val>=min) ? val : fallback;
           const unlockLevel = pick(s.unlockLevel, def.unlockLevel, 0);
-          // 向下相容：舊存檔（改版前存的）沒有 rareCount/epicCount 欄位，缺省時沿用預設值
+          // 向下相容：舊存檔（改版前存的）沒有 commonCount/uncommonCount/rareCount/epicCount 欄位，缺省時沿用預設值
+          const commonCount = pick(s.commonCount, def.commonCount, 0);
+          const uncommonCount = pick(s.uncommonCount, def.uncommonCount, 0);
           const rareCount = pick(s.rareCount, def.rareCount, 0);
           const epicCount = pick(s.epicCount, def.epicCount, 0);
           const durations = {};
@@ -7954,6 +8018,8 @@ async function loadExpeditionConfig(){
               durationMs: defVar.durationMs,
               commonCount: pick(sVar.commonCount, defVar.commonCount, 0),
               uncommonCount: pick(sVar.uncommonCount, defVar.uncommonCount, 0),
+              rareCount: pick(sVar.rareCount, defVar.rareCount, 0),
+              epicCount: pick(sVar.epicCount, defVar.epicCount, 0),
               successRate: pick(sVar.successRate, defVar.successRate, 0),
               rewardCoinsMin: pick(sVar.rewardCoinsMin, defVar.rewardCoinsMin, 0),
               rewardCoinsMax: pick(sVar.rewardCoinsMax, defVar.rewardCoinsMax, 0),
@@ -7961,7 +8027,7 @@ async function loadExpeditionConfig(){
               failExp: pick(sVar.failExp, defVar.failExp, 0),
             };
           });
-          return {id:def.id, unlockLevel, rareCount, epicCount, durations};
+          return {id:def.id, unlockLevel, commonCount, uncommonCount, rareCount, epicCount, durations};
         });
       }
     }
@@ -8020,25 +8086,60 @@ async function saveExpeditionRoguelikeConfig(){
   }));
 }
 
+// 🔒 只初始化缺失的欄位，不修改已存在的值；返回 {expedition, shouldSave}
 function ensureExpedition(p){
-  if(typeof p.expLevel !== 'number' || p.expLevel < 0) p.expLevel = 0;
-  if(typeof p.expExp !== 'number' || p.expExp < 0) p.expExp = 0;
-  if(p.expedition === undefined) p.expedition = null;
-  if(p.expedition && (!p.expedition.tierId || !p.expedition.durationKey || !p.expedition.readyAt)) p.expedition = null;
-  if(!p.expeditionRolls || typeof p.expeditionRolls !== 'object') p.expeditionRolls = {};
+  let modified = false;
+  if(typeof p.expLevel !== 'number' || p.expLevel < 0){
+    p.expLevel = 0;
+    modified = true;
+  }
+  if(typeof p.expExp !== 'number' || p.expExp < 0){
+    p.expExp = 0;
+    modified = true;
+  }
+  if(p.expedition === undefined){
+    p.expedition = null;
+    modified = true;
+  }
+  if(p.expedition && (!p.expedition.tierId || !p.expedition.durationKey || !p.expedition.readyAt)){
+    p.expedition = null;
+    modified = true;
+  }
+  if(!p.expeditionRolls || typeof p.expeditionRolls !== 'object'){
+    p.expeditionRolls = {};
+    modified = true;
+  }
   // 🔥 階段四：連勝計數，不隨派遣重置，只在結算（claimExpedition）時更新
-  if(typeof p.expeditionStreak !== 'number' || p.expeditionStreak < 0) p.expeditionStreak = 0;
+  if(typeof p.expeditionStreak !== 'number' || p.expeditionStreak < 0){
+    p.expeditionStreak = 0;
+    modified = true;
+  }
   // 🔥 成就專用：只計「亡命」風險等級＋8小時遠征的連續成功次數，跟上面獎勵加成用的 expeditionStreak 分開算，
   // 避免舊存檔（例如加上風險等級限制前）已經用一般遠征累積的連勝數，誤觸發這個成就
-  if(typeof p.expeditionRecklessStreak !== 'number' || p.expeditionRecklessStreak < 0) p.expeditionRecklessStreak = 0;
+  if(typeof p.expeditionRecklessStreak !== 'number' || p.expeditionRecklessStreak < 0){
+    p.expeditionRecklessStreak = 0;
+    modified = true;
+  }
   // 階段三：補齊舊存檔（升級前就已經在路上的遠征）缺少的事件節點欄位，維持行為等同「這趟沒有事件節點」
   if(p.expedition){
-    if(!Array.isArray(p.expedition.events)) p.expedition.events = [];
-    if(typeof p.expedition.eventSuccessDelta !== 'number') p.expedition.eventSuccessDelta = 0;
-    if(typeof p.expedition.eventRewardPctDelta !== 'number') p.expedition.eventRewardPctDelta = 0;
-    if(!Array.isArray(p.expedition.extraBlessings)) p.expedition.extraBlessings = [];
+    if(!Array.isArray(p.expedition.events)){
+      p.expedition.events = [];
+      modified = true;
+    }
+    if(typeof p.expedition.eventSuccessDelta !== 'number'){
+      p.expedition.eventSuccessDelta = 0;
+      modified = true;
+    }
+    if(typeof p.expedition.eventRewardPctDelta !== 'number'){
+      p.expedition.eventRewardPctDelta = 0;
+      modified = true;
+    }
+    if(!Array.isArray(p.expedition.extraBlessings)){
+      p.expedition.extraBlessings = [];
+      modified = true;
+    }
   }
-  return p.expedition;
+  return {expedition: p.expedition, shouldSave: modified};
 }
 function expeditionTierLabel(tier){
   const idx = EXPEDITION_QUESTS.findIndex(x=>x.id===tier.id);
@@ -8670,17 +8771,36 @@ async function renderPreservingExpeditionItemInputs(){
 }
 async function renderExpedition(body){
   const p = state.player;
-  ensureExpedition(p);
-  ensureProfession(p);
+  const expResult = ensureExpedition(p);
+  const profResult = ensureProfession(p);
   const now = Date.now();
-  const exp = p.expedition;
-  // 階段三：戰鬥型事件節點不需要玩家操作，時間一到就自動判定，這裡先掃一輪，有變更才存檔
+  const exp = expResult.expedition;
+  
+  // 🔒 只有確實初始化了新欄位時，才同步保存到資料庫，避免無意中覆蓋服務器數據
+  if(expResult.shouldSave || profResult.shouldSave){
+    await savePlayer(p);
+  }
+  // 階段三：戰鬥型事件節點不需要玩家操作，時間一到就自動判定；選擇型事件也設置超時自動選第一個選項
+  // 以防玩家長時間不操作導致遠征卡住。這裡先掃一輪，有變更才存檔。
   if(exp && Array.isArray(exp.events) && exp.events.length){
     let eventsChanged = false;
     exp.events.forEach(ev=>{
-      if(!ev.resolved && now >= ev.triggerAt && ev.kind === 'combat'){
-        autoResolveExpeditionCombatEvent(p, ev);
-        eventsChanged = true;
+      if(!ev.resolved && now >= ev.triggerAt){
+        if(ev.kind === 'combat'){
+          autoResolveExpeditionCombatEvent(p, ev);
+          eventsChanged = true;
+        } else if(ev.kind === 'choice'){
+          // 選擇型事件超時（超過觸發時間 30 分鐘仍未選擇），自動選第一個選項
+          const autoTimeoutMs = 30 * 60 * 1000;
+          if(now >= ev.triggerAt + autoTimeoutMs){
+            const def = EXPEDITION_CHOICE_EVENT_POOL.find(e=>e.id===ev.eventId);
+            if(def && def.options.length > 0){
+              const firstOption = def.options[0];
+              resolveExpeditionChoiceEvent(p, ev.idx, firstOption.id, true); // true 表示逾時自動選擇
+              eventsChanged = true;
+            }
+          }
+        }
       }
     });
     if(eventsChanged) await savePlayer(p);
@@ -14654,8 +14774,8 @@ async function renderGM(body){
           <div><label>${tt('解鎖遠征等級','Unlock Lv.')}</label><input type="number" id="gm-exp-q${q.id}-unlock" value="${q.unlockLevel}" min="0" style="width:70px;" /></div>
           <div><label>${tt('需要 Common','Common needed')}</label><input type="number" id="gm-exp-q${q.id}-common" value="${q.durations.d1h.commonCount}" min="0" style="width:70px;" /></div>
           <div><label>${tt('需要 Uncommon','Uncommon needed')}</label><input type="number" id="gm-exp-q${q.id}-uncommon" value="${q.durations.d1h.uncommonCount}" min="0" style="width:70px;" /></div>
-          <div><label>${tt('需要 Rare（3小時）','Rare needed (3h)')}</label><input type="number" id="gm-exp-q${q.id}-rare" value="${q.rareCount||0}" min="0" style="width:70px;" /></div>
-          <div><label>${tt('需要 Epic（8小時）','Epic needed (8h)')}</label><input type="number" id="gm-exp-q${q.id}-epic" value="${q.epicCount||0}" min="0" style="width:70px;" /></div>
+          <div><label>${tt('需要 Rare（3小時）','Rare needed (3h)')}</label><input type="number" id="gm-exp-q${q.id}-rare" value="${q.durations.d3h.rareCount||0}" min="0" style="width:70px;" /></div>
+          <div><label>${tt('需要 Epic（8小時）','Epic needed (8h)')}</label><input type="number" id="gm-exp-q${q.id}-epic" value="${q.durations.d8h.epicCount||0}" min="0" style="width:70px;" /></div>
         </div>
         ${EXPEDITION_DURATION_KEYS.map(durKey=>{
           const v = q.durations[durKey];
@@ -14721,7 +14841,10 @@ async function renderGM(body){
       <div class="farm-upgrade-line" style="color:var(--muted);margin-bottom:6px;">${tt('僅「亡命」風險等級＋8小時遠征的成功／失敗才會累加／打斷連勝次數，其餘風險等級或時長不影響連勝數（但仍會套用當下的連勝獎勵）。', 'Only Reckless-risk + 8-hour expeditions add to or break the win streak on success/failure; other risk levels or durations don\'t affect the streak count (though the current streak bonus still applies to them).')}</div>
       <div class="form-row">
         <div><label>${tt('每連勝1次 %','Per win %')}</label><input type="number" id="gm-rogue-streak-perwin" value="${Math.round(EXPEDITION_STREAK_BONUS_PER_WIN*100)}" min="0" max="100" style="width:90px;" /></div>
-        <div style="color:var(--muted);align-self:end;font-size:12px;">${tt('封頂已移除，加成隨連勝次數無上限累加','Cap removed - bonus now scales uncapped with streak count')}</div>
+      </div>
+      <div class="form-row">
+        <div><label>${tt('連勝加成上限 %','Win Streak Bonus Cap %')}</label><input type="number" id="gm-rogue-streak-cap" value="${Math.round(EXPEDITION_STREAK_BONUS_CAP*100)}" min="0" max="100" style="width:90px;" /></div>
+        <div style="color:var(--muted);align-self:end;font-size:12px;">${tt('若設為0表示無上限','Set to 0 for no cap')}</div>
       </div>
     </div>
     <div class="form-row" style="margin-top:6px;">
@@ -14976,8 +15099,8 @@ async function renderGM(body){
     const potionMediumMinutes = parseFloat(document.getElementById('gm-prof-potion-medium-minutes').value);
     const weaponUncPct = parseFloat(document.getElementById('gm-prof-weapon-unc-pct').value);
     const accessoryUncPct = parseFloat(document.getElementById('gm-prof-accessory-unc-pct').value);
-    const pctFields = [tier1, tier2, tier3, accessoryPct, uncTier1, uncTier2, uncTier3, accessoryUncPct];
-    const nonNegFields = [potionMinutes, potionMinRemain, weaponPct, accessoryMax, potionMediumMinutes, weaponUncPct];
+    const pctFields = [tier1, tier2, tier3, accessoryPct, uncTier1, uncTier2, uncTier3, accessoryUncPct, weaponPct, weaponUncPct];
+    const nonNegFields = [potionMinutes, potionMinRemain, accessoryMax, potionMediumMinutes];
     const invalid = pctFields.some(v=>isNaN(v) || v < 0 || v > 100) ||
       nonNegFields.some(v=>isNaN(v) || v < 0) || accessoryMax < 1;
     if(invalid){ showToast(tt('請輸入有效的數字（百分比需在0-100之間，最大疊加件數需至少為1）','Please enter valid numbers (percentages must be 0-100, max stack must be at least 1)')); return; }
@@ -15210,25 +15333,47 @@ async function renderGM(body){
     showToast(tt('已還原為預設星盤設定','Reverted to default star chart settings'));
     renderTab();
   };
+  
+  // 🔒 安全的 DOM 元素值讀取：若元素不存在或類型不對，返回 defaultValue 而非拋錯
+  function safeGetElementValue(id, defaultValue = NaN){
+    try {
+      const el = document.getElementById(id);
+      return el && el.value !== undefined ? el.value : defaultValue;
+    } catch(e) {
+      return defaultValue;
+    }
+  }
+  function safeParseFloat(id, defaultValue = NaN){
+    const val = safeGetElementValue(id);
+    const parsed = parseFloat(val);
+    return isNaN(parsed) ? defaultValue : parsed;
+  }
+  function safeParseInt(id, radix = 10, defaultValue = NaN){
+    const val = safeGetElementValue(id);
+    const parsed = parseInt(val, radix);
+    return isNaN(parsed) ? defaultValue : parsed;
+  }
+  
   const bossSaveBtn = document.getElementById('gm-boss-save-btn');
   if(bossSaveBtn) bossSaveBtn.onclick = async ()=>{
-    const hp = [0,1,2].map(i=>parseFloat(document.getElementById(`gm-boss-hp-${i}`).value));
-    const diff = parseFloat(document.getElementById('gm-boss-diff').value);
-    const dmg = parseFloat(document.getElementById('gm-boss-dmg').value);
-    const contribRatePct = parseFloat(document.getElementById('gm-boss-contrib').value);
-    const baseCoins = parseFloat(document.getElementById('gm-boss-base-coins').value);
-    const bonusCoins = parseFloat(document.getElementById('gm-boss-bonus-coins').value);
-    const rewardMult = parseFloat(document.getElementById('gm-boss-reward-mult').value);
-    const maxKills = parseFloat(document.getElementById('gm-boss-max-kills').value);
-    const affixChancePct = parseFloat(document.getElementById('gm-boss-affix-chance').value);
-    const affixFloorPct = parseFloat(document.getElementById('gm-boss-affix-floor').value);
-    const affixGuaranteedCycle = parseFloat(document.getElementById('gm-boss-affix-guaranteed').value);
-    const maxAttacks = parseFloat(document.getElementById('gm-boss-max-attacks').value);
-    const maxFlees = parseFloat(document.getElementById('gm-boss-max-flees').value);
-    const weaponPct = parseFloat(document.getElementById('gm-boss-weapon-pct').value);
-    const weaponUncPct = parseFloat(document.getElementById('gm-boss-weapon-unc-pct').value);
+    // 🔒 使用安全的 DOM 訪問函數，避免元素不存在時拋錯
+    const hp = [0,1,2].map(i=>safeParseFloat(`gm-boss-hp-${i}`));
+    const diff = safeParseFloat('gm-boss-diff');
+    const dmg = safeParseFloat('gm-boss-dmg');
+    const contribRatePct = safeParseFloat('gm-boss-contrib');
+    const baseCoins = safeParseFloat('gm-boss-base-coins');
+    const bonusCoins = safeParseFloat('gm-boss-bonus-coins');
+    const rewardMult = safeParseFloat('gm-boss-reward-mult');
+    const maxKills = safeParseFloat('gm-boss-max-kills');
+    const affixChancePct = safeParseFloat('gm-boss-affix-chance');
+    const affixFloorPct = safeParseFloat('gm-boss-affix-floor');
+    const affixGuaranteedCycle = safeParseFloat('gm-boss-affix-guaranteed');
+    const maxAttacks = safeParseFloat('gm-boss-max-attacks');
+    const maxFlees = safeParseFloat('gm-boss-max-flees');
+    const weaponPct = safeParseFloat('gm-boss-weapon-pct');
+    const weaponUncPct = safeParseFloat('gm-boss-weapon-unc-pct');
     const nums = [...hp, diff, dmg, contribRatePct, baseCoins, bonusCoins, rewardMult, maxKills, affixChancePct, affixFloorPct, affixGuaranteedCycle, maxAttacks, maxFlees, weaponPct, weaponUncPct];
-    if(nums.some(v=>isNaN(v)||v<0) || diff <= 0 || rewardMult <= 0 || maxKills < 1 || affixGuaranteedCycle < 1){
+    if(nums.some(v=>isNaN(v)||v<0) || diff <= 0 || rewardMult <= 0 || maxKills < 1 || affixGuaranteedCycle < 1 || affixChancePct > 100 || affixFloorPct > 500 || contribRatePct > 100 || weaponPct > 500 || weaponUncPct > 500){
       showToast(tt('請輸入有效的非負數字','Please enter a valid non-negative number')); return;
     }
     BOSS_STAGE_HP = hp;
@@ -15276,8 +15421,8 @@ async function renderGM(body){
   if(diceShopSaveBtn) diceShopSaveBtn.onclick = async ()=>{
     const cardIds = [0,1,2].map(i=>document.getElementById(`gm-dice-card-${i}`).value);
     const costQty = parseInt(document.getElementById('gm-dice-cost-qty').value, 10);
-    if(cardIds.some(id=>!id) || isNaN(costQty) || costQty < 1){
-      showToast(tt('請選擇 3 張卡片並輸入有效的數量','Please select 3 cards and enter a valid quantity')); return;
+    if(cardIds.some(id=>!id) || isNaN(costQty) || costQty < 1 || cardIds.some(id=>!DECK_BY_ID[id] || DECK_BY_ID[id].rarity !== 'epic') || new Set(cardIds).size !== 3){
+      showToast(tt('請選擇 3 張不同的史詩卡片並輸入有效的數量','Please select 3 different epic cards and enter a valid quantity')); return;
     }
     DICE_GACHA_CARD_IDS = cardIds;
     DICE_GACHA_COST_QTY = costQty;
@@ -15322,7 +15467,7 @@ async function renderGM(body){
       const rareCount = parseInt(document.getElementById(`gm-exp-q${def.id}-rare`).value, 10);
       const epicCount = parseInt(document.getElementById(`gm-exp-q${def.id}-epic`).value, 10);
       const tierNums = [unlockLevel, commonCount, uncommonCount, rareCount, epicCount];
-      if(tierNums.some(v=>isNaN(v) || v<0) || (commonCount===0 && uncommonCount===0)){
+      if(tierNums.some(v=>isNaN(v) || v<0) || (commonCount===0 && uncommonCount===0 && rareCount===0 && epicCount===0)){
         invalid = true;
       }
       const durations = {};
@@ -15338,11 +15483,11 @@ async function renderGM(body){
         }
         durations[durKey] = {
           durationMs: EXPEDITION_DURATION_META[durKey].ms,
-          commonCount, uncommonCount,
+          commonCount, uncommonCount, rareCount, epicCount,
           successRate: rate/100, rewardCoinsMin: coinMin, rewardCoinsMax: coinMax, rewardExp, failExp,
         };
       });
-      updated.push({id:def.id, unlockLevel, rareCount, epicCount, durations});
+      updated.push({id:def.id, unlockLevel, commonCount, uncommonCount, rareCount, epicCount, durations});
     });
     if(invalid){ showToast(tt('請確認每項數值皆為有效的非負數字，成功率需在0-100之間，獎勵金幣上限不小於下限，且每個等級至少需要一種卡牌','Please check all values are valid non-negative numbers, success rate is 0-100, reward max ≥ min, and each tier requires at least one card type')); return; }
     EXPEDITION_QUESTS = updated;
@@ -15379,7 +15524,9 @@ async function renderGM(body){
       eventSchedule[durKey] = parts.map(v=>v/100);
     });
     const streakPerWin = parseFloat(document.getElementById('gm-rogue-streak-perwin').value);
+    const streakBonusCap = parseFloat(document.getElementById('gm-rogue-streak-cap').value);
     if(isNaN(streakPerWin) || streakPerWin<0 || streakPerWin>100) invalid = true;
+    if(isNaN(streakBonusCap) || streakBonusCap<0 || streakBonusCap>100) invalid = true;
     if(invalid){ showToast(tt('請輸入有效的數字（詳見各欄位範圍提示）','Please enter valid numbers (see each field\'s range)')); return; }
     EXPEDITION_ROGUELIKE_UNLOCK_LEVEL = unlockLevel;
     EXPEDITION_RISK_LEVEL_KEYS.forEach(key=>{
@@ -15387,6 +15534,7 @@ async function renderGM(body){
     });
     EXPEDITION_EVENT_SCHEDULE = eventSchedule;
     EXPEDITION_STREAK_BONUS_PER_WIN = streakPerWin/100;
+    EXPEDITION_STREAK_BONUS_CAP = streakBonusCap/100;
     await saveExpeditionRoguelikeConfig();
     showToast(tt('遠征 Roguelike 設定已更新，即時對所有玩家生效 ⚡','Expedition roguelike settings updated, effective immediately for all players ⚡'));
     renderTab();
