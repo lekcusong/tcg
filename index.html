@@ -6281,7 +6281,7 @@ function wireStarChart(body){
 
 // ---------- 三牌共鳴 ----------
 const DEFAULT_SLOT_SETTINGS = {
-  cost: 50,
+  cost: 100,
   multCommon: 2,
   multUncommon: 5,
   multRare: 15,
@@ -7300,8 +7300,8 @@ function renderAchievements(body){
 }
 
 // ---------- 占卜花園（種菜系統） ----------
-const FARM_MAX_LEVEL = 8;
-const FARM_LEVEL_PLOTS = {0:4, 1:5, 2:6, 3:6, 4:7, 5:8, 6:8, 7:9, 8:9};
+const FARM_MAX_LEVEL = 12; // 原本 8，花園升級延伸 Lv.9-12
+const FARM_LEVEL_PLOTS = {0:4, 1:5, 2:6, 3:6, 4:7, 5:8, 6:8, 7:9, 8:9, 9:10, 10:11, 11:11, 12:12};
 const MAJOR_SEED_UNLOCK_TOTAL = 30; // 收藏總張數達到此門檻才能種傳說種子
 // 秘儀新芽／綻放不再用收藏卡牌數解鎖，改走「花色升級鏈」，見 SUIT_UPGRADE_REQS
 let farmTickInterval = null;
@@ -7415,30 +7415,61 @@ const SEED_TYPES = {
     key:'wands_starlight', nameZh:'火苗星輝', nameEn:'Flame Spark Starlight', suitLabel:'Wands · 火', icon:'🔥',
     cost:55, growMs: 20*60*1000, tierLevel:8,
     coinMin:80, coinMax:108, wither:false,
-    upgradesTo: null,
+    upgradesTo: 'wands_aurora',
   },
   cups_starlight: {
     key:'cups_starlight', nameZh:'水波星輝', nameEn:'Water Ripple Starlight', suitLabel:'Cups · 水', icon:'💧',
     cost:130, growMs: 3*60*60*1000, tierLevel:8,
     coinMin:205, coinMax:280, wither:false,
-    upgradesTo: null,
+    upgradesTo: 'cups_aurora',
   },
   swords_starlight: {
     key:'swords_starlight', nameZh:'風刃星輝', nameEn:'Wind Blade Starlight', suitLabel:'Swords · 風', icon:'⚔',
     cost:95, growMs: 60*60*1000, tierLevel:8,
     coinMin:185, coinMax:260, wither:false,
-    upgradesTo: null,
+    upgradesTo: 'swords_aurora',
   },
   pentacles_starlight: {
     key:'pentacles_starlight', nameZh:'大地星輝', nameEn:'Earth Starlight', suitLabel:'Pentacles · 土', icon:'✦',
     cost:260, growMs: 8*60*60*1000, tierLevel:8,
     coinMin:430, coinMax:580, wither:false,
-    upgradesTo: null,
+    upgradesTo: 'pentacles_aurora',
   },
   major_starlight: {
     key:'major_starlight', nameZh:'秘儀星輝', nameEn:'Arcana Starlight', suitLabel:'Major Arcana', icon:'🌟',
     cost:750, growMs: 24*60*60*1000, tierLevel:8,
     coinMin:1650, coinMax:2000, wither:false,
+    upgradesTo: 'major_aurora',
+  },
+  // ---- 極光層（花園等級 12 解鎖升級選項，需在商店花素材把整個花色升級才能取得）----
+  wands_aurora: {
+    key:'wands_aurora', nameZh:'火苗極光', nameEn:'Flame Spark Aurora', suitLabel:'Wands · 火', icon:'🔥',
+    cost:80, growMs: 20*60*1000, tierLevel:12,
+    coinMin:115, coinMax:155, wither:false,
+    upgradesTo: null,
+  },
+  cups_aurora: {
+    key:'cups_aurora', nameZh:'水波極光', nameEn:'Water Ripple Aurora', suitLabel:'Cups · 水', icon:'💧',
+    cost:188, growMs: 3*60*60*1000, tierLevel:12,
+    coinMin:300, coinMax:405, wither:false,
+    upgradesTo: null,
+  },
+  swords_aurora: {
+    key:'swords_aurora', nameZh:'風刃極光', nameEn:'Wind Blade Aurora', suitLabel:'Swords · 風', icon:'⚔',
+    cost:138, growMs: 60*60*1000, tierLevel:12,
+    coinMin:270, coinMax:375, wither:false,
+    upgradesTo: null,
+  },
+  pentacles_aurora: {
+    key:'pentacles_aurora', nameZh:'大地極光', nameEn:'Earth Aurora', suitLabel:'Pentacles · 土', icon:'✦',
+    cost:377, growMs: 8*60*60*1000, tierLevel:12,
+    coinMin:625, coinMax:840, wither:false,
+    upgradesTo: null,
+  },
+  major_aurora: {
+    key:'major_aurora', nameZh:'秘儀極光', nameEn:'Arcana Aurora', suitLabel:'Major Arcana', icon:'🌟',
+    cost:1088, growMs: 24*60*60*1000, tierLevel:12,
+    coinMin:2400, coinMax:2900, wither:false,
     upgradesTo: null,
   },
 };
@@ -7452,7 +7483,7 @@ function seedGroupKey(seed){
   // 漏了「星輝」層的 _starlight 尾巴，導致 wands_starlight 等 key 沒被歸類回
   // wands，在 SEED_GROUP_META 裡找不到對應項目，fallback 直接把原始英文 key
   // 當中文名稱顯示（花色升級篩選標籤、圖示因此顯示成英文字/方框）。
-  return seed.key.replace(/_sprout$|_bloom$|_starlight$/, '');
+  return seed.key.replace(/_sprout$|_bloom$|_starlight$|_aurora$/, '');
 }
 const SEED_GROUP_META = {
   wands:     {icon:'🔥', zh:'火苗', en:'Flame'},
@@ -7490,7 +7521,17 @@ const FARM_UPGRADE_REQS = {
   6: {cards:[{type:'arcana', count:2}]},
   7: {cards:[{type:'arcana', count:4}], coins:1000},
   8: {cards:[{type:'arcana', count:10}], coins:10000, harvests:1000},
+  9:  {cards:[{type:'arcana', count:14}], coins:20000},
+  10: {cards:[{type:'arcana', count:18}], coins:35000, harvests:1500},
+  11: {cards:[{type:'arcana', count:24}], coins:55000},
+  12: {cards:[{type:'arcana', count:30}], coins:80000, harvests:2500},
 };
+// ---- 花園祝福：花園等級 ≥11 時，所有收成金幣永久 +10%，與星盤加成獨立疊加 ----
+const FARM_BLESSING_LEVEL = 11;
+const FARM_BLESSING_COIN_MULT = 1.10;
+function farmBlessingCoinMultiplier(p){
+  return (p.farmLevel||0) >= FARM_BLESSING_LEVEL ? FARM_BLESSING_COIN_MULT : 1;
+}
 function reqCardPool(req){
   if(req.type==='rarity') return DECK.filter(c=>c.rarity===req.rarity);
   if(req.type==='suit') return DECK.filter(c=>c.arcana==='minor' && req.suits.includes(c.id.split('_')[0]));
@@ -7537,19 +7578,24 @@ const SUIT_KEYS = ['wands','cups','swords','pentacles','major'];
 const SUIT_UPGRADE_REQS = {
   wands:     { sprout: {tierLevel:3, cards:[{type:'suit', suits:['wands'], count:8}]},
                bloom:  {tierLevel:6, cards:[{type:'suit', suits:['wands'], count:14}]},
-               starlight: {tierLevel:8, cards:[{type:'suit', suits:['wands'], count:22}]} },
+               starlight: {tierLevel:8, cards:[{type:'suit', suits:['wands'], count:22}]},
+               aurora: {tierLevel:12, cards:[{type:'suit', suits:['wands'], count:34}]} },
   cups:      { sprout: {tierLevel:3, cards:[{type:'suit', suits:['cups'], count:6}]},
                bloom:  {tierLevel:6, cards:[{type:'suit', suits:['cups'], count:10}]},
-               starlight: {tierLevel:8, cards:[{type:'suit', suits:['cups'], count:16}]} },
+               starlight: {tierLevel:8, cards:[{type:'suit', suits:['cups'], count:16}]},
+               aurora: {tierLevel:12, cards:[{type:'suit', suits:['cups'], count:24}]} },
   swords:    { sprout: {tierLevel:3, cards:[{type:'suit', suits:['swords'], count:6}]},
                bloom:  {tierLevel:6, cards:[{type:'suit', suits:['swords'], count:10}]},
-               starlight: {tierLevel:8, cards:[{type:'suit', suits:['swords'], count:16}]} },
+               starlight: {tierLevel:8, cards:[{type:'suit', suits:['swords'], count:16}]},
+               aurora: {tierLevel:12, cards:[{type:'suit', suits:['swords'], count:24}]} },
   pentacles: { sprout: {tierLevel:3, cards:[{type:'suit', suits:['pentacles'], count:5}]},
                bloom:  {tierLevel:6, cards:[{type:'suit', suits:['pentacles'], count:8}]},
-               starlight: {tierLevel:8, cards:[{type:'suit', suits:['pentacles'], count:13}]} },
+               starlight: {tierLevel:8, cards:[{type:'suit', suits:['pentacles'], count:13}]},
+               aurora: {tierLevel:12, cards:[{type:'suit', suits:['pentacles'], count:20}]} },
   major:     { sprout: {tierLevel:3, cards:[{type:'arcana', count:3}]},
                bloom:  {tierLevel:6, cards:[{type:'arcana', count:6}]},
-               starlight: {tierLevel:8, cards:[{type:'arcana', count:10}]} },
+               starlight: {tierLevel:8, cards:[{type:'arcana', count:10}]},
+               aurora: {tierLevel:12, cards:[{type:'arcana', count:14}]} },
 };
 function ensureSuitUpgrades(p){
   if(!p.suitUpgrades) p.suitUpgrades = {};
@@ -7571,7 +7617,8 @@ function effectiveSeedKey(p, suitKey){
   return seed ? seed.key : suitKey;
 }
 function nextSuitUpgradeTierName(level){
-  return level === 0 ? 'sprout' : (level === 1 ? 'bloom' : (level === 2 ? 'starlight' : null));
+  const names = ['sprout','bloom','starlight','aurora'];
+  return names[level] || null;
 }
 async function confirmSuitUpgrade(suitKey){
   const p = state.player;
@@ -9074,7 +9121,7 @@ async function harvestPlot(plotIndex, opts){
   } else {
     ensureMaterials(p);
     let coinGain = Math.floor(Math.random()*(seed.coinMax-seed.coinMin+1)) + seed.coinMin;
-    coinGain = Math.round(coinGain * starChartCoinMultiplier(p) * starChartYieldMultiplier(p));
+    coinGain = Math.round(coinGain * starChartCoinMultiplier(p) * starChartYieldMultiplier(p) * farmBlessingCoinMultiplier(p));
     p.coins = (p.coins||0) + coinGain;
     let bonusCard = null;
     if(seed.bonusCardChance && Math.random() < seed.bonusCardChance){
@@ -9693,6 +9740,37 @@ async function updatePlayerCAS(nick, mutator){
 // 保證不會有任何一次寫入是「用著別人寫入之前的舊資料去覆蓋別人剛寫入的結果」。
 // mutator(currentValue) 回傳這個 key 應該被更新成的新值；currentValue 在 key 還不存在時
 // 會是 fallbackValue。
+// 通用：讀取任意 kv_store key 的原始值與 updated_at（供樂觀鎖比對用），
+// 邏輯跟 loadPlayerRaw 一致，只是不綁定玩家 key。給下面拍賣「認領」機制用——
+// 認領只需要看一眼目前版本戳記，不需要 updateKvCAS 那種「一定要寫回去」的迴圈。
+async function loadKvRaw(key){
+  const res = await fetch(
+    `${SUPABASE_URL}/rest/v1/kv_store?key=eq.${encodeURIComponent(key)}&select=value,updated_at`,
+    { headers: SB_HEADERS }
+  );
+  if(!res.ok) throw new Error('kv raw read failed: ' + res.status);
+  const rows = await res.json();
+  if(!rows || rows.length === 0) return {value: null, updatedAt: null};
+  return {value: rows[0].value, updatedAt: rows[0].updated_at || null};
+}
+// 通用：只有在資料庫現存 updated_at 仍等於 prevUpdatedAt 時才寫入 newValue（CAS），
+// 跟 savePlayerCAS 同一套手法，只是對象換成任意 key。回傳 true 代表搶到寫入。
+async function saveKvCAS(key, prevUpdatedAt, newValue){
+  const filter = prevUpdatedAt
+    ? `updated_at=eq.${encodeURIComponent(prevUpdatedAt)}`
+    : `updated_at=is.null`;
+  const res = await fetch(
+    `${SUPABASE_URL}/rest/v1/kv_store?key=eq.${encodeURIComponent(key)}&${filter}`,
+    {
+      method: 'PATCH',
+      headers: { ...SB_HEADERS, 'Content-Type': 'application/json', Prefer: 'return=representation' },
+      body: JSON.stringify({ value: newValue, updated_at: new Date().toISOString() }),
+    }
+  );
+  if(!res.ok) throw new Error('kv CAS write failed: ' + res.status);
+  const rows = await res.json();
+  return Array.isArray(rows) && rows.length > 0;
+}
 async function updateKvCAS(key, mutator, fallbackValue){
   for(let attempt = 0; attempt < 8; attempt++){
     const res = await fetch(
@@ -10371,7 +10449,9 @@ async function boot(){
   loadDrawWeights().catch(()=>{});
   loadSlotConfig().catch(()=>{});
   loadQuestSettings().catch(()=>{});
-  loadSeedPrices().catch(()=>{});
+  // 🔒 種子價格 GM 面板已停用，不再讀取 config:seed_prices 覆蓋值，避免舊資料
+  // （包含極光層曾經算錯的售價）悄悄蓋掉 SEED_TYPES 裡目前正確的 cost。
+  // loadSeedPrices().catch(()=>{});
   loadSeasonConfig().catch(()=>{});
   loadAvatarShop().catch(()=>{});
   loadStarChartConfig().catch(()=>{});
@@ -10595,6 +10675,22 @@ async function broadcastJackpotWin(winnerNick, amount){
   }));
 }
 let slotPulling = false;
+// ---------- 自動共鳴（連續自動觸發 pullSlot，序列化執行，每抽都跑完整動畫才觸發下一抽） ----------
+// autoSlotState 非 null 時代表目前正在跑自動共鳴（或剛好暫停在中頭獎確認），
+// running=false 但 autoSlotState 仍不是 null 的狀態＝「暫停中，等玩家確認要不要繼續」。
+let autoSlotState = null;
+// 🔒「自動共鳴」限定帳號使用：只有暱稱符合 AUTO_RESONANCE_NICKNAME（大小寫不分）才看得到／能觸發，
+// 沿用 GM_NICKNAME／isGM() 同樣的比對寫法。純前端限制，只能藏住 UI 入口，
+// 技術上仍可被人直接開 devtools 呼叫 startAutoSlot()，不是真正的伺服器端權限控管。
+const AUTO_RESONANCE_NICKNAME = 'lekcusong';
+function isAutoResonanceAllowed(){
+  return !!state.nickname && state.nickname.toLowerCase() === AUTO_RESONANCE_NICKNAME.toLowerCase();
+}
+// 輸入框的次數/模式沿用 GM 面板 input 的做法，用全域變數暫存使用者輸入，
+// 避免自動共鳴跑到一半時 renderTab() 被其他輪詢觸發重繪，把使用者剛打的數字洗掉。
+let autoSlotCountInput = 10;
+let autoSlotModeIsMega = false;
+let lastAutoSlotSummary = null; // 上一輪自動共鳴結束後的統計，顯示在面板上直到玩家開始下一輪或離開頁面
 function unlockSlotButtons(){
   slotPulling = false;
   // render() 通常會依照最新金幣重新決定按鈕的 disabled 狀態；
@@ -10604,10 +10700,12 @@ function unlockSlotButtons(){
   if(slotBtnEl) slotBtnEl.disabled = state.player.coins < SLOT_SETTINGS.cost;
   if(megaSlotBtnEl) megaSlotBtnEl.disabled = state.player.coins < SLOT_SETTINGS.megaCost;
 }
-async function pullSlot(isMega){
-  if(slotPulling) return;
+// onDone(result) 在這次共鳴「完全結束」（含存檔＋翻牌動畫跑完）才會被呼叫一次，供自動共鳴迴圈接續下一抽用。
+// result 固定帶 {ok}；ok=true 時額外帶 {cost, winTier, winAmount}，winTier 沒中獎時是 null。
+async function pullSlot(isMega, onDone){
+  if(slotPulling){ if(onDone) onDone({ok:false, reason:'busy'}); return; }
   const cost = isMega ? SLOT_SETTINGS.megaCost : SLOT_SETTINGS.cost;
-  if(state.player.coins < cost){ showToast(tt('金幣不足，無法共鳴','Not enough coins to resonate')); return; }
+  if(state.player.coins < cost){ showToast(tt('金幣不足，無法共鳴','Not enough coins to resonate')); if(onDone) onDone({ok:false, reason:'insufficient_coins'}); return; }
 
   slotPulling = true;
   const slotBtn = document.getElementById('slot-btn');
@@ -10646,6 +10744,7 @@ async function pullSlot(isMega){
   }catch(e){
     showToast(tt('連線異常，請稍後再試','Connection issue, please try again later'));
     unlockSlotButtons();
+    if(onDone) onDone({ok:false, reason:'network_error'});
     return;
   }
 
@@ -10729,14 +10828,19 @@ async function pullSlot(isMega){
     showToast(tt('存檔失敗，本次共鳴未生效，請檢查網路後重試','Save failed, this pull did not take effect, please check your connection and retry'));
     render();
     unlockSlotButtons();
+    if(onDone) onDone({ok:false, reason:'save_failed'});
     return;
   }
 
   render();
   // 按鈕在整段翻牌動畫（含史詩特效）跑完之前持續保持鎖定，
   // 直到 flipCard 翻完第三張牌並呼叫 unlockSlotButtons() 才解鎖，
-  // 這樣玩家沒辦法在動畫還在跑的時候就搶點下一次。
-  setTimeout(()=>{ flipCard(0, unlockSlotButtons); }, 300);
+  // 這樣玩家沒辦法在動畫還在跑的時候就搶點下一次。自動共鳴的 onDone 也要等
+  // 同一個時間點才觸發，確保下一抽是在這抽動畫完全跑完之後才開始。
+  setTimeout(()=>{ flipCard(0, ()=>{
+    unlockSlotButtons();
+    if(onDone) onDone({ok:true, cost, winTier, winAmount});
+  }); }, 300);
 
   if(winMsg){
     setTimeout(()=>showToast(winMsg), 1700);
@@ -10746,6 +10850,106 @@ async function pullSlot(isMega){
     lastSeenBroadcastTs = Date.now();
   }
 }
+
+// ---------- 自動共鳴（連續自動觸發） ----------
+// 設計重點：pullSlot 本身已經是「一次完整流程」（含存檔＋整段翻牌動畫），
+// 這裡只是用 onDone callback 把好幾次 pullSlot 序列化串起來，絕對不會同時發出
+// 兩筆request；中頭獎（史詩三連）時會暫停下來讓玩家確認，其餘情況全部自動跑完。
+function startAutoSlot(){
+  if(!isAutoResonanceAllowed()){ showToast(tt('此帳號沒有使用自動共鳴的權限','This account is not allowed to use Auto Resonance')); return; }
+  if(autoSlotState && autoSlotState.running) return; // 防止重複觸發
+  const countInput = document.getElementById('auto-slot-count');
+  const count = countInput ? parseInt(countInput.value, 10) : autoSlotCountInput;
+  if(!count || count < 1 || !Number.isFinite(count)){
+    showToast(tt('請輸入正確的自動共鳴次數','Please enter a valid number of pulls'));
+    return;
+  }
+  autoSlotCountInput = count;
+  const isMega = autoSlotModeIsMega;
+  const cost = isMega ? SLOT_SETTINGS.megaCost : SLOT_SETTINGS.cost;
+  if(state.player.coins < cost){
+    showToast(tt('金幣不足，無法開始自動共鳴','Not enough coins to start auto resonance'));
+    return;
+  }
+  if(state.player.coins < cost * count){
+    const affordable = Math.floor(state.player.coins / cost);
+    if(!confirm(tt(`目前金幣只夠跑約 ${affordable} 次，會在中途因金幣不足自動停止，確定要開始嗎？`, `Your coins only cover about ${affordable} pulls - auto resonance will stop early when coins run out. Start anyway?`))) return;
+  }
+  lastAutoSlotSummary = null;
+  autoSlotState = {
+    running: true, isMega, remaining: count, total: count,
+    spentTotal: 0, winningsTotal: 0,
+    tierCounts: {none:0, common:0, uncommon:0, rare:0, epic:0},
+    jackpotWins: 0, jackpotAmount: 0,
+    stopReason: null,
+  };
+  render();
+  runAutoSlotStep();
+}
+function stopAutoSlot(){
+  // 手動停止不會打斷正在跑的這一抽（那一抽仍會自然跑完動畫），
+  // 只是不再觸發下一抽，比較符合玩家體感，不會動畫跑一半突然卡住。
+  if(autoSlotState){ autoSlotState.running = false; autoSlotState.stopReason = 'manual'; }
+  render();
+}
+function runAutoSlotStep(){
+  const s = autoSlotState;
+  if(!s || !s.running || s.remaining <= 0){ finishAutoSlot(); return; }
+  // 🔒 迴圈本身也要重複檢查權限，不能只信任 startAutoSlot() 那一次的檢查——
+  // 避免有人直接操作 autoSlotState 全域變數、繞過按鈕與 startAutoSlot() 進來硬跑這個迴圈。
+  if(!isAutoResonanceAllowed()){ s.stopReason = 'not_allowed'; s.running = false; finishAutoSlot(); return; }
+  const cost = s.isMega ? SLOT_SETTINGS.megaCost : SLOT_SETTINGS.cost;
+  if(state.player.coins < cost){ s.stopReason = 'coins'; finishAutoSlot(); return; }
+  pullSlot(s.isMega, onAutoSlotPullDone);
+}
+function onAutoSlotPullDone(result){
+  const s = autoSlotState;
+  if(!s) return; // 保險：理論上不會在 autoSlotState 被清空後才收到 callback
+  if(!result || !result.ok){
+    // busy 例外不太會發生（迴圈本身就是序列化的），insufficient_coins/network_error/save_failed
+    // 都直接停下來，把已經成功的次數統計留給玩家看，而不是無限重試。
+    s.stopReason = (result && result.reason) || 'error';
+    finishAutoSlot();
+    return;
+  }
+  s.spentTotal += result.cost;
+  s.winningsTotal += result.winAmount || 0;
+  s.tierCounts[result.winTier || 'none']++;
+  s.remaining--;
+  if(result.winTier === 'jackpot'){
+    s.jackpotWins++;
+    s.jackpotAmount += result.winAmount;
+    s.running = false; // 中頭獎先暫停，等玩家確認
+    render();
+    const remainingAfter = s.remaining;
+    const msg = s.isMega
+      ? tt(`🔥 超級命運共鳴中頭獎了！贏得 ✦${result.winAmount}！要繼續剩餘 ${remainingAfter} 次自動共鳴嗎？`, `🔥 Mega Fated Resonance jackpot! Won ✦${result.winAmount}! Continue the remaining ${remainingAfter} auto pulls?`)
+      : tt(`✨ 命運共鳴中頭獎了！贏得 ✦${result.winAmount}！要繼續剩餘 ${remainingAfter} 次自動共鳴嗎？`, `✨ Fated Resonance jackpot! Won ✦${result.winAmount}! Continue the remaining ${remainingAfter} auto pulls?`);
+    if(remainingAfter > 0 && confirm(msg)){
+      s.running = true;
+      s.stopReason = null;
+      render();
+      runAutoSlotStep();
+    }else{
+      s.stopReason = s.stopReason || 'jackpot_stop';
+      finishAutoSlot();
+    }
+    return;
+  }
+  render();
+  setTimeout(runAutoSlotStep, 150); // 抽與抽之間留一點間隔，避免瞬間灌爆請求，畫面也比較看得清楚
+}
+function finishAutoSlot(){
+  const s = autoSlotState;
+  autoSlotState = null;
+  if(s){
+    const executed = s.total - s.remaining;
+    lastAutoSlotSummary = {...s, executed};
+    showToast(tt(`自動共鳴結束，共執行 ${executed}/${s.total} 次`, `Auto resonance finished - ${executed}/${s.total} pulls`));
+  }
+  render();
+}
+
 // ---------- 分頁在背景時暫停輪詢，降低 egress ----------
 // 下面幾條 setInterval 輪詢（中獎跑馬燈、獎池、稱號、通知、聊天…）原本不管
 // 分頁是否可見都照常打 API；玩家把分頁丟到背景分頁、或手機螢幕關掉時，
@@ -11797,52 +12001,113 @@ async function buyoutAuction(auctionId){
   renderTab();
   updateHeaderCoins();
 }
+// 🔒 拍賣結算的「認領」機制，防的是跟上面旗標機制不同種的漏洞：旗標
+// （itemGranted/payoutGranted）能防「同一輪重試」不會重複發放，但防不了
+// 「兩個玩家幾乎同時打開拍賣頁、同時對同一場已到期拍賣觸發 resolveAuction」——
+// 因為兩邊都是普通的 storage.get 讀到 xxxGranted:false，都還來不及把旗標
+// 寫回去，就都已經各自呼叫了一次 grantAuctionItem/createPendingReward（這兩個
+// 呼叫本身有副作用、一旦成功不能重複執行），照樣會造成物品或金幣被重複發放。
+// 解法：在真正呼叫這些有副作用的函式之前，先用 CAS 在 auction 記錄上搶一個
+// 「claim」時間戳。只有搶到 claim 的那一邊，才會真的去發放；沒搶到的（不管是
+// 因為這步已經做完，還是因為別人正在做）一律直接放棄、不執行任何有副作用的
+// 呼叫，把這輪交給贏的人或下一次觸發處理。
+// claim 有效期只有 AUCTION_CLAIM_STALE_MS：如果搶到 claim 的那一邊中途出錯
+// 或分頁直接關掉，來不及把 xxxGranted 旗標補上，claim 過期後下一次
+// resolveAuction 會允許別人重新搶下這一步，不會因為一次意外就永久卡死。
+const AUCTION_CLAIM_STALE_MS = 20000;
+// 回傳三種狀態之一：
+//  - {status:'done', auction}     這步早就做完了（stepKey 已是 true），照最新資料繼續走下一步即可
+//  - {status:'claimed', auction}  搶到 claim，可以安全去執行有副作用的發放呼叫
+//  - {status:'busy'}              搶輸了，或別人正在做這一步且 claim 還沒過期——這輪直接放棄
+async function claimAuctionStep(auctionId, stepKey){
+  const claimField = stepKey + 'ClaimedAt';
+  const {value, updatedAt} = await loadKvRaw(`auction:${auctionId}`);
+  if(!value) return {status:'busy'}; // 理論上不該發生（拍賣被刪了？），保守起見當成搶輸處理
+  const auction = normalizeAuction(JSON.parse(value));
+  if(auction[stepKey]) return {status:'done', auction};
+  const now = Date.now();
+  if(auction[claimField] && (now - auction[claimField]) < AUCTION_CLAIM_STALE_MS){
+    return {status:'busy'};
+  }
+  auction[claimField] = now;
+  const ok = await saveKvCAS(`auction:${auctionId}`, updatedAt, JSON.stringify(auction));
+  if(!ok) return {status:'busy'}; // 這段期間已經有別人先寫入了（可能剛好也在搶同一個 claim）
+  return {status:'claimed', auction};
+}
+// 通用：對單一拍賣記錄做「讀-改-寫」，全程用樂觀鎖保護（跟 updatePlayerCAS 同一手法，
+// 只是對象換成 auction:${id}）。用在「已經搶到 claim、真的發放成功了，要把 xxxGranted
+// 旗標落盤」的收尾階段——這樣即使跟另一個正在處理另一個步驟（例如 payoutGranted）的
+// 併發呼叫互相打架，也不會有後手覆蓋先手、把對方剛寫進去的旗標蓋掉的情況。
+async function updateAuctionCAS(auctionId, mutator){
+  for(let attempt = 0; attempt < 8; attempt++){
+    const {value, updatedAt} = await loadKvRaw(`auction:${auctionId}`);
+    if(!value) return null;
+    const auction = normalizeAuction(JSON.parse(value));
+    mutator(auction);
+    const ok = await saveKvCAS(`auction:${auctionId}`, updatedAt, JSON.stringify(auction));
+    if(ok) return auction;
+    // 沒搶到：重讀最新資料、重新套用 mutator 再試一次
+  }
+  throw new Error('auction state contention exceeded retries');
+}
 async function resolveAuction(auction){
   if(auction.status !== 'active' || Date.now() < auction.endsAt) return;
   const itemName = auctionDisplayInfo(auction).nameOnly;
   if(auction.currentBidder){
     // 🔒 得標結算拆成兩個關鍵轉移：①物品給買家 ②扣手續費後的金額給賣家。
-    // 每一步成功後都立刻把旗標（itemGranted/payoutGranted）存回 storage 再往下走，
-    // 這樣如果中途失敗（例如發完物品後，算錢或寫入payout那步才失敗），下次
-    // resolveAuction 重新跑到這場拍賣時，能靠旗標知道「物品已經給過了，不要
-    // 再給一次」，只需要接著補完還沒做完的那一步——避免重試造成物品被重複
-    // 發放，同時也不會有「錢或物品其中一邊發了、另一邊沒發」卻被標記完成的情況。
+    // 每一步都先搶 claim 才執行有副作用的發放呼叫，成功後立刻把旗標
+    // （itemGranted/payoutGranted）用 CAS 存回 storage 再往下走——這樣不管是
+    // 「同一輪重試」還是「兩個人同時觸發結算」，都不會造成重複發放，也不會
+    // 有「錢或物品其中一邊發了、另一邊沒發」卻被標記完成的情況。
     if(!auction.itemGranted){
-      const itemOk = await grantAuctionItem(auction.currentBidder, auction.itemType, auction.itemId, auction.qty, auction.diceData);
-      if(!itemOk){ console.error('[resolveAuction] buyer item grant failed, will retry later', auction.id); return; }
-      auction.itemGranted = true;
-      await storage.set(`auction:${auction.id}`, JSON.stringify(auction)); // 先落盤旗標，才能安全繼續下一步
+      const claim = await claimAuctionStep(auction.id, 'itemGranted');
+      if(claim.status === 'busy') return; // 沒搶到：交給贏的人（或下次重試）處理
+      auction = claim.auction;
+      if(claim.status === 'claimed'){
+        const itemOk = await grantAuctionItem(auction.currentBidder, auction.itemType, auction.itemId, auction.qty, auction.diceData);
+        if(!itemOk){ console.error('[resolveAuction] buyer item grant failed, will retry later', auction.id); return; }
+        auction = await updateAuctionCAS(auction.id, (a)=>{ a.itemGranted = true; a.itemGrantedClaimedAt = null; });
+        if(!auction) return;
+      }
     }
     if(!auction.payoutGranted){
-      // trade_stat 只是排行榜用的交易量統計，不是金幣/物品本體，重試時就算
-      // 極端情況下被重複計一次也只是排行榜數字略有誤差，不影響玩家實際資產，
-      // 不需要跟 itemGranted/payoutGranted 一樣嚴格把關。
-      await createPendingReward(auction.currentBidder, 'auction_trade_stat', {price: auction.currentBid});
-      const sellerForFee = await loadPlayer(auction.seller);
-      const fee = auctionFeeAmount(auction.currentBid, sellerForFee ? starChartVenusFeeReductionPct(sellerForFee) : 0);
-      const payout = auction.currentBid - fee;
-      // 失敗時 createPendingReward 內部會重試、寫 failedreward: 記錄並 console.error，
-      // 之後可在 GM 後台或 storage 查 failedreward: 前綴找出所有未成功發放的收款。
-      const payoutOk = await createPendingReward(auction.seller, 'auction_sale', {amount: payout, price: auction.currentBid});
-      if(!payoutOk){ console.error('[resolveAuction] seller payout failed, will retry later', auction.id); return; }
-      auction.payoutGranted = true;
-      auction.payoutAmount = payout; // 給下面通知用，也讓重試時不用重算一次手續費
-      await storage.set(`auction:${auction.id}`, JSON.stringify(auction));
+      const claim = await claimAuctionStep(auction.id, 'payoutGranted');
+      if(claim.status === 'busy') return;
+      auction = claim.auction;
+      if(claim.status === 'claimed'){
+        // trade_stat 只是排行榜用的交易量統計，不是金幣/物品本體，就算極端情況下
+        // 被多計一次，影響也只是排行榜數字略有誤差，不需要跟 itemGranted/payoutGranted
+        // 一樣嚴格把關，這裡就不額外幫它加 claim。
+        await createPendingReward(auction.currentBidder, 'auction_trade_stat', {price: auction.currentBid});
+        const sellerForFee = await loadPlayer(auction.seller);
+        const fee = auctionFeeAmount(auction.currentBid, sellerForFee ? starChartVenusFeeReductionPct(sellerForFee) : 0);
+        const payout = auction.currentBid - fee;
+        // 失敗時 createPendingReward 內部會重試、寫 failedreward: 記錄並 console.error，
+        // 之後可在 GM 後台或 storage 查 failedreward: 前綴找出所有未成功發放的收款。
+        const payoutOk = await createPendingReward(auction.seller, 'auction_sale', {amount: payout, price: auction.currentBid});
+        if(!payoutOk){ console.error('[resolveAuction] seller payout failed, will retry later', auction.id); return; }
+        auction = await updateAuctionCAS(auction.id, (a)=>{ a.payoutGranted = true; a.payoutAmount = payout; a.payoutGrantedClaimedAt = null; });
+        if(!auction) return;
+      }
     }
     await createNotification(auction.seller, auction.currentBidder, 'auction_sold', {cardName: itemName, price: auction.payoutAmount});
     await createNotification(auction.currentBidder, auction.seller, 'auction_won', {cardName: itemName, price: auction.currentBid});
   } else {
-    // 🔒 修正「流標物品憑空消失」的漏洞：grantAuctionItem 底層的 createPendingReward
-    // 重試完仍可能失敗（只回傳 false，不會 throw），若不檢查回傳值就無條件往下把
-    // auction.status 設成 completed，會導致物品沒真的退回去、也常常連通知都沒發出去，
-    // 這場拍賣卻已經被標記結算完成、從清單消失——玩家看到的就是東西無聲無息不見了。
-    // 這裡只有單一一次發放呼叫，失敗直接 return（不標記 completed）是安全的重試：
-    // 沒有成功建立 pendingReward 就等於這次結算沒發生過，下次任何人打開拍賣頁
-    // 觸發 resolveAuction 時會再試一次，不會造成物品重複發放。
-    const itemGranted = await grantAuctionItem(auction.seller, auction.itemType, auction.itemId, auction.qty, auction.diceData);
-    if(!itemGranted){
-      console.error('[resolveAuction] unsold item grant failed, will retry later', auction.id);
-      return;
+    // 🔒 流標退回同樣先搶 claim 再發放，理由跟上面得標分支一致：只有單一一次
+    // 發放呼叫，claim 沒搶到就直接放棄，不會造成物品被退回兩次。
+    if(!auction.itemGranted){
+      const claim = await claimAuctionStep(auction.id, 'itemGranted');
+      if(claim.status === 'busy') return;
+      auction = claim.auction;
+      if(claim.status === 'claimed'){
+        const itemGranted = await grantAuctionItem(auction.seller, auction.itemType, auction.itemId, auction.qty, auction.diceData);
+        if(!itemGranted){
+          console.error('[resolveAuction] unsold item grant failed, will retry later', auction.id);
+          return;
+        }
+        auction = await updateAuctionCAS(auction.id, (a)=>{ a.itemGranted = true; a.itemGrantedClaimedAt = null; });
+        if(!auction) return;
+      }
     }
     await createNotification(auction.seller, 'system', 'auction_unsold', {cardName: itemName, qty: auction.qty});
   }
@@ -12604,10 +12869,12 @@ function renderResonance(body){
     `).join('') + `</div>`;
   }
 
+  const autoRunning = !!(autoSlotState && autoSlotState.running);
+  const manualDisabled = slotPulling || autoRunning;
   html += `<div class="countdown" style="margin-bottom:10px;">${tt(`目前獎池：<b style="color:var(--gold-bright);">✦ ${SLOT_JACKPOT}</b>`, `Current jackpot: <b style="color:var(--gold-bright);">✦ ${SLOT_JACKPOT}</b>`)}</div>
     <div style="display:flex;align-items:center;justify-content:center;gap:14px;flex-wrap:wrap;">
-      <button class="btn" id="slot-btn" ${(slotPulling || p.coins < SLOT_SETTINGS.cost) ? 'disabled' : ''}>${tt(`共鳴一次（✦ ${SLOT_SETTINGS.cost}）`, `Resonate once (✦ ${SLOT_SETTINGS.cost})`)}</button>
-      <button class="btn" id="mega-slot-btn" style="border-color:var(--legendary-b);background:linear-gradient(180deg, rgba(139,63,214,0.28), rgba(139,63,214,0.08));color:var(--legendary-a);" ${(slotPulling || p.coins < SLOT_SETTINGS.megaCost) ? 'disabled' : ''}>${tt(`🔥 超級共鳴（✦ ${SLOT_SETTINGS.megaCost}，大獎 x${SLOT_SETTINGS.megaJackpotMult}）`, `🔥 Mega Resonance (✦ ${SLOT_SETTINGS.megaCost}, jackpot x${SLOT_SETTINGS.megaJackpotMult})`)}</button>
+      <button class="btn" id="slot-btn" ${(manualDisabled || p.coins < SLOT_SETTINGS.cost) ? 'disabled' : ''}>${tt(`共鳴一次（✦ ${SLOT_SETTINGS.cost}）`, `Resonate once (✦ ${SLOT_SETTINGS.cost})`)}</button>
+      <button class="btn" id="mega-slot-btn" style="border-color:var(--legendary-b);background:linear-gradient(180deg, rgba(139,63,214,0.28), rgba(139,63,214,0.08));color:var(--legendary-a);" ${(manualDisabled || p.coins < SLOT_SETTINGS.megaCost) ? 'disabled' : ''}>${tt(`🔥 超級共鳴（✦ ${SLOT_SETTINGS.megaCost}，大獎 x${SLOT_SETTINGS.megaJackpotMult}）`, `🔥 Mega Resonance (✦ ${SLOT_SETTINGS.megaCost}, jackpot x${SLOT_SETTINGS.megaJackpotMult})`)}</button>
       <span style="font-family:'Space Mono',monospace;font-size:13px;color:var(--gold-bright);">${tt(`目前金幣：✦ ${p.coins}`, `Your coins: ✦ ${p.coins}`)}</span>
     </div>
     <p class="sub" style="margin:10px 0 0;font-size:12px;">${tt(`超級共鳴花費較高，其餘規則相同，但三張史詩會直接卷走獎池的 ${SLOT_SETTINGS.megaJackpotMult} 倍！`, `Mega Resonance costs more with the same rules otherwise, but three Epics take ${SLOT_SETTINGS.megaJackpotMult}x the jackpot pool!`)}</p>
@@ -12615,11 +12882,63 @@ function renderResonance(body){
     ${LATEST_WIN ? `<p class="sub" style="margin:6px 0 0;font-size:12px;color:var(--gold-bright);">${tt(`👑 上一位頭獎得主：${escapeHtml(LATEST_WIN.nickname||'?')}，獨得 ✦${LATEST_WIN.amount}`, `👑 Last jackpot winner: ${escapeHtml(LATEST_WIN.nickname||'?')}, won ✦${LATEST_WIN.amount}`)}</p>` : ''}
   </div>`;
 
+  // ---------- 自動共鳴控制區（限定帳號，見 isAutoResonanceAllowed）----------
+  if(isAutoResonanceAllowed()){
+  html += `<div class="panel" style="margin-top:12px;">
+    <h3 style="margin:0 0 8px;font-size:15px;">${tt('🔁 自動共鳴','🔁 Auto Resonance')}</h3>`;
+  if(autoSlotState){
+    const s = autoSlotState;
+    const modeLabel = s.isMega ? tt('超級共鳴','Mega Resonance') : tt('一般共鳴','Resonance');
+    html += `<p class="sub" style="margin:0 0 8px;">${tt(`模式：${modeLabel}　已抽 ${s.total - s.remaining}/${s.total} 次　已花費 ✦${s.spentTotal}`, `Mode: ${modeLabel}　${s.total - s.remaining}/${s.total} pulls done　Spent ✦${s.spentTotal}`)}</p>
+      <button class="btn" id="auto-slot-stop-btn" style="border-color:var(--danger);color:var(--danger);">${tt('⏹ 停止自動共鳴','⏹ Stop Auto Resonance')}</button>`;
+  }else{
+    html += `<div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:10px;">
+      <label style="font-size:13px;cursor:pointer;"><input type="radio" name="auto-slot-mode" value="normal" ${!autoSlotModeIsMega?'checked':''}> ${tt(`一般共鳴（✦${SLOT_SETTINGS.cost}/次）`, `Resonance (✦${SLOT_SETTINGS.cost}/pull)`)}</label>
+      <label style="font-size:13px;cursor:pointer;"><input type="radio" name="auto-slot-mode" value="mega" ${autoSlotModeIsMega?'checked':''}> ${tt(`超級共鳴（✦${SLOT_SETTINGS.megaCost}/次）`, `Mega Resonance (✦${SLOT_SETTINGS.megaCost}/pull)`)}</label>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+      <label style="font-size:13px;">${tt('次數','Pulls')}：<input type="number" id="auto-slot-count" min="1" step="1" value="${autoSlotCountInput}" style="width:80px;"></label>
+      <button class="btn" id="auto-slot-start-btn">${tt('▶ 開始自動共鳴','▶ Start Auto Resonance')}</button>
+    </div>
+    <p class="sub" style="margin:8px 0 0;font-size:12px;color:var(--muted);">${tt('中頭獎（三張史詩）時會自動暫停，確認是否繼續。','Auto-pauses on a jackpot (three Epics) so you can confirm whether to continue.')}</p>`;
+  }
+  if(lastAutoSlotSummary){
+    const s = lastAutoSlotSummary;
+    const modeLabel = s.isMega ? tt('超級共鳴','Mega Resonance') : tt('一般共鳴','Resonance');
+    const net = s.winningsTotal - s.spentTotal;
+    const netLabel = net >= 0 ? `+${net}` : `${net}`;
+    const stopReasonLabel = {
+      coins: tt('（金幣不足提前停止）','(stopped early - not enough coins)'),
+      manual: tt('（手動停止）','(stopped manually)'),
+      network_error: tt('（連線異常提前停止）','(stopped early - connection issue)'),
+      save_failed: tt('（存檔失敗提前停止）','(stopped early - save failed)'),
+      jackpot_stop: tt('（中頭獎後選擇停止）','(stopped after jackpot)'),
+      not_allowed: tt('（此帳號無權限，已停止）','(stopped - account not allowed)'),
+    }[s.stopReason] || '';
+    html += `<div class="sub" style="margin-top:12px;padding-top:10px;border-top:1px solid var(--line);font-size:12px;line-height:1.7;">
+      <b style="color:var(--gold-bright);">${tt('上一輪自動共鳴結果','Last auto resonance summary')}</b>${stopReasonLabel}<br>
+      ${tt(`模式：${modeLabel}　執行 ${s.executed}/${s.total} 次　總花費 ✦${s.spentTotal}`, `Mode: ${modeLabel}　${s.executed}/${s.total} pulls　Spent ✦${s.spentTotal}`)}<br>
+      ${tt(`抽中：普通×${s.tierCounts.common}　罕見×${s.tierCounts.uncommon}　稀有×${s.tierCounts.rare}　史詩×${s.tierCounts.epic}`, `Results: Common×${s.tierCounts.common}　Uncommon×${s.tierCounts.uncommon}　Rare×${s.tierCounts.rare}　Epic×${s.tierCounts.epic}`)}${s.jackpotWins > 0 ? tt(`　🎉頭獎×${s.jackpotWins}（✦${s.jackpotAmount}）`, `　🎉Jackpot×${s.jackpotWins} (✦${s.jackpotAmount})`) : ''}<br>
+      ${tt(`淨損益：✦${netLabel}`, `Net: ✦${netLabel}`)}
+    </div>`;
+  }
+  html += `</div>`;
+  }
+
   body.innerHTML = html;
   const slotBtn = document.getElementById('slot-btn');
   if(slotBtn) slotBtn.onclick = ()=>pullSlot(false);
   const megaSlotBtn = document.getElementById('mega-slot-btn');
   if(megaSlotBtn) megaSlotBtn.onclick = ()=>pullSlot(true);
+  document.querySelectorAll('input[name="auto-slot-mode"]').forEach(el=>{
+    el.onchange = ()=>{ autoSlotModeIsMega = (el.value === 'mega'); };
+  });
+  const autoCountEl = document.getElementById('auto-slot-count');
+  if(autoCountEl) autoCountEl.oninput = ()=>{ const v = parseInt(autoCountEl.value,10); if(v>0) autoSlotCountInput = v; };
+  const autoStartBtn = document.getElementById('auto-slot-start-btn');
+  if(autoStartBtn) autoStartBtn.onclick = startAutoSlot;
+  const autoStopBtn = document.getElementById('auto-slot-stop-btn');
+  if(autoStopBtn) autoStopBtn.onclick = stopAutoSlot;
 
   if(showDrawResults){
     COLLECTION_MODAL_LIST = state.drawResults.map(c=>c.id);
@@ -13188,6 +13507,8 @@ async function renderFarm(body){
         ${(nextLevel===3 || nextLevel===6) ? `<div class="farm-upgrade-line" style="color:var(--gold-bright);">✨ ${tt(nextLevel===3 ? '達成後解鎖「新芽」層種子' : '達成後解鎖「綻放」層種子', nextLevel===3 ? 'Unlocks Sprout-tier seeds' : 'Unlocks Bloom-tier seeds')}</div>` : ''}
         ${nextLevel===8 ? `<div class="farm-upgrade-line" style="color:var(--gold-bright);">✨ ${tt('達成後解鎖「星輝」層花色升級','Unlocks the Starlight suit-upgrade tier')}</div>` : ''}
         ${FARM_LEVEL_PLOTS[nextLevel] > FARM_LEVEL_PLOTS[farmLevel] ? `<div class="farm-upgrade-line" style="color:var(--gold-bright);">✨ ${tt('達成後 +1 塊地','Unlocks +1 plot')}</div>` : ''}
+        ${nextLevel === FARM_BLESSING_LEVEL ? `<div class="farm-upgrade-line" style="color:var(--gold-bright);">🌟 ${tt('達成後：所有收成金幣永久 +10%','Unlocks: +10% permanent coin gain from all harvests')}</div>` : ''}
+        ${nextLevel === 12 ? `<div class="farm-upgrade-line" style="color:var(--gold-bright);">🔓 ${tt('達成後：解鎖「極光」花色升級階，並解鎖尋寶地點「聖物庫」','Unlocks: the "Aurora" suit tier, and the "Vault" hunt location')}</div>` : ''}
         ${state.farmUpgradeMode ? renderFarmUpgradeSelectionUI(p, nextReq) : (nextReq.harvests && (((p.stats && p.stats.totalHarvests)||0) < nextReq.harvests) ? `<button class="btn small" disabled style="margin-top:8px;opacity:0.5;">${tt('選擇升級材料','Choose Upgrade Materials')}</button>` : `<button class="btn small" id="farm-upgrade-btn" style="margin-top:8px;">${tt('選擇升級材料','Choose Upgrade Materials')}</button>`)}
       </div>
     `}
@@ -13208,8 +13529,8 @@ async function renderFarm(body){
         }
         const req = SUIT_UPGRADE_REQS[suitKey][tierName];
         const levelOk = (p.farmLevel||0) >= req.tierLevel;
-        // 星輝階在花園未達 Lv.8 前先不顯示整個區塊，避免版面太長
-        if(tierName === 'starlight' && !levelOk) return '';
+        // 星輝／極光階在花園未達門檻前先不顯示整個區塊，避免版面太長
+        if((tierName === 'starlight' || tierName === 'aurora') && !levelOk) return '';
         const nextSeed = SEED_TYPES[curSeed.upgradesTo];
         let line = `<div class="farm-upgrade-box" style="margin-top:8px;">
           <div class="farm-upgrade-title">${curSeed.icon} ${tt(`${seedName(SEED_TYPES[suitKey])}：目前為「${seedName(curSeed)}」，升級到「${seedName(nextSeed)}」`, `${seedName(SEED_TYPES[suitKey])}: currently "${seedName(curSeed)}" → upgrade to "${seedName(nextSeed)}"`)}</div>
@@ -14108,30 +14429,9 @@ async function renderGM(body){
     </div>
   </div>`;
 
-  html += `<div class="panel">
-    <h2>${tt('🌱 種子價格設定','🌱 Seed Price Settings')}</h2>
-    <p class="sub">${tt('調整所有花園種子的購買價格，對所有玩家即時生效','Adjust the purchase cost of every garden seed - takes effect immediately for all players')}</p>
-    <div class="farm-upgrade-title" style="margin-top:6px;">${tt('基礎層','Base Tier')}</div>
-    <div class="form-row">
-      ${['wands','cups','swords','pentacles','major'].map(k=>`<div><label>${SEED_TYPES[k].icon} ${seedName(SEED_TYPES[k])}</label><input type="number" id="gm-seed-${k}" value="${SEED_TYPES[k].cost}" min="0" style="width:80px;" /></div>`).join('')}
-    </div>
-    <div class="farm-upgrade-title" style="margin-top:10px;">${tt('發芽層（花園 Lv.3 解鎖）','Sprout Tier (Garden Lv.3)')}</div>
-    <div class="form-row">
-      ${['wands_sprout','cups_sprout','swords_sprout','pentacles_sprout','major_sprout'].map(k=>`<div><label>${SEED_TYPES[k].icon} ${seedName(SEED_TYPES[k])}</label><input type="number" id="gm-seed-${k}" value="${SEED_TYPES[k].cost}" min="0" style="width:80px;" /></div>`).join('')}
-    </div>
-    <div class="farm-upgrade-title" style="margin-top:10px;">${tt('綻放層（花園 Lv.6 解鎖）','Bloom Tier (Garden Lv.6)')}</div>
-    <div class="form-row">
-      ${['wands_bloom','cups_bloom','swords_bloom','pentacles_bloom','major_bloom'].map(k=>`<div><label>${SEED_TYPES[k].icon} ${seedName(SEED_TYPES[k])}</label><input type="number" id="gm-seed-${k}" value="${SEED_TYPES[k].cost}" min="0" style="width:80px;" /></div>`).join('')}
-    </div>
-    <div class="farm-upgrade-title" style="margin-top:10px;">${tt('星輝層（花園 Lv.8 解鎖）','Starlight Tier (Garden Lv.8)')}</div>
-    <div class="form-row">
-      ${['wands_starlight','cups_starlight','swords_starlight','pentacles_starlight','major_starlight'].map(k=>`<div><label>${SEED_TYPES[k].icon} ${seedName(SEED_TYPES[k])}</label><input type="number" id="gm-seed-${k}" value="${SEED_TYPES[k].cost}" min="0" style="width:80px;" /></div>`).join('')}
-    </div>
-    <div class="form-row" style="margin-top:10px;">
-      <button class="btn small" id="gm-seed-save-btn">${tt('儲存種子價格','Save Seed Prices')}</button>
-      <button class="btn small secondary" id="gm-seed-reset-btn">${tt('還原預設值','Reset to Default')}</button>
-    </div>
-  </div>`;
+  // 🔒 種子價格設定面板已停用（GM 後台不再開放調整種子售價，避免手動調整值
+  // 覆蓋掉 SEED_TYPES 裡經過驗算的正確比例，尤其是極光層四花色曾經算錯售價的
+  // 教訓）。若之後要重新開放，記得同時檢查 loadSeedPrices()／saveSeedPrices()。
 
   html += `<div class="panel">
     <h2>✦ ${tt('賽季設定：星象幻境','Season Settings: Astral Reverie')}</h2>
@@ -14764,27 +15064,6 @@ async function renderGM(body){
   if(questResetBtn) questResetBtn.onclick = async ()=>{
     await saveQuestSettings(JSON.parse(JSON.stringify(DEFAULT_QUEST_SETTINGS)));
     showToast(tt('已還原為預設任務獎勵','Reverted to default quest rewards'));
-    renderTab();
-  };
-  const seedSaveBtn = document.getElementById('gm-seed-save-btn');
-  if(seedSaveBtn) seedSaveBtn.onclick = async ()=>{
-    const newPrices = {};
-    let invalid = false;
-    Object.keys(SEED_TYPES).forEach(k=>{
-      const el = document.getElementById(`gm-seed-${k}`);
-      const v = el ? parseFloat(el.value) : NaN;
-      if(isNaN(v) || v < 0) invalid = true;
-      newPrices[k] = v;
-    });
-    if(invalid){ showToast(tt('請輸入有效的非負數字','Please enter a valid non-negative number')); return; }
-    await saveSeedPrices(newPrices);
-    showToast(tt('種子價格已更新，即時對所有玩家生效 ⚡','Seed prices updated, effective immediately for all players ⚡'));
-    renderTab();
-  };
-  const seedResetBtn = document.getElementById('gm-seed-reset-btn');
-  if(seedResetBtn) seedResetBtn.onclick = async ()=>{
-    await saveSeedPrices({...DEFAULT_SEED_COSTS});
-    showToast(tt('已還原為預設種子價格','Reverted to default seed prices'));
     renderTab();
   };
   const seasonActiveBox = document.getElementById('gm-season-active');
