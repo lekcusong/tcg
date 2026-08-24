@@ -8796,7 +8796,7 @@ async function renderExpedition(body){
             const def = EXPEDITION_CHOICE_EVENT_POOL.find(e=>e.id===ev.eventId);
             if(def && def.options.length > 0){
               const firstOption = def.options[0];
-              resolveExpeditionChoiceEvent(p, ev.idx, firstOption.id, true); // true 表示逾時自動選擇
+              resolveExpeditionEventOption(p, ev, firstOption.id); // 逾時自動選擇第一個選項
               eventsChanged = true;
             }
           }
