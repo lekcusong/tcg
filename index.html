@@ -135,6 +135,95 @@
     padding:4px 12px;border-radius:999px;box-shadow:0 2px 12px rgba(201,162,74,0.55);
   }
 
+  /* 感謝排行榜：全站最豪華榜單，比 honor-panel 再升一級——雙層流光 + 彩虹描邊呼吸，
+     前三名各自獨立領獎台卡片（金／銀／銅），搭配 SVIP-TOP1/2/3 閃亮封號。 */
+  .panel.thanks-panel{
+    position:relative;overflow:visible;
+    border:1px solid var(--gold-bright);
+    background:
+      radial-gradient(120% 140% at 50% -10%, rgba(255,225,150,0.22), transparent 60%),
+      linear-gradient(160deg, rgba(201,162,74,0.24), rgba(232,196,104,0.1) 45%, var(--bg-panel) 78%);
+    animation: thanks-panel-glow 2.6s ease-in-out infinite;
+  }
+  .panel.thanks-panel::before{
+    content:'';position:absolute;inset:0;border-radius:14px;pointer-events:none;z-index:0;
+    background:linear-gradient(115deg, transparent 25%, rgba(255,255,255,0.5) 46%, rgba(255,214,120,0.75) 52%, transparent 72%);
+    background-size:260% 100%;background-position:-130% 0;
+    animation: honor-shimmer-sweep 2.4s ease-in-out infinite;
+  }
+  .panel.thanks-panel::after{
+    content:'';position:absolute;inset:-1px;border-radius:15px;pointer-events:none;z-index:0;
+    padding:1px;
+    background:linear-gradient(90deg, #ffd76a, #fff6d8, #ff9fd6, #a4d8ff, #ffd76a);
+    background-size:300% 100%;
+    -webkit-mask:linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite:xor;mask-composite:exclude;
+    animation: thanks-border-flow 4s linear infinite;
+    opacity:0.85;
+  }
+  .panel.thanks-panel > *{position:relative;z-index:1;}
+  @keyframes thanks-panel-glow{
+    0%,100%{ box-shadow:0 0 18px rgba(255,214,120,0.35); }
+    50%{ box-shadow:0 0 42px rgba(255,214,120,0.75), 0 0 70px rgba(255,159,214,0.25); }
+  }
+  @keyframes thanks-border-flow{
+    0%{ background-position:0% 0; }
+    100%{ background-position:300% 0; }
+  }
+  .panel.thanks-panel h2{
+    background:linear-gradient(90deg, #ffd76a, #fff6d8, #ff9fd6, #ffd76a);
+    background-size:220% 100%;
+    -webkit-background-clip:text;background-clip:text;color:transparent;
+    animation: thanks-border-flow 5s linear infinite;
+  }
+  .thanks-podium{
+    display:flex;align-items:flex-end;justify-content:center;gap:10px;
+    margin:18px 0 20px;flex-wrap:wrap;
+  }
+  .thanks-podium-card{
+    position:relative;flex:1 1 130px;max-width:170px;min-width:110px;
+    border-radius:14px;padding:18px 10px 14px;text-align:center;
+    background:linear-gradient(180deg, rgba(255,255,255,0.06), rgba(0,0,0,0.18));
+    border:1px solid var(--line);
+  }
+  .thanks-podium-crown{font-size:26px;display:block;margin-bottom:4px;filter:drop-shadow(0 0 6px rgba(255,214,120,0.6));}
+  .thanks-podium-rank{
+    font-family:'Space Mono',monospace;font-size:11px;letter-spacing:1.5px;
+    color:var(--muted);margin-bottom:6px;text-transform:uppercase;
+  }
+  .thanks-podium-name{font-family:'Cinzel',serif;font-weight:700;font-size:15px;margin-bottom:6px;word-break:break-word;}
+  .thanks-podium-amount{font-family:'Space Mono',monospace;font-size:15px;font-weight:700;}
+  .thanks-podium-card.rank-1{
+    order:2;transform:translateY(-14px);padding-top:24px;
+    border:2px solid #ffd76a;
+    background:linear-gradient(180deg, rgba(255,214,120,0.28), rgba(255,214,120,0.05));
+    box-shadow:0 0 26px rgba(255,214,120,0.55), 0 10px 24px rgba(0,0,0,0.45);
+    animation: thanks-rank1-float 2.4s ease-in-out infinite;
+  }
+  .thanks-podium-card.rank-1 .thanks-podium-name{color:#ffe9ad;text-shadow:0 0 10px rgba(255,214,120,0.6);}
+  .thanks-podium-card.rank-1 .thanks-podium-amount{color:#ffd76a;}
+  .thanks-podium-card.rank-2{
+    order:1;
+    border:2px solid #d7dee6;
+    background:linear-gradient(180deg, rgba(215,222,230,0.22), rgba(215,222,230,0.04));
+    box-shadow:0 0 18px rgba(215,222,230,0.4), 0 8px 20px rgba(0,0,0,0.4);
+  }
+  .thanks-podium-card.rank-2 .thanks-podium-name{color:#e8edf2;}
+  .thanks-podium-card.rank-2 .thanks-podium-amount{color:#d7dee6;}
+  .thanks-podium-card.rank-3{
+    order:3;
+    border:2px solid #d99a63;
+    background:linear-gradient(180deg, rgba(217,154,99,0.22), rgba(217,154,99,0.04));
+    box-shadow:0 0 18px rgba(217,154,99,0.4), 0 8px 20px rgba(0,0,0,0.4);
+  }
+  .thanks-podium-card.rank-3 .thanks-podium-name{color:#f0c9a4;}
+  .thanks-podium-card.rank-3 .thanks-podium-amount{color:#d99a63;}
+  @keyframes thanks-rank1-float{
+    0%,100%{ transform:translateY(-14px); }
+    50%{ transform:translateY(-19px); }
+  }
+  .thanks-rest-list .listing{border-color:rgba(255,214,120,0.18);}
+
   .panel h2{font-family:'Cinzel',serif;font-size:16px;color:var(--gold-bright);margin:0 0 4px;letter-spacing:0.5px;}
   .panel .sub{color:var(--muted);font-size:13px;margin:0 0 16px;}
 
@@ -7233,9 +7322,14 @@ const TITLES = [
   {key:'harvest', nameZh:'田園宗師', nameEn:'Farming Grandmaster', icon:'🌻'},
   {key:'auction', nameZh:'黃金競拍師', nameEn:'Golden Auctioneer', icon:'🔨'},
   {key:'dice', nameZh:'天選骰運', nameEn:'Chosen of Fortune', icon:'🎲'},
+  // 感謝排行榜前三名封號：資料來源不是遊戲數值，而是 GM 手動維護的「感謝／贊助」名單（見 config:thanks_leaderboard），
+  // 依金額由高到低排序後，前三名各自綁定一個獨立稱號 key，其餘邏輯（榜首異動即時收回／授予）與其他稱號共用同一套機制。
+  {key:'thanksTop1', nameZh:'SVIP-TOP1', nameEn:'SVIP-TOP1', icon:'👑'},
+  {key:'thanksTop2', nameZh:'SVIP-TOP2', nameEn:'SVIP-TOP2', icon:'💎'},
+  {key:'thanksTop3', nameZh:'SVIP-TOP3', nameEn:'SVIP-TOP3', icon:'🏆'},
 ];
 const TITLE_BY_KEY = Object.fromEntries(TITLES.map(t=>[t.key,t]));
-let TITLE_HOLDERS = {wealth:null, collection:null, resonance:null, streak:null, boss:null, harvest:null, auction:null, dice:null, updatedAt:0};
+let TITLE_HOLDERS = {wealth:null, collection:null, resonance:null, streak:null, boss:null, harvest:null, auction:null, dice:null, thanksTop1:null, thanksTop2:null, thanksTop3:null, updatedAt:0};
 async function loadTitleHolders(){
   try{
     const r = await storage.get('config:title_holders');
@@ -7250,6 +7344,9 @@ async function loadTitleHolders(){
         harvest: s.harvest || null,
         auction: s.auction || null,
         dice: s.dice || null,
+        thanksTop1: s.thanksTop1 || null,
+        thanksTop2: s.thanksTop2 || null,
+        thanksTop3: s.thanksTop3 || null,
         updatedAt: s.updatedAt || 0,
       };
     }
@@ -7260,7 +7357,7 @@ async function saveTitleHolders(){
   await storage.set('config:title_holders', JSON.stringify(TITLE_HOLDERS));
 }
 // 依排行榜頁面已經算好的榜單重新判斷榜首，若有變動才寫回，避免每次開排行榜都打一次寫入
-async function refreshTitleHoldersFromLeaderboards(byCoins, byCards, bySlotSpend, byStreak, byBossDamage, byHarvest, byAuctionVolume, byDiceScore){
+async function refreshTitleHoldersFromLeaderboards(byCoins, byCards, bySlotSpend, byStreak, byBossDamage, byHarvest, byAuctionVolume, byDiceScore, byThanks){
   const nextWealth = (byCoins[0] && byCoins[0].coins > 0) ? byCoins[0].nickname : null;
   const nextCollection = (byCards[0] && byCards[0].total > 0) ? byCards[0].nickname : null;
   const nextResonance = (bySlotSpend[0] && bySlotSpend[0].spend > 0) ? bySlotSpend[0].nickname : null;
@@ -7269,6 +7366,10 @@ async function refreshTitleHoldersFromLeaderboards(byCoins, byCards, bySlotSpend
   const nextHarvest = (byHarvest && byHarvest[0] && byHarvest[0].harvests > 0) ? byHarvest[0].nickname : null;
   const nextAuction = (byAuctionVolume && byAuctionVolume[0] && byAuctionVolume[0].volume > 0) ? byAuctionVolume[0].nickname : null;
   const nextDice = (byDiceScore && byDiceScore[0] && byDiceScore[0].score > 0) ? byDiceScore[0].nickname : null;
+  const safeThanks = byThanks || [];
+  const nextThanksTop1 = (safeThanks[0] && safeThanks[0].amount > 0) ? safeThanks[0].nickname : null;
+  const nextThanksTop2 = (safeThanks[1] && safeThanks[1].amount > 0) ? safeThanks[1].nickname : null;
+  const nextThanksTop3 = (safeThanks[2] && safeThanks[2].amount > 0) ? safeThanks[2].nickname : null;
   const changed = nextWealth !== TITLE_HOLDERS.wealth
     || nextCollection !== TITLE_HOLDERS.collection
     || nextResonance !== TITLE_HOLDERS.resonance
@@ -7276,7 +7377,10 @@ async function refreshTitleHoldersFromLeaderboards(byCoins, byCards, bySlotSpend
     || nextBoss !== TITLE_HOLDERS.boss
     || nextHarvest !== TITLE_HOLDERS.harvest
     || nextAuction !== TITLE_HOLDERS.auction
-    || nextDice !== TITLE_HOLDERS.dice;
+    || nextDice !== TITLE_HOLDERS.dice
+    || nextThanksTop1 !== TITLE_HOLDERS.thanksTop1
+    || nextThanksTop2 !== TITLE_HOLDERS.thanksTop2
+    || nextThanksTop3 !== TITLE_HOLDERS.thanksTop3;
   if(changed){
     TITLE_HOLDERS.wealth = nextWealth;
     TITLE_HOLDERS.collection = nextCollection;
@@ -7286,6 +7390,9 @@ async function refreshTitleHoldersFromLeaderboards(byCoins, byCards, bySlotSpend
     TITLE_HOLDERS.harvest = nextHarvest;
     TITLE_HOLDERS.auction = nextAuction;
     TITLE_HOLDERS.dice = nextDice;
+    TITLE_HOLDERS.thanksTop1 = nextThanksTop1;
+    TITLE_HOLDERS.thanksTop2 = nextThanksTop2;
+    TITLE_HOLDERS.thanksTop3 = nextThanksTop3;
     await saveTitleHolders();
   }
 }
@@ -10463,6 +10570,7 @@ const T = {
   leaderHarvestHeader: {zh:'🌻 種菜收成次數排行榜', en:'🌻 Crop Harvest Count Leaderboard'},
   leaderAuctionVolumeHeader: {zh:'🔨 拍賣交易量排行榜', en:'🔨 Auction Trade Volume Leaderboard'},
   leaderDiceHeader: {zh:'🎲 完美骰排行榜', en:'🎲 Perfect Dice Leaderboard'},
+  leaderThanksHeader: {zh:'🙏 感謝排行榜', en:'🙏 Thanks Leaderboard'},
   gmHeader: {zh:'⚡ GM 管理控制台', en:'⚡ GM Console'},
   allPlayersHeader: {zh:'所有玩家', en:'All Players'},
   grantCoinsHeader: {zh:'發放金幣', en:'Grant Coins'},
@@ -10836,6 +10944,43 @@ async function saveAnnouncement(title, body){
 }
 async function clearAnnouncement(){
   try{ await storage.delete('config:announcement'); }catch(e){ /* ignore */ }
+}
+
+// ---------- 感謝排行榜（GM 手動維護名單：玩家 + 贊助/共享金額，非遊戲自動數值）----------
+const THANKS_LEADERBOARD_KEY = 'config:thanks_leaderboard';
+async function fetchThanksEntries(){
+  try{
+    const r = await storage.get(THANKS_LEADERBOARD_KEY);
+    if(!r) return [];
+    const list = JSON.parse(r.value);
+    return Array.isArray(list) ? list : [];
+  }catch(e){ return []; }
+}
+async function saveThanksEntries(list){
+  await storage.set(THANKS_LEADERBOARD_KEY, JSON.stringify(list));
+}
+// 依金額由高到低排序，回傳供排行榜頁與稱號判斷共用的名次陣列
+function sortedThanksEntries(list){
+  return (list||[]).slice().sort((a,b)=>(b.amount||0)-(a.amount||0));
+}
+async function upsertThanksEntry(id, nickname, amount, note){
+  const list = await fetchThanksEntries();
+  if(id){
+    const idx = list.findIndex(e=>e.id===id);
+    if(idx>=0){
+      list[idx] = {...list[idx], nickname, amount, note, updatedAt: Date.now()};
+    }
+  } else {
+    list.push({id: uid(), nickname, amount, note, updatedAt: Date.now()});
+  }
+  await saveThanksEntries(list);
+  return list;
+}
+async function deleteThanksEntry(id){
+  const list = await fetchThanksEntries();
+  const next = list.filter(e=>e.id!==id);
+  await saveThanksEntries(next);
+  return next;
 }
 
 // ---------- Invite codes (防小號：新帳號需 GM 核發的邀請碼才能建立) ----------
@@ -11286,11 +11431,13 @@ let slotPulling = false;
 // autoSlotState 非 null 時代表目前正在跑自動共鳴（或剛好暫停在中頭獎確認），
 // running=false 但 autoSlotState 仍不是 null 的狀態＝「暫停中，等玩家確認要不要繼續」。
 let autoSlotState = null;
-// 🔓 自動共鳴：原本限定帳號（AUTO_RESONANCE_NICKNAME）才能看到／觸發，僅用於開發階段
-// 內部測試。現已開放給所有玩家使用，isAutoResonanceAllowed() 一律回傳 true，
-// 保留函式本身（而不是直接刪掉所有呼叫點）方便未來若又要收回權限時能改回帳號比對。
+// 🔒 自動共鳴：2026-08 因 Egress 流量超額被迫收回，重新限定僅供內測帳號使用；
+// 一般玩家持續高頻觸發自動連抽（每抽都會同步兩個全服共用獎池 + CAS 疊加寫入，
+// 多人併發時 CAS 版本衝突還會觸發重試，請求量被併發放大）是本次超額的主要嫌疑之一。
+// 如需再度開放，請先確認 Supabase 用量／方案額度足夠，並考慮加上單次連抽次數上限。
+const AUTO_RESONANCE_NICKNAME = ['GM'];
 function isAutoResonanceAllowed(){
-  return !!state.nickname;
+  return !!state.nickname && AUTO_RESONANCE_NICKNAME.some(n=>n.toLowerCase()===state.nickname.toLowerCase());
 }
 // 輸入框的次數/模式沿用 GM 面板 input 的做法，用全域變數暫存使用者輸入，
 // 避免自動共鳴跑到一半時 renderTab() 被其他輪詢觸發重繪，把使用者剛打的數字洗掉。
@@ -14503,13 +14650,48 @@ async function renderLeaderboard(body){
   // 部署後 3 分鐘快取期內，舊快取資料可能還沒有這個新欄位，補一個空陣列避免整頁掛掉
   const safeAuctionVolume = byAuctionVolume || [];
   const safeDiceScore = byDiceScore || [];
+  // 感謝排行榜不走快取（GM 手動維護、更新頻率低，量也小），直接讀取後依金額排序
+  const thanksEntries = sortedThanksEntries(await fetchThanksEntries().catch(()=>[]));
+  const THANKS_DISPLAY_LIMIT = 20;
+  const thanksTop3 = thanksEntries.slice(0,3);
+  const thanksRest = thanksEntries.slice(3, THANKS_DISPLAY_LIMIT);
 
-  refreshTitleHoldersFromLeaderboards(byCoins, byCards, bySlotSpend, byStreak, byBossDamage, byHarvest, byAuctionVolume, byDiceScore).catch(()=>{});
+  refreshTitleHoldersFromLeaderboards(byCoins, byCards, bySlotSpend, byStreak, byBossDamage, byHarvest, byAuctionVolume, byDiceScore, thanksEntries).catch(()=>{});
 
   const medal = i => i===0?'🥇':i===1?'🥈':i===2?'🥉':`#${i+1}`;
   const isMe = nick => state.nickname && nick.toLowerCase()===state.nickname.toLowerCase();
 
-  let html = `<div class="panel honor-panel">
+  let html = '';
+
+  html += `<div class="panel thanks-panel">
+    <span class="honor-ribbon">🙏 ${tt('至尊感謝殿堂','Hall of Gratitude')}</span>
+    <h2>${t('leaderThanksHeader')}</h2>
+    <p class="sub">${tt('感謝各位玩家的支持與共享，前三名獲頒 SVIP-TOP1／TOP2／TOP3 閃亮封號，全站暱稱旁同步顯示', 'A tribute to every player\'s generosity and support - the top 3 are crowned with the shining SVIP-TOP1/TOP2/TOP3 titles, shown site-wide next to their name')}</p>
+    ${thanksEntries.length===0 ? `<div class="empty-note">${tt('目前尚未有感謝名單，敬請期待','No entries yet - stay tuned')}</div>` : `
+    <div class="thanks-podium">
+      ${thanksTop3.map((e,i)=>{
+        const crown = i===0?'👑':i===1?'💎':'🏆';
+        const rankLabel = i===0?tt('冠軍','Champion'):i===1?tt('亞軍','Runner-up'):tt('季軍','Third Place');
+        return `<div class="thanks-podium-card rank-${i+1}">
+          <span class="thanks-podium-crown">${crown}</span>
+          <div class="thanks-podium-rank">SVIP-TOP${i+1} · ${rankLabel}</div>
+          <div class="thanks-podium-name" data-view-profile="${escapeHtml(e.nickname)}">${escapeHtml(e.nickname)}${isMe(e.nickname)?` <span style="color:var(--gold-bright);font-size:11px;">(${tt('你','you')})</span>`:''}</div>
+          <div class="thanks-podium-amount">✦ ${(e.amount||0).toLocaleString()}</div>
+          ${e.note ? `<div class="who" style="margin-top:4px;font-size:11px;">${escapeHtml(e.note)}</div>` : ''}
+        </div>`;
+      }).join('')}
+    </div>
+    ${thanksRest.length ? `<div class="thanks-rest-list">
+      ${thanksRest.map((e,i)=>`
+      <div class="listing">
+        <div class="left"><div class="icon-box">#${i+4}</div><div class="meta"><div data-view-profile="${escapeHtml(e.nickname)}">${escapeHtml(e.nickname)}${isMe(e.nickname)?` <span style="color:var(--gold-bright);">(${tt('你','you')})</span>`:''}${nameWithTitlesHtml(e.nickname)}</div>${e.note ? `<div class="who">${escapeHtml(e.note)}</div>` : ''}</div></div>
+        <div class="right"><span class="price">✦ ${(e.amount||0).toLocaleString()}</span></div>
+      </div>`).join('')}
+    </div>` : ''}
+    `}
+  </div>`;
+
+  html += `<div class="panel honor-panel">
     <span class="honor-ribbon">👑 ${tt('最高榮譽','Highest Honor')}</span>
     <h2>${t('leaderDiceHeader')}</h2>
     <p class="sub">${tt('依骰子完美度分數排名：品質、強化等級、基礎攻擊力、6 面數字與效果一起計分，分數愈高愈稀有', 'Ranked by dice perfection score: quality, enhancement level, base ATK, and all 6 faces (numbers + effects) are scored together — higher means rarer')}</p>
@@ -14613,6 +14795,7 @@ async function renderLeaderboard(body){
 }
 
 let gmLookupResult = null;
+let gmThanksEditId = null;
 async function renderChat(body){
   const messages = await fetchChatMessages();
   lastChatFingerprint = messages.map(m=>m.id).join(',');
@@ -14683,6 +14866,7 @@ async function renderGM(body){
   const GM_AUCTIONS_MAX_PAGES = 10;
   const gmAuctions = (await fetchAuctions()).sort((a,b)=>(b.createdAt||0)-(a.createdAt||0)).slice(0, GM_PAGE_SIZE * GM_AUCTIONS_MAX_PAGES);
   const currentAnnouncement = await fetchAnnouncement();
+  const gmThanksEntries = sortedThanksEntries(await fetchThanksEntries().catch(()=>[]));
   const inviteCodes = await fetchInviteCodes();
   const inviteCodeList = Object.values(inviteCodes).sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
   const unusedInviteCodes = inviteCodeList.filter(c=>!c.used);
@@ -14740,6 +14924,33 @@ async function renderGM(body){
     <div class="form-row">
       <button class="btn full" id="gm-bundle-grant-btn">${tt('🎁 一次發放','🎁 Grant Selected')}</button>
     </div>
+  </div>`;
+
+  const gmThanksEditingEntry = gmThanksEditId ? gmThanksEntries.find(e=>e.id===gmThanksEditId) : null;
+  if(!gmThanksEditingEntry) gmThanksEditId = null;
+  html += `<div class="panel">
+    <h2>🙏 ${tt('感謝排行榜管理','Thanks Leaderboard Management')}</h2>
+    <p class="sub">${tt('手動輸入玩家暱稱與贊助／共享金額，系統會依金額由高到低自動排序，前三名自動授予 SVIP-TOP1／TOP2／TOP3 閃亮封號（全站暱稱旁顯示），名次會隨金額異動即時更新。','Manually enter a player\'s nickname and the amount they donated/shared - entries auto-sort by amount, and the top 3 automatically get the shining SVIP-TOP1/TOP2/TOP3 titles shown site-wide next to their name, updating live as amounts change.')}</p>
+    ${gmThanksEditingEntry ? `<p class="sub" style="color:var(--gold-bright);">${tt('✏️ 編輯中：','✏️ Editing: ')}${escapeHtml(gmThanksEditingEntry.nickname)}</p>` : ''}
+    <div class="form-row">
+      <div style="flex:1;min-width:140px;"><label>${tt('玩家暱稱','Player nickname')}</label><input type="text" id="gm-thanks-nickname" placeholder="${t('nickPlaceholder')}" value="${gmThanksEditingEntry ? escapeHtml(gmThanksEditingEntry.nickname) : ''}" /></div>
+      <div style="min-width:120px;"><label>${tt('共享金額','Shared amount')}</label><input type="number" id="gm-thanks-amount" placeholder="${tt('例如 5000','e.g. 5000')}" min="0" value="${gmThanksEditingEntry ? gmThanksEditingEntry.amount : ''}" /></div>
+      <div style="flex:1;min-width:140px;"><label>${tt('備註（選填）','Note (optional)')}</label><input type="text" id="gm-thanks-note" placeholder="${tt('例如：週年慶贊助','e.g. Anniversary sponsor')}" maxlength="40" value="${gmThanksEditingEntry ? escapeHtml(gmThanksEditingEntry.note||'') : ''}" /></div>
+    </div>
+    <div class="form-row">
+      <button class="btn small" id="gm-thanks-add-btn">${gmThanksEditingEntry ? tt('💾 儲存變更','💾 Save Changes') : tt('➕ 新增','➕ Add')}</button>
+      <button class="btn small secondary" id="gm-thanks-cancel-edit-btn" style="${gmThanksEditingEntry ? '' : 'display:none;'}">${tt('取消編輯','Cancel Edit')}</button>
+    </div>
+    <div class="who" style="margin:14px 0 4px;">${tt(`目前名單（共 ${gmThanksEntries.length} 筆，依金額排序）`, `Current entries (${gmThanksEntries.length} total, sorted by amount)`)}</div>
+    ${gmThanksEntries.length===0 ? `<div class="empty-note">${tt('尚未新增任何感謝名單','No entries yet')}</div>` : gmThanksEntries.map((e,i)=>`
+      <div class="listing">
+        <div class="left"><div class="icon-box">${i===0?'👑':i===1?'💎':i===2?'🏆':`#${i+1}`}</div><div class="meta"><div>${escapeHtml(e.nickname)}${i<3?` <span style="color:var(--gold-bright);">SVIP-TOP${i+1}</span>`:''}</div>${e.note ? `<div class="who">${escapeHtml(e.note)}</div>` : ''}</div></div>
+        <div class="right"><span class="price">✦ ${(e.amount||0).toLocaleString()}</span>
+          <button class="btn small secondary" data-thanks-edit="${e.id}">${tt('編輯','Edit')}</button>
+          <button class="btn small secondary" style="border-color:var(--danger);color:var(--danger);" data-thanks-delete="${e.id}">${tt('刪除','Delete')}</button>
+        </div>
+      </div>
+    `).join('')}
   </div>`;
 
   html += `<div class="panel">
@@ -15449,6 +15660,49 @@ async function renderGM(body){
       SHOP_AVATARS = SHOP_AVATARS.filter(a=>a.id !== id);
       await saveAvatarShop();
       showToast(tt('頭像已刪除','Avatar deleted'));
+      renderTab();
+    };
+  });
+
+  const thanksAddBtn = document.getElementById('gm-thanks-add-btn');
+  const thanksCancelEditBtn = document.getElementById('gm-thanks-cancel-edit-btn');
+  if(thanksAddBtn) thanksAddBtn.onclick = async ()=>{
+    const nickInput = document.getElementById('gm-thanks-nickname');
+    const amountInput = document.getElementById('gm-thanks-amount');
+    const noteInput = document.getElementById('gm-thanks-note');
+    const nickname = nickInput ? nickInput.value.trim() : '';
+    const amount = amountInput ? parseInt(amountInput.value, 10) : NaN;
+    const note = noteInput ? noteInput.value.trim() : '';
+    if(!nickname){ showToast(tt('請輸入玩家暱稱','Please enter a player nickname')); return; }
+    if(isNaN(amount) || amount < 0){ showToast(tt('請輸入有效的共享金額','Please enter a valid amount')); return; }
+    thanksAddBtn.disabled = true;
+    try{
+      await upsertThanksEntry(gmThanksEditId, nickname, amount, note);
+      showToast(gmThanksEditId ? tt('已更新 🙏','Updated 🙏') : tt('已新增至感謝排行榜 🙏','Added to the thanks leaderboard 🙏'));
+      gmThanksEditId = null;
+      renderTab();
+    }catch(e){
+      showToast(tt('操作失敗，請再試一次','Failed, please try again'));
+      thanksAddBtn.disabled = false;
+    }
+  };
+  if(thanksCancelEditBtn) thanksCancelEditBtn.onclick = ()=>{
+    gmThanksEditId = null;
+    renderTab();
+  };
+  document.querySelectorAll('[data-thanks-edit]').forEach(btn=>{
+    btn.onclick = ()=>{
+      gmThanksEditId = btn.dataset.thanksEdit;
+      renderTab();
+    };
+  });
+  document.querySelectorAll('[data-thanks-delete]').forEach(btn=>{
+    btn.onclick = async ()=>{
+      const id = btn.dataset.thanksDelete;
+      if(!confirm(tt('確定要從感謝排行榜中刪除這筆名單嗎？','Delete this entry from the thanks leaderboard?'))) return;
+      await deleteThanksEntry(id);
+      if(gmThanksEditId === id) gmThanksEditId = null;
+      showToast(tt('已刪除','Deleted'));
       renderTab();
     };
   });
