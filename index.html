@@ -995,6 +995,101 @@ function parseKvRows(rows, mapFn){
   return out;
 }
 
+// ---------- App version / forced update ----------
+// 每次要「強制」玩家更新時，把這個數字往上調（跟下面 GM 面板設定的
+// 「最低版本」一起用）。單純部署新檔案但沒有調這個數字的話，玩家不會被擋。
+const APP_VERSION = '1.1.1';
+// 沒設定門檻、或讀取失敗（例如 Supabase 一時打不通）時的預設行為：
+// 一律「不擋」，避免後端問題把所有玩家都鎖在門外。
+function parseVersionParts(v){
+  return String(v||'0').split('.').map(n=>parseInt(n,10)||0);
+}
+function compareVersions(a, b){
+  const pa = parseVersionParts(a), pb = parseVersionParts(b);
+  const len = Math.max(pa.length, pb.length);
+  for(let i=0;i<len;i++){
+    const x = pa[i]||0, y = pb[i]||0;
+    if(x !== y) return x < y ? -1 : 1;
+  }
+  return 0;
+}
+async function fetchMinAppVersion(){
+  try{
+    const r = await storage.get('config:min_app_version');
+    if(!r) return null;
+    return JSON.parse(r.value);
+  }catch(e){ return null; } // 讀取失敗視同沒有門檻，不擋玩家
+}
+async function saveMinAppVersion(version, message){
+  const cfg = {version: String(version).trim(), message: (message||'').trim(), updatedAt: Date.now(), updatedBy: state.nickname};
+  await storage.set('config:min_app_version', JSON.stringify(cfg));
+  return cfg;
+}
+async function clearMinAppVersion(){
+  try{ await storage.delete('config:min_app_version'); }catch(e){ /* ignore */ }
+}
+function renderForceUpdateScreen(cfg){
+  el(`
+    <div class="login-screen">
+      <div class="sigil">🔄</div>
+      <h1>${tt('需要更新','Update Required')}</h1>
+      <p>${cfg.message ? escapeHtml(cfg.message) : tt('有新版本上線囉，請重新整理頁面才能繼續遊玩 ✦','A new version is available - please refresh the page to keep playing ✦')}</p>
+      <button class="btn full" id="force-update-reload-btn">${tt('立即更新','Update Now')}</button>
+      <p style="font-size:11px;color:var(--muted);margin-top:14px;">${tt(`目前版本 ${APP_VERSION} · 需要版本 ${cfg.version}+`, `Current version ${APP_VERSION} · Requires ${cfg.version}+`)}</p>
+    </div>
+  `);
+  const btn = document.getElementById('force-update-reload-btn');
+  if(btn) btn.onclick = ()=>{
+    // 補上時間戳查詢字串，避免瀏覽器/CDN快取繼續吐出舊版 index.html
+    const url = window.location.pathname + '?_v=' + Date.now() + window.location.hash;
+    window.location.href = url;
+    window.location.reload();
+  };
+}
+// boot() 一開始呼叫；回傳 true 代表已經擋下畫面（呼叫端要停止繼續 boot）
+async function checkForcedUpdateOnBoot(){
+  const cfg = await fetchMinAppVersion();
+  if(!cfg || !cfg.version) return false;
+  if(compareVersions(APP_VERSION, cfg.version) < 0){
+    renderForceUpdateScreen(cfg);
+    return true;
+  }
+  return false;
+}
+// 玩家在遊戲中途、GM 才發布新門檻的情況：不會硬把人踢出去（避免遊戲玩到一半突然消失），
+// 改成在畫面上方插一條提示條，讓玩家自己選擇時間重新整理。
+let versionNudgeShown = false;
+function showVersionUpdateNudge(cfg){
+  if(versionNudgeShown) return;
+  if(document.getElementById('version-nudge-bar')) return;
+  versionNudgeShown = true;
+  const bar = document.createElement('div');
+  bar.id = 'version-nudge-bar';
+  bar.style.cssText = 'position:sticky;top:0;z-index:500;background:linear-gradient(90deg,var(--gold),var(--violet));color:#241608;font-family:"Space Mono",monospace;font-size:12px;padding:8px 14px;display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap;text-align:center;';
+  bar.innerHTML = `<span>${tt('🔄 有新版本了！記得找時間重新整理頁面 ✦','🔄 A new version is out! Refresh whenever you get a chance ✦')}</span><button id="version-nudge-reload-btn" style="border:1px solid #241608;background:transparent;color:#241608;border-radius:999px;padding:3px 12px;cursor:pointer;font-family:'Cinzel',serif;">${tt('立即重新整理','Refresh now')}</button>`;
+  document.body.prepend(bar);
+  const btn = document.getElementById('version-nudge-reload-btn');
+  if(btn) btn.onclick = ()=>{ window.location.href = window.location.pathname + '?_v=' + Date.now() + window.location.hash; window.location.reload(); };
+}
+function initVersionCheckPoll(){
+  const VERSION_POLL_MS = 120000; // 每 2 分鐘檢查一次，不用太頻繁打 Supabase
+  setInterval(async ()=>{
+    const cfg = await fetchMinAppVersion();
+    if(cfg && cfg.version && compareVersions(APP_VERSION, cfg.version) < 0){
+      showVersionUpdateNudge(cfg);
+    }
+  }, VERSION_POLL_MS);
+}
+// 右下角的常駐版本號小標籤（不受登入畫面/遊戲畫面切換影響，固定貼在畫面上）
+function renderVersionBadge(){
+  if(document.getElementById('app-version-badge')) return;
+  const badge = document.createElement('div');
+  badge.id = 'app-version-badge';
+  badge.style.cssText = 'position:fixed;right:10px;bottom:8px;z-index:400;font-family:"Space Mono",monospace;font-size:11px;color:var(--muted);opacity:0.6;letter-spacing:0.5px;pointer-events:none;user-select:none;';
+  badge.textContent = 'v' + APP_VERSION;
+  document.body.appendChild(badge);
+}
+
 // ---------- Deck definition ----------
 const SUITS = [
   {key:'wands', label:'Wands', icon:'🔥'},
@@ -10720,6 +10815,11 @@ async function tryAutoLoginFromSessionToken(){
 }
 
 async function boot(){
+  renderVersionBadge();
+  // 版本門檻檢查一定要排在最前面：擋下的話直接顯示更新畫面，
+  // 不去動 localStorage / 登入 / 任何遊戲資料，避免半吊子狀態。
+  const blocked = await checkForcedUpdateOnBoot().catch(()=>false);
+  if(blocked) return;
   try{
     rememberedNick = localStorage.getItem('my-nickname') || null;
   }catch(e){ rememberedNick = null; }
@@ -10762,6 +10862,7 @@ async function boot(){
   initChatUnreadPoll();
   initPresenceHeartbeat();
   initFortuneStarPoll();
+  initVersionCheckPoll();
 }
 
 async function doLogin(nick, password, confirmPassword){
@@ -14470,6 +14571,27 @@ async function renderGM(body){
     </div>
   </div>`;
 
+  const currentMinVersion = await fetchMinAppVersion();
+  html += `<div class="panel">
+    <h2>🔄 ${tt('強制更新','Force Update')}</h2>
+    <p class="sub">${tt(`此裝置目前部署的版本是 ${APP_VERSION}。設定「最低版本」後，版本低於此門檻的玩家會在登入前被擋下，直到重新整理拿到新版檔案為止；已經在遊戲中的玩家會看到上方提示條，不會被強制踢出。`, `This device is currently running version ${APP_VERSION}. Once you set a minimum version, players below it get blocked before login until they refresh and load the new file; players already in-session instead see a top banner rather than being force-kicked.`)}</p>
+    ${currentMinVersion && currentMinVersion.version ? `
+      <div class="listing">
+        <div class="left"><div class="icon-box">🔄</div><div class="meta"><div>${tt('目前門檻','Current threshold')}: ${escapeHtml(currentMinVersion.version)}+</div><div class="who">${timeAgo(currentMinVersion.updatedAt)}</div></div></div>
+      </div>
+    ` : `<div class="empty-note">${tt('目前沒有設定版本門檻，所有版本都能玩','No version threshold set - every version can play')}</div>`}
+    <div class="form-row">
+      <div style="flex:1;min-width:160px;"><label>${tt('最低版本（例如發新版後填 1.1.0）','Minimum version (e.g. 1.1.0 after a new release)')}</label><input type="text" id="gm-version-min" placeholder="${tt('例如 1.1.0','e.g. 1.1.0')}" value="${currentMinVersion ? escapeHtml(currentMinVersion.version||'') : ''}" maxlength="20" /></div>
+    </div>
+    <div class="form-row">
+      <div style="flex:1;min-width:220px;"><label>${tt('給玩家的訊息（選填）','Message to players (optional)')}</label><textarea id="gm-version-message" rows="3" maxlength="300" style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--line);background:var(--bg-void);color:var(--cream);font-family:'EB Garamond',serif;font-size:14px;" placeholder="${tt('例如：新版修正了拍賣行卡頓，請重新整理更新 ✦','e.g. This update fixes auction lag - please refresh ✦')}">${currentMinVersion ? escapeHtml(currentMinVersion.message||'') : ''}</textarea></div>
+    </div>
+    <div class="form-row">
+      <button class="btn small" id="gm-version-save-btn">${tt('🔒 發布門檻（強制更新）','🔒 Publish Threshold (Force Update)')}</button>
+      <button class="btn small secondary" id="gm-version-clear-btn">${tt('清除門檻','Clear Threshold')}</button>
+    </div>
+  </div>`;
+
   const gmPlayersTotalPages = Math.max(1, Math.ceil(allPlayers.length / GM_PAGE_SIZE));
   if(!state.gmPlayersPage || state.gmPlayersPage < 1) state.gmPlayersPage = 1;
   if(state.gmPlayersPage > gmPlayersTotalPages) state.gmPlayersPage = gmPlayersTotalPages;
@@ -15087,6 +15209,23 @@ async function renderGM(body){
   if(annClearBtn) annClearBtn.onclick = async ()=>{
     await clearAnnouncement();
     showToast(tt('已清除公告','Announcement cleared'));
+    renderTab();
+  };
+
+  const versionSaveBtn = document.getElementById('gm-version-save-btn');
+  if(versionSaveBtn) versionSaveBtn.onclick = async ()=>{
+    const version = document.getElementById('gm-version-min').value.trim();
+    const message = document.getElementById('gm-version-message').value.trim();
+    if(!version || !/^\d+(\.\d+)*$/.test(version)){ showToast(tt('請輸入有效的版本號，例如 1.1.0','Please enter a valid version number, e.g. 1.1.0')); return; }
+    if(!confirm(tt(`確定要把最低版本設為 ${version} 嗎？低於此版本的玩家登入前會被擋下，直到重新整理。`, `Set the minimum version to ${version}? Players below it will be blocked before login until they refresh.`))) return;
+    await saveMinAppVersion(version, message);
+    showToast(tt('版本門檻已發布 🔒','Version threshold published 🔒'));
+    renderTab();
+  };
+  const versionClearBtn = document.getElementById('gm-version-clear-btn');
+  if(versionClearBtn) versionClearBtn.onclick = async ()=>{
+    await clearMinAppVersion();
+    showToast(tt('已清除版本門檻','Version threshold cleared'));
     renderTab();
   };
 
