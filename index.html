@@ -7724,28 +7724,43 @@ function nextSuitUpgradeTierName(level){
   return names[level] || null;
 }
 async function confirmSuitUpgrade(suitKey){
-  const p = state.player;
-  if(!p) return;
-  const level = suitUpgradeTier(p, suitKey);
-  const tierName = nextSuitUpgradeTierName(level);
-  if(!tierName){ showToast(tt('此花色已升級到最高階','This suit is already fully upgraded')); return; }
-  const req = SUIT_UPGRADE_REQS[suitKey] && SUIT_UPGRADE_REQS[suitKey][tierName];
-  if(!req) return;
-  if((p.farmLevel||0) < req.tierLevel){
-    showToast(tt(`花園等級需達 Lv.${req.tierLevel} 才能升級此花色`, `Requires garden Lv.${req.tierLevel} to upgrade this suit`));
+  if(!state.nickname) return;
+  // 🔒 跟 plantSeed/harvestPlot 同一種漏洞、同一種修法：原本直接改 state.player 這份
+  // 登入時讀到的舊快照，最後用沒有版本檢查的 savePlayer() 整包覆蓋寫回。如果確認升級
+  // 前這段期間，好友透過 waterFriendPlot/stealFriendPlot（或一鍵版本）用 updatePlayerCAS
+  // 幫這位玩家的地寫入了 waterLog/stolenBy 標記，這次整包覆蓋會把那些標記悄悄蓋掉，
+  // 讓同一位好友之後能對同一塊地重複澆水/偷菜拿獎勵。改用 updatePlayerCAS，把所有
+  // 檢查（花園等級、材料是否足夠）跟扣材料、升級寫入包進同一次樂觀鎖讀-改-寫。
+  let failReason = null;
+  let upgradedTierName = null;
+  const applied = await updatePlayerCAS(state.nickname, (p)=>{
+    failReason = null; upgradedTierName = null; // 每次重試都要重置，避免前一次嘗試留下的失敗原因蓋掉這次其實已成功的結果
+    const level = suitUpgradeTier(p, suitKey);
+    const tierName = nextSuitUpgradeTierName(level);
+    if(!tierName){ failReason = 'maxed'; return; }
+    const req = SUIT_UPGRADE_REQS[suitKey] && SUIT_UPGRADE_REQS[suitKey][tierName];
+    if(!req){ failReason = 'maxed'; return; }
+    if((p.farmLevel||0) < req.tierLevel){ failReason = 'level'; return; }
+    for(const c of req.cards){
+      const have = countCardsForReq(p, c);
+      if(have < c.count){ failReason = 'materials'; return; }
+    }
+    req.cards.forEach(c=>consumeCardsForReq(p, c));
+    ensureSuitUpgrades(p)[suitKey] = level + 1;
+    upgradedTierName = tierName;
+  });
+  if(!applied){ showToast(tt('找不到玩家資料','Player data not found')); return; }
+  if(failReason === 'maxed'){ showToast(tt('此花色已升級到最高階','This suit is already fully upgraded')); return; }
+  if(failReason === 'level'){
+    const tierName = nextSuitUpgradeTierName(suitUpgradeTier(applied, suitKey));
+    const req = tierName && SUIT_UPGRADE_REQS[suitKey] && SUIT_UPGRADE_REQS[suitKey][tierName];
+    showToast(tt(`花園等級需達 Lv.${req ? req.tierLevel : '?'} 才能升級此花色`, `Requires garden Lv.${req ? req.tierLevel : '?'} to upgrade this suit`));
     return;
   }
-  for(const c of req.cards){
-    const have = countCardsForReq(p, c);
-    if(have < c.count){
-      showToast(tt('材料不足，無法升級','Not enough materials to upgrade'));
-      return;
-    }
-  }
-  req.cards.forEach(c=>consumeCardsForReq(p, c));
-  ensureSuitUpgrades(p)[suitKey] = level + 1;
-  await savePlayer(p);
-  const upgradedSeed = SEED_TYPES[effectiveSeedKey(p, suitKey)];
+  if(failReason === 'materials'){ showToast(tt('材料不足，無法升級','Not enough materials to upgrade')); return; }
+  if(!upgradedTierName) return;
+  state.player = applied;
+  const upgradedSeed = SEED_TYPES[effectiveSeedKey(applied, suitKey)];
   showToast(tt(`✨ ${seedName(SEED_TYPES[suitKey])}已升級為${seedName(upgradedSeed)}！`, `✨ ${seedName(SEED_TYPES[suitKey])} upgraded to ${seedName(upgradedSeed)}!`));
   render();
 }
@@ -7800,53 +7815,59 @@ function renderFarmUpgradeSelectionUI(p, nextReq){
   return html;
 }
 async function confirmFarmUpgrade(){
-  const p = state.player;
-  if(!p) return;
-  const level = p.farmLevel||0;
+  if(!state.nickname || !state.player) return;
+  const level = state.player.farmLevel||0;
   if(level >= FARM_MAX_LEVEL) return;
   const nextLevel = level+1;
   const req = FARM_UPGRADE_REQS[nextLevel];
-  const selections = state.farmUpgradeSelections || req.cards.map(r=>defaultMaterialSelection(p, r));
-  for(let ri=0; ri<req.cards.length; ri++){
-    const r = req.cards[ri];
-    const sel = selections[ri] || {};
-    const poolIds = reqCardPool(r).map(c=>c.id);
-    let total = 0;
-    for(const cid of Object.keys(sel)){
-      const qty = sel[cid]||0;
-      if(qty<=0) continue;
-      if(!poolIds.includes(cid) || qty > (p.cards[cid]||0)){
-        showToast(tt('材料選擇有誤，請重新確認','Material selection is invalid - please recheck'));
-        return;
+  // 玩家在 UI 上挑選要消耗哪些卡片，這份選擇只是使用者輸入、不是玩家存檔資料，
+  // 沿用目前畫面上的 state.player 算預設值沒問題；真正的持有數量檢查會在下面
+  // updatePlayerCAS 的 mutator 裡，用讀到的最新資料重新驗證一次。
+  const selections = state.farmUpgradeSelections || req.cards.map(r=>defaultMaterialSelection(state.player, r));
+  // 🔒 跟 plantSeed/harvestPlot 同一種漏洞、同一種修法：原本直接改 state.player 這份
+  // 登入時讀到的舊快照，最後用沒有版本檢查的 savePlayer() 整包覆蓋寫回。如果確認升級
+  // 前這段期間，好友透過 waterFriendPlot/stealFriendPlot（或一鍵版本）用 updatePlayerCAS
+  // 幫這位玩家的地寫入了 waterLog/stolenBy 標記，這次整包覆蓋會把那些標記悄悄蓋掉，
+  // 讓同一位好友之後能對同一塊地重複澆水/偷菜拿獎勵。改用 updatePlayerCAS，把所有
+  // 檢查（材料選擇、金幣、收成次數）跟扣材料、升級寫入包進同一次樂觀鎖讀-改-寫。
+  let failReason = null;
+  let failDetail = null;
+  const applied = await updatePlayerCAS(state.nickname, (p)=>{
+    failReason = null; failDetail = null; // 每次重試都要重算，避免殘留上次嘗試失敗時的結果
+    for(let ri=0; ri<req.cards.length; ri++){
+      const r = req.cards[ri];
+      const sel = selections[ri] || {};
+      const poolIds = reqCardPool(r).map(c=>c.id);
+      let total = 0;
+      for(const cid of Object.keys(sel)){
+        const qty = sel[cid]||0;
+        if(qty<=0) continue;
+        if(!poolIds.includes(cid) || qty > (p.cards[cid]||0)){ failReason = 'invalid'; return; }
+        total += qty;
       }
-      total += qty;
+      if(total !== r.count){ failReason = 'incomplete'; failDetail = reqLabel(r); return; }
     }
-    if(total !== r.count){
-      showToast(tt(`「${reqLabel(r)}」尚未選滿所需數量`, `You haven't selected the full amount for "${reqLabel(r)}"`));
-      return;
-    }
-  }
-  if(req.coins && (p.coins||0) < req.coins){
-    showToast(tt('金幣不足，無法升級','Not enough coins to upgrade'));
-    return;
-  }
-  if(req.harvests && ((p.stats && p.stats.totalHarvests) || 0) < req.harvests){
-    showToast(tt(`收成次數不足，需累計收成 ${req.harvests} 次才能升級`, `Not enough harvests - you need ${req.harvests} total harvests to upgrade`));
-    return;
-  }
-  req.cards.forEach((r, ri)=>{
-    const sel = selections[ri] || {};
-    Object.keys(sel).forEach(cid=>{
-      const qty = sel[cid]||0;
-      if(qty>0) p.cards[cid] = (p.cards[cid]||0) - qty;
+    if(req.coins && (p.coins||0) < req.coins){ failReason = 'coins'; return; }
+    if(req.harvests && ((p.stats && p.stats.totalHarvests) || 0) < req.harvests){ failReason = 'harvests'; return; }
+    req.cards.forEach((r, ri)=>{
+      const sel = selections[ri] || {};
+      Object.keys(sel).forEach(cid=>{
+        const qty = sel[cid]||0;
+        if(qty>0) p.cards[cid] = (p.cards[cid]||0) - qty;
+      });
     });
+    if(req.coins) p.coins -= req.coins;
+    p.farmLevel = nextLevel;
+    ensureFarm(p);
   });
-  if(req.coins) p.coins -= req.coins;
-  p.farmLevel = nextLevel;
-  ensureFarm(p);
+  if(!applied){ showToast(tt('找不到玩家資料','Player data not found')); return; }
+  if(failReason === 'invalid'){ showToast(tt('材料選擇有誤，請重新確認','Material selection is invalid - please recheck')); return; }
+  if(failReason === 'incomplete'){ showToast(tt(`「${failDetail}」尚未選滿所需數量`, `You haven't selected the full amount for "${failDetail}"`)); return; }
+  if(failReason === 'coins'){ showToast(tt('金幣不足，無法升級','Not enough coins to upgrade')); return; }
+  if(failReason === 'harvests'){ showToast(tt(`收成次數不足，需累計收成 ${req.harvests} 次才能升級`, `Not enough harvests - you need ${req.harvests} total harvests to upgrade`)); return; }
+  state.player = applied;
   state.farmUpgradeMode = false;
   state.farmUpgradeSelections = null;
-  await savePlayer(p);
   showToast(tt(`🌱 花園升級到 Lv.${nextLevel}！`, `🌱 Garden upgraded to Lv.${nextLevel}!`));
   render();
 }
@@ -9419,6 +9440,15 @@ async function harvestAllReady(){
 
 async function waterFriendPlot(friendNick, plotIndex){
   if(!state.nickname){ return; }
+  // 🔒 補上「目標不能是自己」的檢查：正常 UI 走「好友清單→拜訪」不會讓你點到
+  // 自己，但這只是前端限制。只要直接呼叫這個函式帶自己的暱稱（devtools，
+  // 或未來好友清單萬一意外把自己列進去），就能無限次對自己的地澆水拿謝禮，
+  // 而且官方文案是「不影響對方收成」——代表自己事後還能再正常收成一次，
+  // 等於平白多一筆。這裡在資料層擋掉，不只靠 UI 不給按鈕。
+  if(friendNick && friendNick.trim().toLowerCase() === state.nickname.toLowerCase()){
+    showToast(tt('不能幫自己的花園澆水',"You can't water your own garden"));
+    return;
+  }
   // 🔒 跟 stealFriendPlot 同一種漏洞、同一種修法：讀跟寫中間有網路延遲空檔，
   // 連續請求會各自讀到「還沒澆過」的舊資料，各自通過 waterLog 檢查、各自領一次謝禮。
   // 改用 updatePlayerCAS，把檢查跟標記 waterLog 包進同一次樂觀鎖讀-改-寫。
@@ -9468,7 +9498,8 @@ async function waterAllFriendsPlots(){
   const originalLabel = btn ? btn.textContent : tt('🚿 一鍵幫好友澆水','🚿 Water all friends');
   if(btn){ btn.disabled = true; btn.textContent = tt('澆水中…','Watering…'); }
   try{
-    const friends = await fetchMyFriends(state.nickname);
+    const friends = (await fetchMyFriends(state.nickname))
+      .filter(f => f && f.trim().toLowerCase() !== state.nickname.toLowerCase()); // 🔒 防呆：即使好友清單意外含自己，這裡也擋掉
     if(!friends.length){
       showToast(tt('目前沒有好友可以澆水','You have no friends to water yet'));
       return;
@@ -9547,7 +9578,8 @@ async function helpAllFriendsPetHunts(){
   const originalLabel = btn ? btn.textContent : tt('🐾 一鍵幫好友加速尋寶','🐾 Speed up all friends\' hunts');
   if(btn){ btn.disabled = true; btn.textContent = tt('加速中…','Helping…'); }
   try{
-    const friends = await fetchMyFriends(state.nickname);
+    const friends = (await fetchMyFriends(state.nickname))
+      .filter(f => f && f.trim().toLowerCase() !== state.nickname.toLowerCase()); // 🔒 防呆：即使好友清單意外含自己，這裡也擋掉
     if(!friends.length){
       showToast(tt('目前沒有好友可以幫忙','You have no friends to help yet'));
       return;
@@ -9666,6 +9698,11 @@ async function rentGuardianFromFriend(friendNick){
 
 async function stealFriendPlot(friendNick, plotIndex){
   if(!state.nickname){ return; }
+  // 🔒 補上「目標不能是自己」的檢查，理由跟 waterFriendPlot 一致。
+  if(friendNick && friendNick.trim().toLowerCase() === state.nickname.toLowerCase()){
+    showToast(tt('不能偷自己的花園',"You can't take from your own garden"));
+    return;
+  }
   // 🔒 修正重複偷菜漏洞：原本先 loadPlayer 讀好友資料、檢查完才 savePlayer 寫回，
   // 讀跟寫中間有真正的網路延遲空檔。若同一時間對同一塊地連續送出多次偷菜請求
   // （連點、多分頁、或直接呼叫這個函式），每個請求都各自讀到「尚未偷過」的
@@ -9715,7 +9752,8 @@ async function stealAllFriendsPlots(){
   const originalLabel = btn ? btn.textContent : tt('🌾 一鍵偷好友菜','🌾 Take from all friends');
   if(btn){ btn.disabled = true; btn.textContent = tt('順菜中…','Taking…'); }
   try{
-    const friends = await fetchMyFriends(state.nickname);
+    const friends = (await fetchMyFriends(state.nickname))
+      .filter(f => f && f.trim().toLowerCase() !== state.nickname.toLowerCase()); // 🔒 防呆：即使好友清單意外含自己，這裡也擋掉
     if(!friends.length){
       showToast(tt('目前沒有好友可以偷菜','You have no friends to take from yet'));
       return;
@@ -11213,16 +11251,23 @@ document.addEventListener('visibilitychange', ()=>{
 
 // ---------- Presence (online / last seen) heartbeat ----------
 // 【2026-08 修正】背景分頁（例如切到 iPhone 桌面、鎖螢幕）在 iOS Safari 上不會立刻被
-// 系統終止，JS 計時器可能還會再跑一陣子。這顆心跳寫的是 savePlayer（整包覆蓋、無版本
-// 檢查），如果背景分頁記憶體裡還停留著登出前/切換裝置前的舊 state.player，一旦心跳觸發
-// 就會用舊資料覆蓋掉其他裝置後來寫入的新進度，造成「存檔跳回過去」。加上 visibility 判斷，
-// 背景分頁完全不再寫資料庫，跟其他 poll（見 registerVisiblePoll 那些函式）做法一致。
+// 系統終止，JS 計時器可能還會再跑一陣子。加上 visibility 判斷，背景分頁完全不再寫
+// 資料庫，跟其他 poll（見 registerVisiblePoll 那些函式）做法一致。
+// 【2026-08 再修正】這顆心跳原本寫的是 savePlayer（整包覆蓋、無版本檢查），只要分頁
+// 在前景開著、記憶體裡的 state.player 是心跳觸發當下手上這份舊快照，就會把它整包蓋回
+// 資料庫——包含「這段期間別人透過 CAS 寫進這位玩家存檔裡的資料」，例如好友幫他的地
+// 澆水時寫入的 plot.waterLog 標記。結果就是：只要目標好友剛好在線上（分頁開著），
+// 幫他澆過水的紀錄會在下一次心跳（最多 60 秒後）被悄悄抹掉，導致重複可以再澆一次；
+// 離線好友沒有心跳在跑，紀錄才留得住。改成跟其他高頻寫入一樣走 updatePlayerCAS，
+// 只改 lastActiveAt 這個欄位，讀-改-寫全程版本比對，不會動到期間被其他人 CAS 寫入的資料。
 let presenceHeartbeatInterval = null;
 async function updatePresenceHeartbeat(){
   if(document.visibilityState !== 'visible') return; // 背景分頁不寫入，避免用過期資料覆蓋
   if(!state.nickname || !state.player) return;
-  state.player.lastActiveAt = Date.now();
-  try{ await savePlayer(state.player); }catch(e){ /* best effort */ }
+  try{
+    const applied = await updatePlayerCAS(state.nickname, (p)=>{ p.lastActiveAt = Date.now(); });
+    if(applied) state.player = applied; // 順便讓本地快照跟上最新資料，減少其他地方的過期覆蓋風險
+  }catch(e){ /* best effort */ }
 }
 function initPresenceHeartbeat(){
   updatePresenceHeartbeat();
