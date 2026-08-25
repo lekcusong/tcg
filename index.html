@@ -9176,43 +9176,55 @@ async function renderExpedition(body){
 }
 
 async function plantSeed(plotIndex, seedKey){
-  const p = state.player;
-  if(!p) return;
+  if(!state.nickname) return;
   const seed = SEED_TYPES[seedKey];
   if(!seed) return;
-  const farm = ensureFarm(p);
-  const plot = farm[plotIndex];
-  if(!plot || plot.seed){ showToast(tt('這塊地已經種了東西','This plot already has something planted')); return; }
-  if((seed.tierLevel||0) > (p.farmLevel||0)){
-    showToast(tt(`花園等級需達 Lv.${seed.tierLevel} 才能解鎖此種子`, `Requires garden Lv.${seed.tierLevel} to unlock this seed`));
-    return;
-  }
-  if(seed.seasonOnly && !SEASON_ACTIVE){
-    showToast(tt('賽季已結束，無法再種植此種子','The season has ended - this seed can no longer be planted'));
-    return;
-  }
-  if(seed.unlockTotal){
-    const total = seed.uniqueUnlock ? playerUniqueCards(p) : playerTotalCards(p);
-    if(total < seed.unlockTotal){
-      const msg = seed.uniqueUnlock
-        ? tt(`收藏超過 ${seed.unlockTotal-1} 種不同卡牌才能種植${seedName(seed)}`, `Collect more than ${seed.unlockTotal-1} unique cards to unlock planting ${seedName(seed)}`)
-        : tt(`收藏滿 ${seed.unlockTotal} 張卡才能種植${seedName(seed)}`, `Collect ${seed.unlockTotal} cards to unlock planting ${seedName(seed)}`);
-      showToast(msg);
-      return;
+  // 🔒 修正真正的重複偷菜/澆水漏洞根源：原本直接改 state.player 這份「登入時讀到的
+  // 舊快照」，最後用 savePlayer() 把整包資料原樣覆蓋寫回資料庫。如果在讀跟寫這段
+  // 期間，有好友透過 stealFriendPlot/waterFriendPlot（或一鍵版本）用 updatePlayerCAS
+  // 幫這塊地或別塊地寫入了 stolenBy/waterLog 標記，這裡的整包覆蓋會把那些標記悄悄蓋掉
+  // （因為它根本沒檢查資料庫當下是不是還是自己讀到的那份），讓同一塊地能被同一位
+  // 好友重複偷/澆水拿獎勵——這正是「一鍵偷菜/一鍵澆水常常可以反覆得利」的根本原因，
+  // 不是 CAS 保護本身失效，而是「種植」這個動作繞過了 CAS 保護。
+  // 改用 updatePlayerCAS：所有檢查（金幣、地是否已種、等級/賽季/收藏解鎖條件）跟
+  // 寫入包進同一次讀-改-寫，沒搶到鎖會自動重讀最新資料再試，不會覆蓋掉這段期間
+  // 任何其他併發寫入。
+  let failReason = null;
+  const applied = await updatePlayerCAS(state.nickname, (p)=>{
+    const farm = ensureFarm(p);
+    const plot = farm[plotIndex];
+    if(!plot || plot.seed){ failReason = 'occupied'; return; }
+    if((seed.tierLevel||0) > (p.farmLevel||0)){ failReason = 'level'; return; }
+    if(seed.seasonOnly && !SEASON_ACTIVE){ failReason = 'season'; return; }
+    if(seed.unlockTotal){
+      const total = seed.uniqueUnlock ? playerUniqueCards(p) : playerTotalCards(p);
+      if(total < seed.unlockTotal){ failReason = 'unlock'; return; }
     }
+    if((p.coins||0) < seed.cost){ failReason = 'coins'; return; }
+    p.coins -= seed.cost;
+    const now = Date.now();
+    const effectiveGrowMs = Math.round(seed.growMs * starChartGrowMsMultiplier(p));
+    plot.seed = seedKey;
+    plot.plantedAt = now;
+    plot.readyAt = now + effectiveGrowMs;
+    plot.witherAt = seed.wither ? plot.readyAt + seed.witherMs : null;
+    plot.waterLog = {};
+    plot.stolenBy = [];
+    bumpQuest(p, 'plant', 1);
+  });
+  if(!applied){ showToast(tt('找不到玩家資料','Player data not found')); return; }
+  if(failReason === 'occupied'){ showToast(tt('這塊地已經種了東西','This plot already has something planted')); return; }
+  if(failReason === 'level'){ showToast(tt(`花園等級需達 Lv.${seed.tierLevel} 才能解鎖此種子`, `Requires garden Lv.${seed.tierLevel} to unlock this seed`)); return; }
+  if(failReason === 'season'){ showToast(tt('賽季已結束，無法再種植此種子','The season has ended - this seed can no longer be planted')); return; }
+  if(failReason === 'unlock'){
+    const msg = seed.uniqueUnlock
+      ? tt(`收藏超過 ${seed.unlockTotal-1} 種不同卡牌才能種植${seedName(seed)}`, `Collect more than ${seed.unlockTotal-1} unique cards to unlock planting ${seedName(seed)}`)
+      : tt(`收藏滿 ${seed.unlockTotal} 張卡才能種植${seedName(seed)}`, `Collect ${seed.unlockTotal} cards to unlock planting ${seedName(seed)}`);
+    showToast(msg);
+    return;
   }
-  if((p.coins||0) < seed.cost){ showToast(tt('金幣不足','Not enough coins')); return; }
-  p.coins -= seed.cost;
-  const now = Date.now();
-  const effectiveGrowMs = Math.round(seed.growMs * starChartGrowMsMultiplier(p));
-  plot.seed = seedKey;
-  plot.plantedAt = now;
-  plot.readyAt = now + effectiveGrowMs;
-  plot.witherAt = seed.wither ? plot.readyAt + seed.witherMs : null;
-  plot.waterLog = {};
-  plot.stolenBy = [];
-  bumpQuest(p, 'plant', 1);
-  await savePlayer(p);
+  if(failReason === 'coins'){ showToast(tt('金幣不足','Not enough coins')); return; }
+  state.player = applied;
   showToast(tt(`已種下${seedName(seed)}`, `Planted ${seedName(seed)}`));
   render();
 }
@@ -9241,95 +9253,113 @@ async function plantSeedToAllEmpty(seedKey){
       return;
     }
   }
-  const farm = ensureFarm(p);
-  const now = Date.now();
-  const effectiveGrowMs = Math.round(seed.growMs * starChartGrowMsMultiplier(p));
+  // 🔒 同 plantSeed：原本直接改 state.player 舊快照、savePlayer() 整包覆蓋寫回，
+  // 會蓋掉好友這段期間透過 CAS 寫入的 waterLog/stolenBy 標記。改用 updatePlayerCAS，
+  // 把整輪「掃空地、扣錢、種下」都包進同一次讀-改-寫。
   let planted = 0;
-  for(const plot of farm){
-    if(plot.seed) continue; // 只種空地
-    if((p.coins||0) < seed.cost) break; // 金幣不夠就停下來
-    p.coins -= seed.cost;
-    plot.seed = seedKey;
-    plot.plantedAt = now;
-    plot.readyAt = now + effectiveGrowMs;
-    plot.witherAt = seed.wither ? plot.readyAt + seed.witherMs : null;
-    plot.waterLog = {};
-    plot.stolenBy = [];
-    bumpQuest(p, 'plant', 1);
-    planted++;
-  }
+  const applied = await updatePlayerCAS(state.nickname, (p)=>{
+    planted = 0; // 每次重試都要重算，避免殘留上次嘗試失敗時算的數字
+    const farm = ensureFarm(p);
+    const now = Date.now();
+    const effectiveGrowMs = Math.round(seed.growMs * starChartGrowMsMultiplier(p));
+    for(const plot of farm){
+      if(plot.seed) continue; // 只種空地
+      if((p.coins||0) < seed.cost) break; // 金幣不夠就停下來
+      p.coins -= seed.cost;
+      plot.seed = seedKey;
+      plot.plantedAt = now;
+      plot.readyAt = now + effectiveGrowMs;
+      plot.witherAt = seed.wither ? plot.readyAt + seed.witherMs : null;
+      plot.waterLog = {};
+      plot.stolenBy = [];
+      bumpQuest(p, 'plant', 1);
+      planted++;
+    }
+  });
+  if(!applied){ showToast(tt('找不到玩家資料','Player data not found')); return; }
   if(planted === 0){
     showToast(tt('沒有可種植的空地，或金幣不足','No empty plots to plant, or not enough coins'));
     return;
   }
-  await savePlayer(p);
+  state.player = applied;
   showToast(tt(`已一鍵種下 ${planted} 顆${seedName(seed)}`, `Planted ${planted} × ${seedName(seed)}`));
   render();
 }
 
-async function harvestPlot(plotIndex, opts){
-  opts = opts || {};
-  const p = state.player;
-  if(!p) return null;
-  const farm = ensureFarm(p);
-  const plot = farm[plotIndex];
-  const now = Date.now();
-  const status = plotStatus(plot, now);
-  if(status === 'empty' || status === 'growing') return null;
-
-  // 🐞修正：舊資料相容 — 若 plot.seed 指向的種子已經被移除／改版下架（例如過去的
-  // 季節限定種子），SEED_TYPES[plot.seed] 會是 undefined。過去這裡沒有防呆，
-  // 收成時直接讀 seed.coinMax 等欄位會整段拋出例外，玩家連清空這塊地都做不到。
-  // 補一個安全預設值，讓孤兒種子至少能被正常清掉（金幣/掉落一律視為 0）。
-  const seed = SEED_TYPES[plot.seed] || {icon:'❓', nameZh:'未知種子（已下架）', nameEn:'Unknown Seed (discontinued)', coinMin:0, coinMax:0, growMs:1};
+async function harvestPlot(plotIndex){
+  if(!state.nickname) return null;
+  // 🔒 這裡才是「一鍵偷菜/一鍵澆水常常可以反覆得利」的真正根源：本函式原本直接
+  // 修改 state.player 這份登入時讀到的舊快照，最後用 savePlayer() 把整包資料原樣
+  // 覆蓋寫回資料庫，完全不檢查資料庫當下是否還是自己讀到的那份。如果收成前這段
+  // 期間，有好友透過 stealFriendPlot/waterFriendPlot（或一鍵版本）用 updatePlayerCAS
+  // 幫你的地寫入了 stolenBy/waterLog 標記，這次整包覆蓋會把那些標記悄悄蓋掉——
+  // 於是同一位好友之後可以再對同一塊（或看似同一輪的）地重複偷/澆水拿一次獎勵。
+  // 單塊偷菜/澆水本身的 CAS 保護沒有壞，是「收成」這個動作繞過了保護、把它蓋掉了。
+  // 改用 updatePlayerCAS：檢查與寫入包進同一次讀-改-寫，沒搶到鎖會自動重讀最新
+  // 資料再試，不會覆蓋掉這段期間任何其他併發寫入。
   let result = null;
-  if(status === 'withered'){
-    result = {withered:true, seedName: seedName(seed)};
-  } else {
-    ensureMaterials(p);
-    let coinGain = Math.floor(Math.random()*(seed.coinMax-seed.coinMin+1)) + seed.coinMin;
-    coinGain = Math.round(coinGain * starChartCoinMultiplier(p) * starChartYieldMultiplier(p) * farmBlessingCoinMultiplier(p));
-    p.coins = (p.coins||0) + coinGain;
-    let bonusCard = null;
-    if(seed.bonusCardChance && Math.random() < seed.bonusCardChance){
-      const pool = DECK.filter(c=>seed.bonusCardRarities.includes(c.rarity));
-      if(pool.length){
-        const card = pool[Math.floor(Math.random()*pool.length)];
-        p.cards[card.id] = (p.cards[card.id]||0) + 1;
-        bonusCard = card;
+  let notReady = false;
+  const applied = await updatePlayerCAS(state.nickname, (p)=>{
+    const farm = ensureFarm(p);
+    const plot = farm[plotIndex];
+    const now = Date.now();
+    const status = plotStatus(plot, now);
+    if(status === 'empty' || status === 'growing'){ notReady = true; return; }
+
+    // 🐞修正：舊資料相容 — 若 plot.seed 指向的種子已經被移除／改版下架（例如過去的
+    // 季節限定種子），SEED_TYPES[plot.seed] 會是 undefined。過去這裡沒有防呆，
+    // 收成時直接讀 seed.coinMax 等欄位會整段拋出例外，玩家連清空這塊地都做不到。
+    // 補一個安全預設值，讓孤兒種子至少能被正常清掉（金幣/掉落一律視為 0）。
+    const seed = SEED_TYPES[plot.seed] || {icon:'❓', nameZh:'未知種子（已下架）', nameEn:'Unknown Seed (discontinued)', coinMin:0, coinMax:0, growMs:1};
+    if(status === 'withered'){
+      result = {withered:true, seedName: seedName(seed)};
+    } else {
+      ensureMaterials(p);
+      let coinGain = Math.floor(Math.random()*(seed.coinMax-seed.coinMin+1)) + seed.coinMin;
+      coinGain = Math.round(coinGain * starChartCoinMultiplier(p) * starChartYieldMultiplier(p) * farmBlessingCoinMultiplier(p));
+      p.coins = (p.coins||0) + coinGain;
+      let bonusCard = null;
+      if(seed.bonusCardChance && Math.random() < seed.bonusCardChance){
+        const pool = DECK.filter(c=>seed.bonusCardRarities.includes(c.rarity));
+        if(pool.length){
+          const card = pool[Math.floor(Math.random()*pool.length)];
+          p.cards[card.id] = (p.cards[card.id]||0) + 1;
+          bonusCard = card;
+        }
       }
+      let materialDrop = null;
+      const mercuryDropChance = FARM_MATERIAL_DROP_CHANCE + starChartMercuryDropChanceBonus(p)/100; // 水星節點：+5%/節點，封頂50%
+      if(Math.random() < mercuryDropChance){
+        ensureProfession(p);
+        // 隨機掉藥草/礦石/木料其中一種，不受目前職業影響
+        const materialId = PROFESSION_MATERIAL_IDS[Math.floor(Math.random()*PROFESSION_MATERIAL_IDS.length)];
+        let qty = FARM_MATERIAL_DROP_MIN + Math.floor(Math.random()*(FARM_MATERIAL_DROP_MAX-FARM_MATERIAL_DROP_MIN+1));
+        if(Math.random() < starChartMercuryExtraQtyChance(p)) qty += 1; // 水星節點：+10%/節點機率多掉1個
+        p.professionMaterials[materialId] = (p.professionMaterials[materialId]||0) + qty;
+        const def = PROFESSION_DEFS.find(d=>d.materialId===materialId);
+        materialDrop = {materialId, qty, icon: def ? def.materialIcon : '', label: def ? professionMaterialLabel(def) : materialId};
+      }
+      // 寵物尋寶玩法：花園收成掉落職業材料的同時，額外有小機率直接開出一隻寵物
+      // （對應規格書「蛋的另一來源：職業採集有機率額外掉落」；此處為求簡化，命中時
+      // 直接產生已孵化的寵物，不吃花園等級加成，維持基礎稀有度機率）。
+      let bonusPet = null;
+      if(materialDrop && Math.random() < PET_BONUS_EGG_CHANCE){
+        ensurePets(p);
+        const rarity = rollPetRarity(0);
+        const pet = createPet(materialDrop.materialId, rarity);
+        p.pets.push(pet);
+        if(!p.petActiveId) p.petActiveId = pet.id;
+        bonusPet = pet;
+      }
+      result = {withered:false, seedName: seedName(seed), coinGain, bonusCard, materialDrop, bonusPet};
+      bumpQuest(p, 'harvest', 1);
+      ensureStats(p).totalHarvests += 1;
     }
-    let materialDrop = null;
-    const mercuryDropChance = FARM_MATERIAL_DROP_CHANCE + starChartMercuryDropChanceBonus(p)/100; // 水星節點：+5%/節點，封頂50%
-    if(Math.random() < mercuryDropChance){
-      ensureProfession(p);
-      // 隨機掉藥草/礦石/木料其中一種，不受目前職業影響
-      const materialId = PROFESSION_MATERIAL_IDS[Math.floor(Math.random()*PROFESSION_MATERIAL_IDS.length)];
-      let qty = FARM_MATERIAL_DROP_MIN + Math.floor(Math.random()*(FARM_MATERIAL_DROP_MAX-FARM_MATERIAL_DROP_MIN+1));
-      if(Math.random() < starChartMercuryExtraQtyChance(p)) qty += 1; // 水星節點：+10%/節點機率多掉1個
-      p.professionMaterials[materialId] = (p.professionMaterials[materialId]||0) + qty;
-      const def = PROFESSION_DEFS.find(d=>d.materialId===materialId);
-      materialDrop = {materialId, qty, icon: def ? def.materialIcon : '', label: def ? professionMaterialLabel(def) : materialId};
-    }
-    // 寵物尋寶玩法：花園收成掉落職業材料的同時，額外有小機率直接開出一隻寵物
-    // （對應規格書「蛋的另一來源：職業採集有機率額外掉落」；此處為求簡化，命中時
-    // 直接產生已孵化的寵物，不吃花園等級加成，維持基礎稀有度機率）。
-    let bonusPet = null;
-    if(materialDrop && Math.random() < PET_BONUS_EGG_CHANCE){
-      ensurePets(p);
-      const rarity = rollPetRarity(0);
-      const pet = createPet(materialDrop.materialId, rarity);
-      p.pets.push(pet);
-      if(!p.petActiveId) p.petActiveId = pet.id;
-      bonusPet = pet;
-    }
-    result = {withered:false, seedName: seedName(seed), coinGain, bonusCard, materialDrop, bonusPet};
-    bumpQuest(p, 'harvest', 1);
-    ensureStats(p).totalHarvests += 1;
-  }
-  plot.seed = null; plot.plantedAt = null; plot.readyAt = null; plot.witherAt = null;
-  plot.waterLog = {}; plot.stolenBy = [];
-  if(!opts.skipSave) await savePlayer(p);
+    plot.seed = null; plot.plantedAt = null; plot.readyAt = null; plot.witherAt = null;
+    plot.waterLog = {}; plot.stolenBy = [];
+  });
+  if(!applied || notReady || !result) return null;
+  state.player = applied;
   return result;
 }
 
@@ -9360,7 +9390,7 @@ async function harvestAllReady(){
   for(let i=0;i<farm.length;i++){
     const status = plotStatus(farm[i], now);
     if(status !== 'ready' && status !== 'withered') continue;
-    const result = await harvestPlot(i, {skipSave:true});
+    const result = await harvestPlot(i); // 每塊地各自一次 updatePlayerCAS，已個別存檔
     if(!result) continue;
     if(result.withered){ witheredCount++; }
     else{
@@ -9375,7 +9405,7 @@ async function harvestAllReady(){
     }
   }
   if(harvestedCount===0 && witheredCount===0){ showToast(tt('目前沒有可收成的作物','Nothing ready to harvest right now')); return; }
-  await savePlayer(p);
+  // 每塊地已在 harvestPlot() 內各自透過 updatePlayerCAS 存檔，這裡不用再整包存一次
   let msg = '';
   if(harvestedCount>0) msg += tt(`收成 ${harvestedCount} 塊地，獲得 ✦${coinTotal}`, `Harvested ${harvestedCount} plot(s) for ✦${coinTotal}`);
   const materialParts = Object.values(materialTotals).map(m=>`${m.icon} ${m.label} x${m.qty}`);
@@ -9528,39 +9558,50 @@ async function helpAllFriendsPetHunts(){
     let totalSpeedup = 0;
     const notifJobs = []; // 一位好友一筆（彙總這次幫他加速了幾格、總共縮短多少時間）
     for(const friendNick of friends){
-      const owner = await loadPlayer(friendNick);
-      if(!owner) continue;
-      ensurePets(owner);
       let friendSlotCount = 0;
       let friendSpeedup = 0;
-      owner.petHunts.forEach(slot=>{
-        if(!slot.active) return;
-        if(now >= slot.readyAt) return; // 已經好了，加速沒有意義
-        if(!slot.helpLog) slot.helpLog = {};
-        if(slot.helpLog[state.nickname]) return; // 這格已經幫過了
-        const remain = slot.readyAt - now;
-        const speedup = Math.floor(remain * PET_HUNT_HELP_RATIO);
-        slot.readyAt = slot.readyAt - speedup;
-        slot.helpLog[state.nickname] = now;
-        friendSlotCount++;
-        friendSpeedup += speedup;
+      // 🔒 這裡原本完全沒有 CAS 保護：loadPlayer 讀好友資料、檢查 helpLog、
+      // 直接 savePlayer(owner) 整包覆蓋寫回，讀跟寫中間有網路延遲空檔。
+      // 跟修正前的偷菜/澆水是同一種漏洞（連點、多分頁、或同時有其他好友也在
+      // 幫這位玩家加速，都能讓同一格被同一人重複標記加速、重複領精華），而且
+      // 這裡連「單塊版本已用 CAS」這種退路都沒有——整個加速尋寶功能只有這個
+      // 一鍵版本。改用 updatePlayerCAS，把「檢查每格是否還在跑／是否已幫過」
+      // 跟「標記 helpLog、縮短時間」包進同一次樂觀鎖讀-改-寫。
+      const applied = await updatePlayerCAS(friendNick, (owner)=>{
+        ensurePets(owner);
+        friendSlotCount = 0; friendSpeedup = 0; // 每次重試都要重算，避免殘留上次嘗試失敗時算的數字
+        const now2 = Date.now();
+        owner.petHunts.forEach(slot=>{
+          if(!slot.active) return;
+          if(now2 >= slot.readyAt) return; // 已經好了，加速沒有意義
+          if(!slot.helpLog) slot.helpLog = {};
+          if(slot.helpLog[state.nickname]) return; // 這格已經幫過了
+          const remain = slot.readyAt - now2;
+          const speedup = Math.floor(remain * PET_HUNT_HELP_RATIO);
+          slot.readyAt = slot.readyAt - speedup;
+          slot.helpLog[state.nickname] = now2;
+          friendSlotCount++;
+          friendSpeedup += speedup;
+        });
       });
-      if(friendSlotCount > 0){
-        helpedFriendCount++;
-        helpedSlotCount += friendSlotCount;
-        totalSpeedup += friendSpeedup;
-        await savePlayer(owner);
-        notifJobs.push({friendNick, slotCount: friendSlotCount, totalSpeedup: friendSpeedup});
-      }
+      if(!applied || friendSlotCount === 0) continue;
+      helpedFriendCount++;
+      helpedSlotCount += friendSlotCount;
+      totalSpeedup += friendSpeedup;
+      notifJobs.push({friendNick, slotCount: friendSlotCount, totalSpeedup: friendSpeedup});
     }
     if(helpedSlotCount === 0){
       showToast(tt('好友目前都沒有可以加速的尋寶','None of your friends have hunts that can be sped up right now'));
       return;
     }
     const essenceGained = helpedSlotCount * PET_HUNT_HELP_REWARD_ESSENCE;
-    ensureMaterials(state.player);
-    state.player.materials.diceEssence = (state.player.materials.diceEssence||0) + essenceGained;
-    await savePlayer(state.player);
+    // 自己這邊拿獎勵也改用 CAS，理由跟 waterAllFriendsPlots/stealAllFriendsPlots 一致：
+    // 避免跟同一時間的其他收益（收成、抽卡等）互相蓋掉。
+    const appliedSelf = await updatePlayerCAS(state.nickname, (player)=>{
+      ensureMaterials(player);
+      player.materials.diceEssence = (player.materials.diceEssence||0) + essenceGained;
+    });
+    if(appliedSelf) state.player = appliedSelf;
 
     for(const job of notifJobs){
       await createNotification(job.friendNick, state.nickname, 'pet_help_bulk', {slotCount: job.slotCount, totalSpeedup: job.totalSpeedup});
@@ -10888,12 +10929,11 @@ let slotPulling = false;
 // autoSlotState 非 null 時代表目前正在跑自動共鳴（或剛好暫停在中頭獎確認），
 // running=false 但 autoSlotState 仍不是 null 的狀態＝「暫停中，等玩家確認要不要繼續」。
 let autoSlotState = null;
-// 🔒「自動共鳴」限定帳號使用：只有暱稱符合 AUTO_RESONANCE_NICKNAME（大小寫不分）才看得到／能觸發，
-// 沿用 GM_NICKNAME／isGM() 同樣的比對寫法。純前端限制，只能藏住 UI 入口，
-// 技術上仍可被人直接開 devtools 呼叫 startAutoSlot()，不是真正的伺服器端權限控管。
-const AUTO_RESONANCE_NICKNAME = 'lekcusong';
+// 🔓 自動共鳴：原本限定帳號（AUTO_RESONANCE_NICKNAME）才能看到／觸發，僅用於開發階段
+// 內部測試。現已開放給所有玩家使用，isAutoResonanceAllowed() 一律回傳 true，
+// 保留函式本身（而不是直接刪掉所有呼叫點）方便未來若又要收回權限時能改回帳號比對。
 function isAutoResonanceAllowed(){
-  return !!state.nickname && state.nickname.toLowerCase() === AUTO_RESONANCE_NICKNAME.toLowerCase();
+  return !!state.nickname;
 }
 // 輸入框的次數/模式沿用 GM 面板 input 的做法，用全域變數暫存使用者輸入，
 // 避免自動共鳴跑到一半時 renderTab() 被其他輪詢觸發重繪，把使用者剛打的數字洗掉。
