@@ -760,16 +760,11 @@ async function bombLoadZones(){
   if (bombZoneMode() === "none") return;   // 沒有圈層可顯示：連圈層資料都不用去要
   const key = st.width + "x" + st.height, n = st.width * st.height;
   if (st.zonesKey === key && st.zones) return;
+  // 圈層資料只從本機快取讀（伺服器沒有對應的 bomb_zone_ratios RPC，拿掉遠端抓取；
+  // 圈層倍率目前全部是 1，就算有快取也不會顯示任何著色，這裡純粹避免無謂的失敗嘗試）
   let arr = null;
   try { const c = bombLsGet("bomb-zones-v1:" + key); if (c) arr = JSON.parse(c); } catch (e) {}
-  if (!Array.isArray(arr) || arr.length !== n) {
-    arr = null;
-    if (st.zonesUnavailable !== key) {
-      try { const r = await bombRpc("bomb_zone_ratios", { p_width: st.width, p_height: st.height }); if (Array.isArray(r) && r.length === n) { arr = r; bombLsSet("bomb-zones-v1:" + key, JSON.stringify(r)); } } catch (err) {}
-      if (!arr) st.zonesUnavailable = key;
-    }
-  }
-  if (arr) { st.zones = arr; st.zonesKey = key; bombApplyZones(); bombRefreshZoneUi(); }
+  if (Array.isArray(arr) && arr.length === n) { st.zones = arr; st.zonesKey = key; bombApplyZones(); bombRefreshZoneUi(); }
 }
 function bombApplyZones(){
   const grid = document.getElementById("bomb-grid"), z = bombState.zones;
@@ -2817,7 +2812,7 @@ const monopolyState = {
   vip0BaseRolls: 3, vipRollsPerLevel: 1, holdCap: 13,
   gmPanelOpen: false, rulesOpen: false, avatarCache: {},
   income: null, incomeFetchedAt: 0, claimingIncome: false,
-  eventSettings: null, lastSchedAt: 0, stealCards: 0, stealCoinCards: 0, stealCoinsPct: 5, stealCoinsSupported: false, stealCoinsPickerOpen: false, stealCoinTargets: null, stealCardPickerOpen: false, stealCardTargets: null, channelsEnabled: true, selectedTile: null, unlimitedRolls: false, unlimitedPlayers: null, newbiePropertyLimit: null,
+  eventSettings: null, lastSchedAt: 0, stealCards: 0, stealCoinCards: 0, stealCoinsPct: 5, stealCoinsSupported: false, cardHoldCap: 2, stealCoinsPickerOpen: false, stealCoinTargets: null, stealCardPickerOpen: false, stealCardTargets: null, channelsEnabled: true, selectedTile: null, unlimitedRolls: false, unlimitedPlayers: null, newbiePropertyLimit: null,
   posOpen: true, holdingsOpen: true
 };
 try { const _c = JSON.parse(localStorage.getItem("monopoly-ui-collapse") || "null"); if (_c) { if (_c.pos === false) monopolyState.posOpen = false; if (_c.holdings === false) monopolyState.holdingsOpen = false; } } catch(e){}
@@ -2940,8 +2935,16 @@ function monopolyRewardToast(rw){
     case "shard": return dc(`🎁 獲得神秘碎片 ×${n}`, `🎁 Got Mystery Shard ×${n}`);
     case "rolls": return dc(`🎁 獲得 ${n} 次擲骰機會`, `🎁 Got ${n} extra rolls`);
     case "toll_card": return rw.already_had ? dc("🎫 你已經有過路費折扣卡了（不能疊加）", "🎫 You already hold a Toll Discount Card (no stacking)") : dc("🎁 獲得過路費折扣卡（下次過路費半價）", "🎁 Got a Toll Discount Card (next toll is half price)");
-    case "steal_card": return dc(`🎁 獲得搶奪卡 ×${n}：可以收著，之後在大富翁頁面上方按「使用」，選一位玩家搶走對方隨機一塊地產（新手保護中的玩家和 GM 搶不了）`, `🎁 Got Steal Card ×${n}: keep it and press "Use" at the top of the Monopoly page later — pick a player and take one random property from them (newbie-protected players and the GM can't be targeted)`);
-    case "steal_coins": return dc(`🎁 獲得搶金幣卡 ×${n}：在大富翁頁面上方按「使用」，選一位棋盤上的玩家，搶走對方目前 ${monopolyState.stealCoinsPct}% 的金幣（新手保護中的玩家搶不了）`, `🎁 Got Steal-Coins Card ×${n}: press "Use" at the top of the Monopoly page, pick a player on the board and take ${monopolyState.stealCoinsPct}% of their current coins (newbie-protected players can't be robbed)`);
+    case "steal_card": {
+      const capped = rw.capped ? dc(`（身上最多收 ${monopolyState.cardHoldCap} 張，超過的部分換成了 ✦${Number(rw.converted_amount || 0).toLocaleString()} 金幣）`, ` (capped at ${monopolyState.cardHoldCap} — the rest converted to ✦${Number(rw.converted_amount || 0).toLocaleString()} coins)`) : "";
+      if (n <= 0) return dc(`🎁 搶奪卡已經收滿 ${monopolyState.cardHoldCap} 張，這次改發 ✦${Number(rw.converted_amount || 0).toLocaleString()} 金幣`, `🎁 Steal Cards are full (${monopolyState.cardHoldCap}) — paid ✦${Number(rw.converted_amount || 0).toLocaleString()} coins instead`);
+      return dc(`🎁 獲得搶奪卡 ×${n}${capped}：可以收著，之後在大富翁頁面上方按「使用」，選一位玩家搶走對方隨機一塊地產（新手保護中的玩家和 GM 搶不了）`, `🎁 Got Steal Card ×${n}${capped}: keep it and press "Use" at the top of the Monopoly page later — pick a player and take one random property from them (newbie-protected players and the GM can't be targeted)`);
+    }
+    case "steal_coins": {
+      const capped = rw.capped ? dc(`（身上最多收 ${monopolyState.cardHoldCap} 張，超過的部分換成了 ✦${Number(rw.converted_amount || 0).toLocaleString()} 金幣）`, ` (capped at ${monopolyState.cardHoldCap} — the rest converted to ✦${Number(rw.converted_amount || 0).toLocaleString()} coins)`) : "";
+      if (n <= 0) return dc(`🎁 搶金幣卡已經收滿 ${monopolyState.cardHoldCap} 張，這次改發 ✦${Number(rw.converted_amount || 0).toLocaleString()} 金幣`, `🎁 Steal-Coins Cards are full (${monopolyState.cardHoldCap}) — paid ✦${Number(rw.converted_amount || 0).toLocaleString()} coins instead`);
+      return dc(`🎁 獲得搶金幣卡 ×${n}${capped}：在大富翁頁面上方按「使用」，選一位棋盤上的玩家，搶走對方目前 ${monopolyState.stealCoinsPct}% 的金幣（新手保護中的玩家搶不了）`, `🎁 Got Steal-Coins Card ×${n}${capped}: press "Use" at the top of the Monopoly page, pick a player on the board and take ${monopolyState.stealCoinsPct}% of their current coins (newbie-protected players can't be robbed)`);
+    }
     case "coins": return dc(`🎁 獲得 ✦${n.toLocaleString()} 金幣`, `🎁 Got ✦${n.toLocaleString()} coins`);
     case "upgrade": return rw.converted ? dc(`🎁 沒有可升級的地產，改發 ✦${n.toLocaleString()} 金幣`, `🎁 No property to upgrade — paid ✦${n.toLocaleString()} coins instead`) : dc(`🎁 第${rw.tile_index}格免費升到 Lv.${rw.new_level}`, `🎁 Tile #${rw.tile_index} upgraded for free to Lv.${rw.new_level}`);
     default: return "";
@@ -3112,6 +3115,7 @@ function monopolyApplyChannelState(cs){
   monopolyState.stealCoinCards = Number(cs.steal_coin_cards) || 0;                                        // 💸 搶金幣卡張數
   monopolyState.stealCoinsSupported = cs.steal_coins_pct !== undefined;                                    // false＝伺服器還沒更新 SQL
   monopolyState.stealCoinsPct = cs.steal_coins_pct !== undefined ? Number(cs.steal_coins_pct) : 5;
+  monopolyState.cardHoldCap = cs.card_hold_cap !== undefined ? Number(cs.card_hold_cap) : 2;
   monopolyState.channelsEnabled = cs.channels_enabled !== false;
   monopolyState.unlimitedRolls = !!cs.unlimited_rolls;                                                    // 這個帳號擲骰不耗次數（預設只有 GM）
   monopolyState.newbiePropertyLimit = cs.newbie_property_limit !== undefined ? Number(cs.newbie_property_limit) : null;   // 新手階段：地產少於幾塊（0＝關閉；null＝伺服器還沒更新 SQL，仍是舊規則）
@@ -3185,7 +3189,7 @@ function monopolyStealCoinsPanelHtml(){
   }).join("");
   return `<div class="panel" style="margin:10px 0;border:1px solid var(--gold-bright);">
     <h2 style="font-size:15px;">💸 ${dc("使用搶金幣卡", "Use a Steal-Coins Card")}</h2>
-    <p class="sub">${dc(`選一位棋盤上的玩家，搶走對方「現在」金幣的 ${pct}%（用掉 1 張卡）。新手保護中的玩家不能搶，灰色的就是。`, `Pick a player on the board and take ${pct}% of their coins right now (uses 1 card). Newbie-protected players can't be robbed — they are greyed out.`)}</p>
+    <p class="sub">${dc(`選一位棋盤上的玩家，搶走對方「現在」金幣的 ${pct}%（用掉 1 張卡）。新手保護中的玩家不能搶，灰色的就是。身上最多收 ${monopolyState.cardHoldCap} 張，滿了再中獎會直接換成金幣。`, `Pick a player on the board and take ${pct}% of their coins right now (uses 1 card). Newbie-protected players can't be robbed — they are greyed out. You can hold up to ${monopolyState.cardHoldCap} at a time; once full, this reward pays coins instead.`)}</p>
     ${body}
     <div class="form-row" style="margin-top:6px;"><button class="btn small secondary" id="monopoly-stealcoins-close">${dc("收起", "Close")}</button></div>
   </div>`;
@@ -3247,7 +3251,7 @@ function monopolyStealCardPanelHtml(){
   }).join("");
   return `<div class="panel" style="margin:10px 0;border:1px solid var(--gold-bright);">
     <h2 style="font-size:15px;">🗡️ ${dc("使用搶奪卡", "Use a Steal Card")}</h2>
-    <p class="sub">${dc("選一位棋盤上的玩家，從對方手上隨機搶走一塊地產（用掉 1 張卡；等級與建築會一起過來，不用打 PvP）。新手保護中的玩家不能搶，GM 也不在名單內。", "Pick a player on the board and take one random property from them (uses 1 card; level and building come with it, no PvP). Newbie-protected players can't be robbed and the GM isn't listed.")}</p>
+    <p class="sub">${dc("選一位棋盤上的玩家，從對方手上隨機搶走一塊地產（用掉 1 張卡；等級與建築會一起過來，不用打 PvP）。新手保護中的玩家不能搶，GM 也不在名單內。身上最多收 ${monopolyState.cardHoldCap} 張，滿了再中獎會直接換成金幣。", "Pick a player on the board and take one random property from them (uses 1 card; level and building come with it, no PvP). Newbie-protected players can't be robbed and the GM isn't listed. You can hold up to ${monopolyState.cardHoldCap} at a time; once full, this reward pays coins instead.")}</p>
     ${full ? `<p class="sub" style="color:var(--muted);">${monopolyHoldCapText()}</p>` : ""}
     ${body}
     <div class="form-row" style="margin-top:6px;"><button class="btn small secondary" id="monopoly-stealcard-close">${dc("收起", "Close")}</button></div>
@@ -3814,6 +3818,8 @@ async function monopolyGmSaveSettings(){
     if (nbEl && monopolyState.newbiePropertyLimit != null) { const nv = Math.max(0, Math.min(20, parseInt(nbEl.value, 10))); if (!isNaN(nv) && nv !== monopolyState.newbiePropertyLimit) await monopolyRpc("monopoly_gm_set_newbie_limit", { p_limit: nv }); }
     const scpEl = document.getElementById("monopoly-gm-stealcoinspct");
     if (scpEl && monopolyState.stealCoinsSupported) { const sv = parseFloat(scpEl.value); if (!isNaN(sv) && sv >= 0 && sv <= 100 && sv !== monopolyState.stealCoinsPct) await monopolyRpc("monopoly_gm_set_steal_coins_pct", { p_pct: sv }); }
+    const chcEl = document.getElementById("monopoly-gm-cardholdcap");
+    if (chcEl && monopolyState.stealCoinsSupported) { const cv = parseInt(chcEl.value, 10); if (!isNaN(cv) && cv >= 0 && cv <= 20 && cv !== monopolyState.cardHoldCap) await monopolyRpc("monopoly_gm_set_card_hold_cap", { p_cap: cv }); }
     const incPctEl = document.getElementById("monopoly-gm-incomepct"), incCapEl = document.getElementById("monopoly-gm-incomecap");
     if (monopolyState.income && incPctEl && incCapEl) {
       const incPct = parseFloat(incPctEl.value), incCap = parseFloat(incCapEl.value);
@@ -3888,7 +3894,7 @@ function monopolyRulesPanelHtml(){
     </div>
     <div class="who" style="margin-top:10px;line-height:1.8;">
       <b>${dc("🗡️ 搶奪卡", "🗡️ Steal Card")}</b><br/>
-      ${dc("特殊通道的獎勵之一，可以收著之後再用。在大富翁頁面上方按「使用」：選一位棋盤上的其他玩家，直接搶走對方隨機一塊地產（不用 PvP，等級與建築一起過來；你的持有上限已滿時不能用）。新手保護中的玩家和 GM 搶不了，卡片也不會被消耗；被搶的人會收到站內信，動態紀錄也會記下來。", "One of the special-channel rewards; you can keep it and use it later. Press \"Use\" at the top of the Monopoly page: pick another player on the board and take one random property from them outright (no PvP; level and building come with it; not usable while you are at the hold cap). Newbie-protected players and the GM can't be targeted and your card isn't used; the victim gets a mailbox message and it's written to the Activity Log.")}
+      ${dc("特殊通道的獎勵之一，可以收著之後再用，身上最多收 ${monopolyState.cardHoldCap} 張，滿了再中獎會直接換成金幣。在大富翁頁面上方按「使用」：選一位棋盤上的其他玩家，直接搶走對方隨機一塊地產（不用 PvP，等級與建築一起過來；你的持有上限已滿時不能用）。新手保護中的玩家和 GM 搶不了，卡片也不會被消耗；被搶的人會收到站內信，動態紀錄也會記下來。", "One of the special-channel rewards; you can keep it and use it later, up to ${monopolyState.cardHoldCap} at a time — once full, this reward pays coins instead. Press \"Use\" at the top of the Monopoly page: pick another player on the board and take one random property from them outright (no PvP; level and building come with it; not usable while you are at the hold cap). Newbie-protected players and the GM can't be targeted and your card isn't used; the victim gets a mailbox message and it's written to the Activity Log.")}
     </div>
     <div class="who" style="margin-top:10px;line-height:1.8;">
       <b>${dc("💸 搶金幣卡", "💸 Steal-Coins Card")}</b><br/>
@@ -3929,6 +3935,7 @@ function monopolyGmPanelHtml(){
         <div><label>${dc("持有上限", "Hold cap")}</label><input type="number" id="monopoly-gm-holdcap" value="${monopolyState.holdCap}" style="width:80px;" /></div>
         <div><label>${dc("動態紀錄顯示上限", "Activity log display limit")}</label><input type="number" id="monopoly-gm-loglimit" value="${monopolyState.eventLogLimit}" min="5" style="width:80px;" /></div>
         ${monopolyState.stealCoinsSupported ? `<div><label>${dc("💸搶金幣卡：奪取對方金幣 %", "💸 Steal-Coins Card: % of target's coins")}</label><input type="number" min="0" max="100" step="0.5" id="monopoly-gm-stealcoinspct" value="${monopolyState.stealCoinsPct}" style="width:80px;" /></div>` : ""}
+        ${monopolyState.stealCoinsSupported ? `<div><label>${dc("🗡️💸身上最多收幾張（搶奪卡／搶金幣卡各自）", "🗡️💸 Max held (Steal Card / Steal-Coins Card, each)")}</label><input type="number" min="0" max="20" id="monopoly-gm-cardholdcap" value="${monopolyState.cardHoldCap}" style="width:80px;" /></div>` : ""}
       </div>
       <div class="who" style="margin:12px 0 6px;">${dc("建築設定", "Building settings")}</div>
       <div class="form-row">
@@ -4044,8 +4051,8 @@ async function monopolyRenderTab(e){
       <div class="stat">${dc("擲骰次數", "Rolls")} <b>${monopolyRollsText()}</b>${(!monopolyState.unlimitedRolls && monopolyState.rollsAvailable < monopolyState.maxRolls && monopolyState.nextRegenSeconds != null) ? `<span id="monopoly-regen-text">${dc(`（下次補充 ${monopolyFmtMinutes(monopolyRegenRemaining())} 後）`, ` (next in ${monopolyFmtMinutes(monopolyRegenRemaining())})`)}</span>` : ""}</div>
       <div class="stat">${dc("目前位置", "Position")} <b>${posTile && posTile.tile_type === "channel" ? "🌀" + Iu(posTile.zone_name || "") + " " + posTile.channel_pos : "#" + monopolyState.position}</b></div>
       ${monopolyState.tollDiscountCard ? `<div class="stat">🎫 ${dc("過路費折扣卡", "Toll Discount Card")}</div>` : ""}
-      ${monopolyState.stealCards > 0 ? `<div class="stat">🗡️ ${dc("搶奪卡", "Steal Cards")} <b>${monopolyState.stealCards}</b> <button class="btn small" id="monopoly-stealcard-open" style="margin-left:6px;border-color:var(--gold-bright);color:var(--gold-bright);">${monopolyState.stealCardPickerOpen ? dc("收起", "Close") : dc("使用", "Use")}</button></div>` : ""}
-      ${monopolyState.stealCoinCards > 0 ? `<div class="stat">💸 ${dc("搶金幣卡", "Steal-Coins Cards")} <b>${monopolyState.stealCoinCards}</b> <button class="btn small" id="monopoly-stealcoins-open" style="margin-left:6px;border-color:var(--gold-bright);color:var(--gold-bright);">${monopolyState.stealCoinsPickerOpen ? dc("收起", "Close") : dc("使用", "Use")}</button></div>` : ""}
+      ${monopolyState.stealCards > 0 ? `<div class="stat">🗡️ ${dc("搶奪卡", "Steal Cards")} <b>${monopolyState.stealCards}/${monopolyState.cardHoldCap}</b> <button class="btn small" id="monopoly-stealcard-open" style="margin-left:6px;border-color:var(--gold-bright);color:var(--gold-bright);">${monopolyState.stealCardPickerOpen ? dc("收起", "Close") : dc("使用", "Use")}</button></div>` : ""}
+      ${monopolyState.stealCoinCards > 0 ? `<div class="stat">💸 ${dc("搶金幣卡", "Steal-Coins Cards")} <b>${monopolyState.stealCoinCards}/${monopolyState.cardHoldCap}</b> <button class="btn small" id="monopoly-stealcoins-open" style="margin-left:6px;border-color:var(--gold-bright);color:var(--gold-bright);">${monopolyState.stealCoinsPickerOpen ? dc("收起", "Close") : dc("使用", "Use")}</button></div>` : ""}
       ${monopolyState.isNewbieProtected ? `<div class="stat" style="color:var(--gold-bright);">${dc("新手保護中", "Newbie protected")}${monopolyState.newbiePropertyLimit != null ? dc(`（地產少於 ${monopolyState.newbiePropertyLimit} 塊）`, ` (< ${monopolyState.newbiePropertyLimit} properties)`) : ""}</div>` : ""}
     </div>
     ${monopolyStealCardPanelHtml()}
