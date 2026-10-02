@@ -1,0 +1,18 @@
+{
+  "id": "./",
+  "name": "Mystic Tarot Collection",
+  "short_name": "Mystic Tarot",
+  "description": "塔羅收藏、競技場、小遊戲與寵物養成",
+  "lang": "zh-Hant",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#120a1e",
+  "theme_color": "#120a1e",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
