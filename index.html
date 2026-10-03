@@ -4649,6 +4649,13 @@ async function monopolyChannelAfterRoll(row){
 function monopolyOwnedCount(){
   return (monopolyState.tiles || []).filter(t => t.tile_type === "property" && t.owner_id === zl.nickname).length;
 }
+const MONOPOLY_STEAL_RANGE = 3;
+function monopolyRingDist(a, b){ const d = Math.abs(Number(a) - Number(b)) % 48; return Math.min(d, 48 - d); }
+function monopolyNearbyTilesOf(owner){
+  const pos = Number(monopolyState.position);
+  if (!isFinite(pos) || pos >= 100) return [];
+  return (monopolyState.tiles || []).filter(t => t.tile_type === "property" && t.owner_id === owner && t.tile_index < 100 && monopolyRingDist(t.tile_index, pos) <= MONOPOLY_STEAL_RANGE);
+}
 function monopolyAtHoldCap(){ return monopolyOwnedCount() >= (monopolyState.holdCap || 13); }
 function monopolyHoldCapText(){
   return dc(`你的地產已達持有上限（${monopolyOwnedCount()}/${monopolyState.holdCap || 13}），無法用 PvP 或搶奪卡奪地。想再奪地，請先讓出一塊。`, `You are at the property hold cap (${monopolyOwnedCount()}/${monopolyState.holdCap || 13}) — you can't seize tiles with PvP or a Steal Card. Free up a slot first.`);
@@ -4745,16 +4752,17 @@ function monopolyStealCardPanelHtml(){
   if (list === null) body = `<p class="sub">${dc("讀取棋盤上的玩家中…", "Loading players on the board…")}</p>`;
   else if (!list.length) body = `<p class="sub">${dc("目前棋盤上沒有其他玩家可以搶。", "There is nobody else on the board to rob right now.")}</p>`;
   else body = list.map(p => {
-    const prot = !!p.is_newbie, n = Number(p.property_count) || 0, none = !prot && n <= 0, pos = p.board_position != null ? monopolyPosLabel(p.board_position) : "";
+    const prot = !!p.is_newbie, n = monopolyNearbyTilesOf(p.player_id).length, none = !prot && n <= 0, pos = p.board_position != null ? monopolyPosLabel(p.board_position) : "";
     const right = prot ? `<span style="color:var(--gold-bright);font-size:12px;">🛡️ ${dc("新手保護中，不能搶", "Newbie-protected — can't be robbed")}</span>`
-      : none ? `<span style="color:var(--muted);font-size:12px;">${dc("沒有地產可以搶", "No property to take")}</span>`
+      : none ? `<span style="color:var(--muted);font-size:12px;">${dc(`附近 ${MONOPOLY_STEAL_RANGE} 格內沒有地產可以搶`, `No property within ${MONOPOLY_STEAL_RANGE} tiles`)}</span>`
       : `<button class="btn small" data-monopoly-stealcard="${Iu(p.player_id)}"${full ? " disabled" : ""} style="border-color:var(--gold-bright);color:var(--gold-bright);${full ? "opacity:.45;" : ""}">🗡️ ${dc("搶一塊", "Take one")}</button>`;
-    return `<div class="listing" style="${prot || none ? "opacity:.6;" : ""}"><div class="left"><div class="meta"><div>${Iu(p.player_id)}</div><div class="who">${pos}　${dc(`持有 ${n} 塊地`, `${n} ${n === 1 ? "tile" : "tiles"}`)}</div></div></div><div class="right">${right}</div></div>`;
+    return `<div class="listing" style="${prot || none ? "opacity:.6;" : ""}"><div class="left"><div class="meta"><div>${Iu(p.player_id)}</div><div class="who">${pos}　${dc(`附近 ${MONOPOLY_STEAL_RANGE} 格內有 ${n} 塊地`, `${n} ${n === 1 ? "tile" : "tiles"} within ${MONOPOLY_STEAL_RANGE}`)}</div></div></div><div class="right">${right}</div></div>`;
   }).join("");
   return `<div class="panel" style="margin:10px 0;border:1px solid var(--gold-bright);">
     <h2 style="font-size:15px;">🗡️ ${dc("使用搶奪卡", "Use a Steal Card")}</h2>
-    <p class="sub">${dc("選一位棋盤上的玩家，從對方手上隨機搶走一塊地產（用掉 1 張卡；等級與建築會一起過來，不用打 PvP）。新手保護中的玩家不能搶，GM 也不在名單內。身上最多收 ${monopolyState.cardHoldCap} 張，滿了再中獎會直接換成金幣。", "Pick a player on the board and take one random property from them (uses 1 card; level and building come with it, no PvP). Newbie-protected players can't be robbed and the GM isn't listed. You can hold up to ${monopolyState.cardHoldCap} at a time; once full, this reward pays coins instead.")}</p>
+    <p class="sub">${dc(`選一位玩家，從對方「離你目前位置前後 ${MONOPOLY_STEAL_RANGE} 格以內」的地產中隨機搶走一塊（用掉 1 張卡；等級與建築會一起過來，不用打 PvP）。新手保護中的玩家不能搶，GM 也不在名單內。身上最多收 ${monopolyState.cardHoldCap} 張，滿了再中獎會直接換成金幣。`, `Pick a player and take one random property of theirs that lies within ${MONOPOLY_STEAL_RANGE} tiles of your position, in either direction (uses 1 card; level and building come with it, no PvP). Newbie-protected players can't be robbed and the GM isn't listed. You can hold up to ${monopolyState.cardHoldCap} at a time; once full, this reward pays coins instead.`)}</p>
     ${full ? `<p class="sub" style="color:var(--muted);">${monopolyHoldCapText()}</p>` : ""}
+    ${monopolyState.position >= 100 ? `<p class="sub" style="color:var(--muted);">${dc("你在特殊通道裡，沒有「附近的格子」，離開通道後才能用搶奪卡。", "You are inside a special channel — there are no nearby tiles. Use the Steal Card after you leave it.")}</p>` : ""}
     ${body}
     <div class="form-row" style="margin-top:6px;"><button class="btn small secondary" id="monopoly-stealcard-close">${dc("收起", "Close")}</button></div>
   </div>`;
@@ -4762,7 +4770,10 @@ function monopolyStealCardPanelHtml(){
 async function monopolyUseStealCard(target){
   if (monopolyState.busy) return;
   if (monopolyAtHoldCap()) { ac(monopolyHoldCapText()); Bu(); return; }
-  if (!window.confirm(dc(`要用 1 張搶奪卡，從 ${target} 手上隨機搶走一塊地產嗎？（會搶到哪一塊是隨機的；等級與建築會一起過來，不用打 PvP）`, `Use 1 Steal Card to take a random property from ${target}? (Which one is random; level and building come with it, no PvP)`))) { Bu(); return; }
+  if (monopolyState.position >= 100) { ac(dc("你在特殊通道裡，離開通道後才能用搶奪卡", "You can't use a Steal Card while inside a special channel")); Bu(); return; }
+  const nearTiles = monopolyNearbyTilesOf(target);
+  if (!nearTiles.length) { ac(dc(`${target} 在你前後 ${MONOPOLY_STEAL_RANGE} 格以內沒有地產，搶不了（卡片沒有被消耗）`, `${target} has no property within ${MONOPOLY_STEAL_RANGE} tiles of you (your card was not used)`)); await monopolyFetchStealCardTargets(); Bu(); return; }
+  if (!window.confirm(dc(`要用 1 張搶奪卡，從 ${target} 在你前後 ${MONOPOLY_STEAL_RANGE} 格以內的 ${nearTiles.length} 塊地產（${nearTiles.map(t => "#" + t.tile_index).join("、")}）中，隨機搶走一塊嗎？（等級與建築會一起過來，不用打 PvP）`, `Use 1 Steal Card to take one random property from ${target} among the ${nearTiles.length} within ${MONOPOLY_STEAL_RANGE} tiles of you (${nearTiles.map(t => "#" + t.tile_index).join(", ")})? (Level and building come with it, no PvP)`))) { Bu(); return; }
   monopolyState.busy = true;
   try {
     let res = await monopolyRpc("monopoly_use_steal_card", { p_attacker: zl.nickname, p_season_id: MONOPOLY_SEASON_ID, p_target: target });
@@ -4780,7 +4791,8 @@ async function monopolyUseStealCard(target){
         MONOPOLY_TARGET_NOT_ON_BOARD: dc("對方已經不在棋盤上了", "That player is no longer on the board"),
         MONOPOLY_HOLD_CAP_REACHED: dc(`你的地產已達持有上限（${monopolyState.holdCap} 塊），不能再奪`, `You are at the property hold cap (${monopolyState.holdCap})`),
         MONOPOLY_TARGET_NEWBIE_PROTECTED: dc(`🛡️ ${target} 還在新手保護中，不能搶（卡片沒有被消耗）`, `🛡️ ${target} is newbie-protected and can't be robbed (your card was not used)`),
-        MONOPOLY_TARGET_HAS_NO_PROPERTY: dc(`${target} 沒有地產可以搶（卡片沒有被消耗）`, `${target} has no property to take (your card was not used)`)
+        MONOPOLY_TARGET_HAS_NO_PROPERTY: dc(`${target} 沒有地產可以搶（卡片沒有被消耗）`, `${target} has no property to take (your card was not used)`),
+        MONOPOLY_TARGET_OUT_OF_RANGE: dc(`${target} 在你前後 ${MONOPOLY_STEAL_RANGE} 格以內沒有地產（卡片沒有被消耗）`, `${target} has no property within ${MONOPOLY_STEAL_RANGE} tiles of you (your card was not used)`)
       };
       ac((res && why[res.message]) || dc("使用搶奪卡失敗", "Could not use the Steal Card"));
       await monopolyFetchStealCardTargets();
@@ -5258,8 +5270,18 @@ async function monopolyResolveLanding(tileType, tileIndex, zoneName, rescueInfo,
           : res.building === "hotel" ? dc("（酒店）", " (Hotel)")
           : res.building === "fortress" ? dc("（要塞）", " (Fortress)")
           : res.building === "casino" ? dc("（賭場）", " (Casino)") : "";
-        ac(dc(`💰 已支付過路費 ${res.toll_paid.toLocaleString()} 給 ${res.owner_nickname}${buildingLabel}`, `💰 Paid ✦${res.toll_paid.toLocaleString()} toll to ${res.owner_nickname}${buildingLabel}`));
+        if (Number(res.toll_paid) > 0) ac(dc(`💰 已支付過路費 ${res.toll_paid.toLocaleString()} 給 ${res.owner_nickname}${buildingLabel}`, `💰 Paid ✦${res.toll_paid.toLocaleString()} toll to ${res.owner_nickname}${buildingLabel}`));
         try { await wd(res.owner_nickname, zl.nickname, "monopoly_toll", { amount: res.toll_paid, tileIndex }); } catch(e){}
+        // 方案B：金幣不夠時，伺服器會自動賣地抵債（見 monopoly_pay_toll_and_resolve）
+        if (Number(res.liquidated_count) > 0) {
+          const n = Number(res.liquidated_count);
+          const soldList = Array.isArray(res.liquidated_tiles) ? res.liquidated_tiles.map(i => "#" + i).join("、") : "";
+          ac(dc(`🏚 金幣不夠付過路費，自動賣出 ${n} 塊地產抵債${soldList ? "（第 " + soldList + " 格）" : ""}，共換得 ✦${Number(res.liquidated_total || 0).toLocaleString()}`, `🏚 Not enough coins for the toll — auto-sold ${n} propert${n === 1 ? "y" : "ies"}${soldList ? " (" + soldList + ")" : ""} for ✦${Number(res.liquidated_total || 0).toLocaleString()}`));
+          await monopolyLoadState();
+        }
+        if (Number(res.debt_forgiven) > 0) {
+          ac(dc(`⚠️ 地產都賣光了還是不夠，剩下的 ✦${Number(res.debt_forgiven).toLocaleString()} 過路費已免除`, `⚠️ Even after selling everything it wasn't enough — the remaining ✦${Number(res.debt_forgiven).toLocaleString()} toll is forgiven`));
+        }
         if (res.building === "hotel") {
           ac(dc("🏨 酒店：免費試丟兩顆骰子，丟到對子就免罰……", "🏨 Hotel: free rescue roll — a pair avoids the penalty…"));
           await monopolyRescueDiceVisual(res.hotel_rescue_die1, res.hotel_rescue_die2);
@@ -5279,6 +5301,9 @@ async function monopolyResolveLanding(tileType, tileIndex, zoneName, rescueInfo,
           monopolyState.pendingPvpOwner = res.owner_nickname;
           monopolyState.pendingPvpBuilding = res.building;
         }
+      } else {
+        const why = res && res.message ? String(res.message) : "";
+        ac(dc(`⚠️ 過路費結算沒有完成${why ? "（" + why + "）" : "，請稍後再試"}`, `⚠️ The toll could not be settled${why ? " (" + why + ")" : ", please try again later"}`));
       }
     }
   }
@@ -5619,7 +5644,7 @@ function monopolyRulesPanelHtml(){
     </div>
     <div class="who" style="margin-top:10px;line-height:1.8;">
       <b>${dc("🗡️ 搶奪卡", "🗡️ Steal Card")}</b><br/>
-      ${dc("特殊通道的獎勵之一，可以收著之後再用，身上最多收 ${monopolyState.cardHoldCap} 張，滿了再中獎會直接換成金幣。在大富翁頁面上方按「使用」：選一位棋盤上的其他玩家，直接搶走對方隨機一塊地產（不用 PvP，等級與建築一起過來；你的持有上限已滿時不能用）。新手保護中的玩家和 GM 搶不了，卡片也不會被消耗；被搶的人會收到站內信，動態紀錄也會記下來。", "One of the special-channel rewards; you can keep it and use it later, up to ${monopolyState.cardHoldCap} at a time — once full, this reward pays coins instead. Press \"Use\" at the top of the Monopoly page: pick another player on the board and take one random property from them outright (no PvP; level and building come with it; not usable while you are at the hold cap). Newbie-protected players and the GM can't be targeted and your card isn't used; the victim gets a mailbox message and it's written to the Activity Log.")}
+      ${dc(`特殊通道的獎勵之一，可以收著之後再用，身上最多收 ${monopolyState.cardHoldCap} 張，滿了再中獎會直接換成金幣。在大富翁頁面上方按「使用」：選一位棋盤上的其他玩家，從對方「離你目前位置前後 ${MONOPOLY_STEAL_RANGE} 格以內」的地產中隨機搶走一塊（不用 PvP，等級與建築一起過來；你的持有上限已滿、或人在特殊通道裡時不能用）。新手保護中的玩家和 GM 搶不了，卡片也不會被消耗；被搶的人會收到站內信，動態紀錄也會記下來。`, `One of the special-channel rewards; you can keep it and use it later, up to ${monopolyState.cardHoldCap} at a time — once full, this reward pays coins instead. Press "Use" at the top of the Monopoly page: pick another player on the board and take one random property from them that lies within ${MONOPOLY_STEAL_RANGE} tiles of your position, in either direction (no PvP; level and building come with it; not usable while you are at the hold cap or inside a special channel). Newbie-protected players and the GM can't be targeted and your card isn't used; the victim gets a mailbox message and it's written to the Activity Log.`)}
     </div>
     <div class="who" style="margin-top:10px;line-height:1.8;">
       <b>${dc("💸 搶金幣卡", "💸 Steal-Coins Card")}</b><br/>
@@ -5774,6 +5799,8 @@ function monopolyEventText(ev){
     case "jail_exempt": return dc(`🛡️ 新手保護：${Iu(ev.actor)} 踩到監獄，免罰款、免丟骰、不扣擲骰次數`, `🛡️ Newbie protection: ${Iu(ev.actor)} landed on Jail — no fine, no rescue roll, no lost rolls`);
     case "tax_exempt": return dc(`🛡️ 新手保護：${Iu(ev.actor)} 踩到稅收格，免稅`, `🛡️ Newbie protection: ${Iu(ev.actor)} landed on a Tax tile — no tax`);
     case "sell_property": return dc(`💰 ${Iu(ev.actor)} 把第${ev.tile_index}格（${Iu(ev.detail||"")}）賣回市場，拿到 ✦${Number(ev.amount).toLocaleString()}`, `💰 ${Iu(ev.actor)} sold tile #${ev.tile_index} (${Iu(ev.detail||"")}) back to the market for ✦${Number(ev.amount).toLocaleString()}`);
+    case "toll_forgiven": return dc(`⚠️ ${Iu(ev.actor)} 付不出第${ev.tile_index}格的過路費，剩下的 ✦${Number(ev.amount).toLocaleString()} 已免除（付給 ${Iu(ev.target)}）`, `⚠️ ${Iu(ev.actor)} couldn't fully cover the toll on tile #${ev.tile_index} — the remaining ✦${Number(ev.amount).toLocaleString()} was forgiven (owner: ${Iu(ev.target)})`);
+    case "toll_liquidate": return dc(`🏚 ${Iu(ev.actor)} 付不出過路費，自動賣出第${ev.tile_index}格（${Iu(ev.detail||"")}）抵債，換得 ✦${Number(ev.amount).toLocaleString()}`, `🏚 ${Iu(ev.actor)} couldn't cover a toll and auto-sold tile #${ev.tile_index} (${Iu(ev.detail||"")}) for ✦${Number(ev.amount).toLocaleString()}`);
     case "use_double_dice": return dc(`🎲🎲 ${Iu(ev.actor)} 使用了雙骰子（${Iu(ev.detail||"")}）`, `🎲🎲 ${Iu(ev.actor)} used a Double Dice card (${Iu(ev.detail||"")})`);
     case "use_choice_dice": return dc(`🎯 ${Iu(ev.actor)} 使用了自選骰子（${Iu(ev.detail||"")}）`, `🎯 ${Iu(ev.actor)} used a Choice Dice card (${Iu(ev.detail||"")})`);
     case "use_obstacle": return dc(`🚧 ${Iu(ev.actor)} 在第${ev.tile_index}格放置了停留障礙`, `🚧 ${Iu(ev.actor)} placed a stay obstacle on tile #${ev.tile_index}`);
