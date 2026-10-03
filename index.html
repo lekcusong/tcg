@@ -4625,8 +4625,39 @@ async function monopolyWalk(from, path){
   }
   // 棋子停在終點，直到下一次重繪（擲骰結束時一定會重繪）才換回一般的小圓點
 }
+// ⚡ 擲骰回復加速（GM 手動開關 / 每日時段）
+function monopolyBoostActive(){ return !!monopolyState.boostActive && Number(monopolyState.boostMult) > 1; }
+function monopolyBoostMultText(){ const m = Number(monopolyState.boostMult) || 2; return "×" + (Math.round(m * 100) / 100); }
+function monopolyEffRegenHours(){ const m = monopolyBoostActive() ? Number(monopolyState.boostMult) : 1; return Math.round(monopolyState.rollRegenHours / m * 100) / 100; }
+function monopolyBoostBannerHtml(){
+  if (!monopolyBoostActive()) return "";
+  let tail = "";
+  if (!monopolyState.boostManual && monopolyState.boostScheduleOn && monopolyState.boostEnd) tail = dc(`（到 ${monopolyState.boostEnd}）`, ` (until ${monopolyState.boostEnd})`);
+  return `<div style="margin:8px 0;padding:8px 12px;border:1px solid var(--gold-bright);border-radius:8px;background:rgba(232,196,104,.12);color:var(--gold-bright);font-size:13px;">⚡ ${dc(`擲骰回復加速中 ${monopolyBoostMultText()}`, `Roll regen boost active ${monopolyBoostMultText()}`)}${tail}</div>`;
+}
+function monopolyApplyBoost(cs){
+  if (cs.regen_boost_active === undefined) { monopolyState.boostSupported = false; return; }   // 伺服器還沒更新 SQL
+  const was = monopolyState.boostSeen ? monopolyBoostActive() : null;
+  monopolyState.boostSupported = true;
+  monopolyState.boostActive = !!cs.regen_boost_active;
+  monopolyState.boostMult = Number(cs.regen_boost_mult) || 2;
+  monopolyState.boostManual = !!cs.regen_boost_manual;
+  monopolyState.boostScheduleOn = !!cs.regen_boost_schedule_enabled;
+  monopolyState.boostStart = cs.regen_boost_start || "20:00";
+  monopolyState.boostEnd = cs.regen_boost_end || "22:00";
+  if (cs.regen_boost_base_mult !== undefined) monopolyState.boostBaseMult = Number(cs.regen_boost_base_mult) || 2;
+  const now = monopolyBoostActive();
+  monopolyState.boostSeen = true;
+  if (now && was !== true) {
+    const tail = (!monopolyState.boostManual && monopolyState.boostScheduleOn && monopolyState.boostEnd) ? dc(`，到 ${monopolyState.boostEnd}`, `, until ${monopolyState.boostEnd}`) : "";
+    try { ac(dc(`⚡ 擲骰回復加速 ${monopolyBoostMultText()} 啟動中！${tail}`, `⚡ Roll regen boost ${monopolyBoostMultText()} is ON!${tail}`)); } catch(e){}
+  } else if (!now && was === true) {
+    try { ac(dc("擲骰回復加速已結束，恢復正常速度", "Roll regen boost has ended — back to normal speed")); } catch(e){}
+  }
+}
 function monopolyApplyChannelState(cs){
   if (!cs || typeof cs !== "object") return;
+  monopolyApplyBoost(cs);
   monopolyState.stealCards = Number(cs.steal_cards) || 0;
   monopolyState.stealCoinCards = Number(cs.steal_coin_cards) || 0;                                        // 💸 搶金幣卡張數
   monopolyState.stealCoinsSupported = cs.steal_coins_pct !== undefined;                                    // false＝伺服器還沒更新 SQL
@@ -5193,7 +5224,7 @@ async function monopolyRoll(){
       row = (await monopolyRollRpc())[0];
     } catch(e) {
       if (/MONOPOLY_CLIENT_OUTDATED/.test(String((e && e.message) || ""))) ac(dc("遊戲已更新，請重新整理頁面後再繼續", "The game was updated — please reload the page to continue"));
-      else ac(dc(`擲骰次數用完了，每 ${monopolyState.rollRegenHours} 小時會補充1次`, `Out of rolls - 1 regenerates every ${monopolyState.rollRegenHours}h`));
+      else ac(dc(`擲骰次數用完了，每 ${monopolyEffRegenHours()} 小時會補充1次`, `Out of rolls - 1 regenerates every ${monopolyEffRegenHours()}h`));
       return;
     }
     const prevPos = monopolyState.position;
@@ -5587,6 +5618,19 @@ async function monopolyGmSaveSettings(){
         if (!isNaN(incCd) && incCd >= 0 && monopolyState.income.cooldown_minutes !== undefined) incArgs.p_claim_cooldown_min = incCd;   // 伺服器還沒更新 SQL 時不送新參數，避免儲存失敗
         await monopolyRpc("monopoly_gm_update_income_settings", incArgs);
       }
+      if (monopolyState.income.zone_mults) {
+        for (let zid = 1; zid <= 9; zid++) {
+          const zEl = document.getElementById("monopoly-gm-zinc-" + zid); if (!zEl) continue;
+          const zv = parseFloat(zEl.value), zold = Number(monopolyState.income.zone_mults[String(zid)] ?? 1);
+          if (!isNaN(zv) && zv >= 0 && zv <= 20 && zv !== zold) await monopolyRpc("monopoly_gm_set_zone_income_mult", { p_zone_id: zid, p_mult: zv });
+        }
+        const lmEl = document.getElementById("monopoly-gm-lowset-mult"), lzEl = document.getElementById("monopoly-gm-lowset-zone");
+        if (lmEl && lzEl) {
+          const lm = parseFloat(lmEl.value), lz = parseInt(lzEl.value, 10);
+          if (!isNaN(lm) && !isNaN(lz) && lm >= 1 && lm <= 5 && lz >= 0 && lz <= 9 && (lm !== Number(monopolyState.income.low_set_mult) || lz !== Number(monopolyState.income.low_set_max_zone)))
+            await monopolyRpc("monopoly_gm_set_low_set_bonus", { p_mult: lm, p_max_zone: lz });
+        }
+      }
     }
     if (monopolyState.eventSettings) {
       const hEl = document.getElementById("monopoly-gm-inactive"), bEl = document.getElementById("monopoly-gm-baron"), hv = hEl ? parseFloat(hEl.value) : NaN;
@@ -5595,6 +5639,15 @@ async function monopolyGmSaveSettings(){
     }
     const unEl = document.getElementById("monopoly-gm-unlimited");
     if (unEl && monopolyState.unlimitedPlayers !== null && unEl.value.trim() !== String(monopolyState.unlimitedPlayers).trim()) await monopolyRpc("monopoly_gm_set_unlimited_rolls", { p_players: unEl.value.trim() });
+    if (monopolyState.boostSupported) {
+      const mEl = document.getElementById("monopoly-gm-boost-manual"), sEl = document.getElementById("monopoly-gm-boost-sched"),
+            stEl = document.getElementById("monopoly-gm-boost-start"), enEl2 = document.getElementById("monopoly-gm-boost-end"), muEl = document.getElementById("monopoly-gm-boost-mult");
+      if (mEl && sEl && stEl && enEl2 && muEl) {
+        let mv = parseFloat(muEl.value); if (isNaN(mv)) mv = 2; mv = Math.max(1, Math.min(10, mv));
+        await monopolyRpc("monopoly_gm_set_regen_boost", { p_enabled: mEl.value === "1", p_mult: mv });
+        await monopolyRpc("monopoly_gm_set_regen_boost_schedule", { p_enabled: sEl.value === "1", p_start: stEl.value || "20:00", p_end: enEl2.value || "22:00", p_mult: mv });
+      }
+    }
     const chTiles = (monopolyState.tiles || []).filter(t => t.tile_type === "channel");
     if (chTiles.length && document.getElementById("monopoly-gm-channels-enabled")) {
       for (const t of chTiles) {
@@ -5745,6 +5798,17 @@ function monopolyGmPanelHtml(){
         <div><label>${dc("👑每日 12:00／18:00 地產大王事件", "Property Baron event (12:00 / 18:00)")}</label><select id="monopoly-gm-baron"><option value="1"${monopolyState.eventSettings.baronEnabled ? " selected" : ""}>${dc("開", "On")}</option><option value="0"${monopolyState.eventSettings.baronEnabled ? "" : " selected"}>${dc("關", "Off")}</option></select></div>
       </div>
       <div class="form-row"><button class="btn small secondary" id="monopoly-gm-baron-run-btn">${dc("🎲 立即執行一次地產大王事件（測試用）", "🎲 Run the Property Baron event now (test)")}</button></div>` : ""}
+      ${monopolyState.boostSupported ? `<div class="who" style="margin:12px 0 6px;">${dc("⚡ 擲骰回復加速", "⚡ Roll regen boost")}</div>
+      <div class="form-row">
+        <div><label>${dc("手動開關（開＝立刻加速，無視時段）", "Manual switch (on = boost now, ignores schedule)")}</label><select id="monopoly-gm-boost-manual"><option value="1"${monopolyState.boostManual ? " selected" : ""}>${dc("開", "On")}</option><option value="0"${monopolyState.boostManual ? "" : " selected"}>${dc("關", "Off")}</option></select></div>
+        <div><label>${dc("加速倍率（1–10）", "Boost multiplier (1–10)")}</label><input type="number" min="1" max="10" step="0.5" id="monopoly-gm-boost-mult" value="${monopolyState.boostBaseMult || monopolyState.boostMult || 2}" style="width:80px;" /></div>
+      </div>
+      <div class="form-row">
+        <div><label>${dc("每日自動時段（GMT+8）", "Daily schedule (GMT+8)")}</label><select id="monopoly-gm-boost-sched"><option value="1"${monopolyState.boostScheduleOn ? " selected" : ""}>${dc("開", "On")}</option><option value="0"${monopolyState.boostScheduleOn ? "" : " selected"}>${dc("關", "Off")}</option></select></div>
+        <div><label>${dc("開始", "Start")}</label><input type="time" id="monopoly-gm-boost-start" value="${monopolyState.boostStart || "20:00"}" /></div>
+        <div><label>${dc("結束（可跨午夜）", "End (may cross midnight)")}</label><input type="time" id="monopoly-gm-boost-end" value="${monopolyState.boostEnd || "22:00"}" /></div>
+      </div>
+      <div class="who" style="color:var(--muted);font-size:12px;margin-bottom:6px;">${dc("目前狀態：", "Status: ")}${monopolyBoostActive() ? dc(`⚡ 加速中 ${monopolyBoostMultText()}`, `⚡ Active ${monopolyBoostMultText()}`) : dc("未加速", "Not active")}${dc("。時段每天重複；按下方「儲存設定」生效。", ". The schedule repeats daily; click Save Settings below to apply.")}</div>` : ""}
       ${(monopolyState.tiles || []).some(t => t.tile_type === "channel") ? `<div class="who" style="margin:12px 0 6px;">${dc("🌀 特殊通道設定", "🌀 Special channel settings")}</div>
       <div class="form-row"><div><label>${dc("通道開關", "Channels")}</label><select id="monopoly-gm-channels-enabled"><option value="1"${monopolyState.channelsEnabled !== false ? " selected" : ""}>${dc("開", "On")}</option><option value="0"${monopolyState.channelsEnabled === false ? " selected" : ""}>${dc("關", "Off")}</option></select></div></div>
       ${(monopolyState.tiles || []).filter(t => t.tile_type === "channel").sort((a, b) => a.tile_index - b.tile_index).map(t => `<div class="form-row" style="align-items:center;gap:6px;"><span style="min-width:120px;font-size:12px;">${Iu(t.zone_name)} #${t.channel_pos}${t.channel_pos === 1 ? dc("（入口，進入就拿）", " (entry)") : ""}</span><select id="monopoly-gm-ch-type-${t.tile_index}">${["none", "shard", "rolls", "toll_card", "steal_card", "steal_coins", "coins", "upgrade", "double_dice", "choice_dice", "obstacle"].map(k => `<option value="${k}"${(t.reward_type || "none") === k ? " selected" : ""}>${monopolyRewardTypeName(k)}</option>`).join("")}</select><input type="number" min="0" id="monopoly-gm-ch-amt-${t.tile_index}" value="${t.reward_amount != null ? t.reward_amount : ""}" placeholder="${dc("數量", "amount")}" style="width:110px;" /></div>`).join("")}
@@ -5862,6 +5926,7 @@ async function monopolyRenderTab(e){
       </span>
     </h2>
     <p class="sub">${dc("48格全服共用棋盤，走到別人的地產會自動扣過路費並發動搶地PvP挑戰。", "A 48-tile server-wide shared board — landing on someone else's property auto-charges toll and triggers a PvP challenge to seize it.")}</p>
+    ${monopolyBoostBannerHtml()}
     <div class="stat-row">
       <div class="stat">${dc("擲骰次數", "Rolls")} <b>${monopolyRollsText()}</b>${(!monopolyState.unlimitedRolls && monopolyState.rollsAvailable < monopolyState.maxRolls && monopolyState.nextRegenSeconds != null) ? `<span id="monopoly-regen-text">${dc(`（下次補充 ${monopolyFmtMinutes(monopolyRegenRemaining())} 後）`, ` (next in ${monopolyFmtMinutes(monopolyRegenRemaining())})`)}</span>` : ""}</div>
       <div class="stat">${dc("目前位置", "Position")} <b>${posTile && posTile.tile_type === "channel" ? "🌀" + Iu(posTile.zone_name || "") + " " + posTile.channel_pos : "#" + monopolyState.position}</b></div>
