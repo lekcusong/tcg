@@ -4512,7 +4512,7 @@ function monopolyTileDetailHtml(idx){
       const zoneOwned = (monopolyState.tiles || []).filter(x => x.tile_type === "property" && x.zone_id === t.zone_id && x.owner_id === t.owner_id).length;
       lines.push(dc(`這個色塊 ${Iu(t.owner_id)} 持有 ${zoneOwned}/5${zoneOwned >= 5 ? "，集滿：過路費 ×1.5" : "（集滿 5 格過路費 ×1.5）"}`, `${Iu(t.owner_id)} owns ${zoneOwned}/5 of this zone${zoneOwned >= 5 ? " — full set: toll ×1.5" : " (5/5 gives toll ×1.5)"}`));
     }
-    const b = { mall: dc("🏬 商場：過路費加成", "🏬 Mall: boosted toll"), fortress: dc("🏰 要塞：被搶地時守方血量加成", "🏰 Fortress: defender HP bonus in PvP"), casino: dc("🎰 賭場：有人踩到會多抽一張機會卡", "🎰 Casino: visitors draw a bonus chance card"), hotel: dc("🏨 酒店：踩到要丟對子才免罰", "🏨 Hotel: visitors must roll a pair to avoid a fine") }[t.building];
+    const b = { mall: dc("🏬 商場：過路費加成", "🏬 Mall: boosted toll"), fortress: dc("🏰 要塞：被搶地時守方血量加成", "🏰 Fortress: defender HP bonus in PvP"), casino: dc("🎰 賭場：有人踩到會多抽一張機會卡", "🎰 Casino: visitors draw a bonus chance card"), hotel: dc("🏨 酒店：踩到要丟對子才免罰", "🏨 Hotel: visitors must roll a pair to avoid a fine"), vault: monopolyBuildingDesc("vault"), tax_office: monopolyBuildingDesc("tax_office"), chain_store: monopolyBuildingDesc("chain_store") }[t.building];
     if (b) lines.push(b);
   } else if (t.tile_type === "start") {
     title = dc("✨ 起點", "✨ Start");
@@ -4717,7 +4717,7 @@ function monopolyPvpButtonsHtml(){
   pvpEnsureStyleX();
   const full = monopolyAtHoldCap(), dis = full ? " disabled" : "", dim = full ? "opacity:.45;" : "";
   const owner = monopolyState.pendingPvpOwner, t = monopolyTileByIndex(monopolyState.pendingPvpTileIndex), fort = monopolyState.pendingPvpBuilding === "fortress";
-  const z = t ? monopolyZoneColor(t.zone_id) : "#9a8ca8", bIcon = { mall: "🏬", fortress: "🏰", casino: "🎰", hotel: "🏨" }[t && t.building] || "";
+  const z = t ? monopolyZoneColor(t.zone_id) : "#9a8ca8", bIcon = monopolyBuildingIcon(t && t.building);
   const av = M({ avatarId: monopolyState.avatarCache && monopolyState.avatarCache[owner] });
   let out = `<div class="mono-stake" style="--z:${z};margin-top:8px;"><div class="mono-tile">${bIcon || (t && t.level >= 5 ? "♛" : (t ? t.level : "?"))}</div><div style="min-width:0;flex:1;"><div class="pvp-who"><div class="pvp-avatar">${av}</div><div style="min-width:0;"><div class="pvp-name">${Iu(owner)}</div><div class="pvp-tag">${t ? Iu(t.zone_name || "") + " #" + t.tile_index + " · Lv." + t.level : ""}</div></div></div>${fort ? `<div class="pvp-chips"><span class="pvp-chip def">🏰 ${dc(`要塞：守方血量 ×${monopolyState.fortressDefenseMult || 1.3}、守方先手`, `Fortress: defender HP ×${monopolyState.fortressDefenseMult || 1.3}, defender first`)}</span></div>` : ""}</div></div>`;
   out += `<button class="btn small" data-monopoly-pvp="${monopolyState.pendingPvpTileIndex}" data-monopoly-pvp-owner="${Iu(owner)}"${dis} style="margin-top:8px;border-color:var(--danger);color:#ff8080;${dim}">${dc(`⚔️ 對 ${owner} 發動搶地挑戰`, `⚔️ Challenge ${owner} for this property`)}</button>`;
@@ -5147,13 +5147,42 @@ function monopolyIncomeFullText(live){
   if (live >= cap) return dc("（已達上限，快去領取！）", " (cap reached — go claim!)");
   return dc(`（約 ${monopolyFmtMinutes((cap - live) / rate * 3600)} 後累積滿）`, ` (full in ~${monopolyFmtMinutes((cap - live) / rate * 3600)})`);
 }
+const MONOPOLY_BLD = {
+  mall: { icon: "🏬", zh: "商場", en: "Mall" }, fortress: { icon: "🏰", zh: "要塞", en: "Fortress" },
+  casino: { icon: "🎰", zh: "賭場", en: "Casino" }, hotel: { icon: "🏨", zh: "酒店", en: "Hotel" },
+  vault: { icon: "🏦", zh: "金庫", en: "Vault" }, tax_office: { icon: "🏛", zh: "稅務所", en: "Tax Office" }, chain_store: { icon: "🔗", zh: "連鎖店", en: "Chain Store" }
+};
+function monopolyBuildingIcon(b){ return (MONOPOLY_BLD[b] && MONOPOLY_BLD[b].icon) || ""; }
+function monopolyBuildingName(b){ const m = MONOPOLY_BLD[b]; return m ? dc(m.zh, m.en) : (b || ""); }
+function monopolyBldCfg(){ return (monopolyState.income && monopolyState.income.building_cfg) || null; }
+function monopolyNewBuildCostMult(){ const c = monopolyBldCfg(); return c ? (Number(c.new_building_cost_mult) || 3) : 3; }
+function monopolyBuildCost(tile, b){ const base = Number(tile.base_price) || 0; return (b === "vault" || b === "tax_office" || b === "chain_store") ? Math.round(base * monopolyNewBuildCostMult()) : base; }
+function monopolyBuildingDesc(b){
+  const c = monopolyBldCfg() || {};
+  const r = x => Math.round(Number(x) * 100) / 100;
+  if (b === "vault") return dc(`🏦 金庫：這格收益 ×${r(c.vault_income_mult ?? 1.5)}，收益多累積 ${r(c.vault_extra_cap_hours ?? 6)} 小時`, `🏦 Vault: this tile's income ×${r(c.vault_income_mult ?? 1.5)}, +${r(c.vault_extra_cap_hours ?? 6)}h accrual cap`);
+  if (b === "tax_office") return dc(`🏛 稅務所：同一區別人的地產被收過路費時，主人抽 ${r(c.tax_office_pct ?? 5)}%（從該格地主所得裡扣）`, `🏛 Tax Office: takes ${r(c.tax_office_pct ?? 5)}% of tolls paid on other players' tiles in this zone (from that owner's cut)`);
+  if (b === "chain_store") return dc(`🔗 連鎖店：你每擁有一間連鎖店，每間收益 +${r((c.chain_store_step ?? 0.1) * 100)}%，最多 +${r((c.chain_store_max ?? 0.5) * 100)}%`, `🔗 Chain Store: each Chain Store you own gives every Chain Store +${r((c.chain_store_step ?? 0.1) * 100)}% income (max +${r((c.chain_store_max ?? 0.5) * 100)}%)`);
+  return "";
+}
+function monopolyZoneName(id){ const z = MONOPOLY_ZONES.find(z => z.id === id); return z ? z.name : (id === 9 ? "中央傳說區" : "#" + id); }
+function monopolyIncomeZoneMultSentence(){
+  const zm = monopolyState.income && monopolyState.income.zone_mults;
+  if (!zm) return "";
+  const parts = [];
+  for (let id = 1; id <= 9; id++) { const m = Number(zm[String(id)]); if (m && m !== 1) parts.push(`${monopolyZoneName(id)} ×${Math.round(m * 100) / 100}`); }
+  const lm = Number(monopolyState.income.low_set_mult), lz = Number(monopolyState.income.low_set_max_zone);
+  let out = parts.length ? dc(`各區收益倍率：${parts.join("、")}。`, `Zone income multipliers: ${parts.join(", ")}.`) : "";
+  if (lm > 1.5 && lz >= 1) out += dc(` 前 ${lz} 區集滿 5 格收益 ×${lm}。`, ` Full set (5/5) in zones 1–${lz}: income ×${lm}.`);
+  return out;
+}
 function monopolyIncomePanelHtml(){
   const inc = monopolyState.income;
   if (!inc) return "";
   const rate = Number(inc.rate_per_hour) || 0, cap = Number(inc.cap_amount) || 0, live = monopolyIncomeLivePending(), cdLeft = monopolyIncomeCooldownLeft();
   return `<div class="panel">
     <h2>💰 ${dc("地產收益", "Property Income")}</h2>
-    <p class="sub">${dc(`你擁有的每格地產每小時會產生「該格過路費 ${inc.income_pct}%」的收益，最多累積 ${inc.income_cap_hours} 小時，按「領取」才會入帳。`, `Each property you own earns ${inc.income_pct}% of its toll per hour. Accrual stops after ${inc.income_cap_hours} hours — press Claim to collect it.`)}${monopolyIncomeCdSentence() ? " " + monopolyIncomeCdSentence() : ""}</p>
+    <p class="sub">${dc(`你擁有的每格地產每小時會產生「該格過路費 ${inc.income_pct}%」的收益，最多累積 ${inc.income_cap_hours} 小時，按「領取」才會入帳。`, `Each property you own earns ${inc.income_pct}% of its toll per hour. Accrual stops after ${inc.income_cap_hours} hours — press Claim to collect it.`)}${monopolyIncomeCdSentence() ? " " + monopolyIncomeCdSentence() : ""}${monopolyIncomeZoneMultSentence() ? " " + monopolyIncomeZoneMultSentence() : ""}</p>
     <div class="stat-row">
       <div class="stat">${dc("每小時收益", "Per hour")} <b>✦${rate.toLocaleString()}</b></div>
       <div class="stat">${dc("已累積", "Accrued")} <b id="monopoly-income-pending">✦${live.toLocaleString()}</b> <span style="color:var(--muted);">/ ✦${cap.toLocaleString()}</span><span id="monopoly-income-full-text" style="color:var(--muted);">${monopolyIncomeFullText(live)}</span></div>
@@ -5436,9 +5465,8 @@ async function monopolyBuild(tileIndex, buildingType){
   try {
     res = (await monopolyRpc("monopoly_build_structure", { p_nickname: zl.nickname, p_season_id: MONOPOLY_SEASON_ID, p_tile_index: tileIndex, p_building: buildingType }))[0];
   } catch(e) { ac(dc("建造失敗，請稍後再試", "Build failed, please try again")); return; }
-  const buildingNames = { mall: dc("商場","Mall"), fortress: dc("要塞","Fortress"), casino: dc("賭場","Casino"), hotel: dc("酒店","Hotel") };
   if (res && res.success) {
-    ac(dc(`🏗️ 建造完成：${buildingNames[buildingType]}`, `🏗️ Built: ${buildingNames[buildingType]}`));
+    ac(dc(`🏗️ 建造完成：${monopolyBuildingName(buildingType)}`, `🏗️ Built: ${monopolyBuildingName(buildingType)}`));
     await monopolyRefreshPlayerCoins();
     await monopolyLoadState();
   } else {
@@ -5560,7 +5588,7 @@ function monopolySquareBoardHtml(){
     const ownedRing = t.owner_id ? (t.owner_id === zl.nickname ? `box-shadow:inset 0 0 0 2px var(--gold-bright), 0 0 8px rgba(232,196,104,.5)${levelGlow};` : `box-shadow:inset 0 0 0 1px rgba(255,255,255,0.55)${levelGlow};`) : "";
     const here = playersByTile[t.tile_index] || [];
     const title = `${Iu(t.zone_name || t.tile_type)} #${t.tile_index}${t.tile_type === "channel" ? " · " + monopolyRewardLabel(t.reward_type, t.reward_amount) : ""}${t.owner_id ? (" · " + Iu(t.owner_id) + " Lv." + t.level) : ""}${t.building ? (" · " + Iu(t.building)) : ""}${here.length ? (" · " + dc("站在此", "here") + "：" + here.map(Iu).join(",")) : ""}`;
-    const buildingIcon = { mall: "🏬", fortress: "🏰", casino: "🎰", hotel: "🏨" }[t.building];
+    const buildingIcon = monopolyBuildingIcon(t.building);
     const badge = buildingIcon ? buildingIcon
       : (t.tile_type === "property" && t.owner_id)
       ? (t.level >= 5 ? "♛" : String(t.level))
@@ -5617,6 +5645,12 @@ async function monopolyGmSaveSettings(){
         const incCdEl = document.getElementById("monopoly-gm-incomecd"), incCd = incCdEl ? parseFloat(incCdEl.value) : NaN, incArgs = { p_income_pct: incPct, p_income_cap_hours: incCap };
         if (!isNaN(incCd) && incCd >= 0 && monopolyState.income.cooldown_minutes !== undefined) incArgs.p_claim_cooldown_min = incCd;   // 伺服器還沒更新 SQL 時不送新參數，避免儲存失敗
         await monopolyRpc("monopoly_gm_update_income_settings", incArgs);
+      }
+      if (monopolyState.income.building_cfg && document.getElementById("monopoly-gm-bld-vault")) {
+        const g = id => parseFloat(document.getElementById(id).value), c0 = monopolyState.income.building_cfg;
+        const bv = { vm: g("monopoly-gm-bld-vault"), vh: g("monopoly-gm-bld-vaulth"), tx: g("monopoly-gm-bld-tax"), cs: g("monopoly-gm-bld-chstep") / 100, cm: g("monopoly-gm-bld-chmax") / 100, cc: g("monopoly-gm-bld-cost") };
+        if (Object.values(bv).every(v => !isNaN(v)) && (bv.vm !== Number(c0.vault_income_mult) || bv.vh !== Number(c0.vault_extra_cap_hours) || bv.tx !== Number(c0.tax_office_pct) || Math.abs(bv.cs - Number(c0.chain_store_step)) > 1e-9 || Math.abs(bv.cm - Number(c0.chain_store_max)) > 1e-9 || bv.cc !== Number(c0.new_building_cost_mult)))
+          await monopolyRpc("monopoly_gm_set_building_settings", { p_vault_mult: bv.vm, p_vault_extra_hours: bv.vh, p_tax_pct: bv.tx, p_chain_step: bv.cs, p_chain_max: bv.cm, p_cost_mult: bv.cc });
       }
       if (monopolyState.income.zone_mults) {
         for (let zid = 1; zid <= 9; zid++) {
@@ -5713,11 +5747,14 @@ function monopolyRulesPanelHtml(){
     </div>
     <div class="who" style="margin-top:10px;line-height:1.8;">
       <b>${dc("🏗️ Lv.5建築", "🏗️ Lv.5 Buildings")}</b><br/>
-      ${dc("地產升到滿級Lv.5後可以選一種建築（花費=原始購買價，只能選一次）：", "Once a property hits Lv.5 you can build one of these (cost = original price, one-time choice):")}<br/>
+      ${dc("地產升到滿級Lv.5後可以選一種建築（只能選一次）。以下四種花費＝原始購買價：", "Once a property hits Lv.5 you can build one of these (one-time choice). The next four cost the original price:")}<br/>
       🏬 ${dc("商場：過路費再加成", "Mall: extra toll multiplier")}<br/>
       🏰 ${dc("要塞：PvP時守方血量 ×1.3", "Fortress: defender's HP ×1.3 during PvP")}<br/>
       🎰 ${dc("賭場：攻方付完過路費後多抽一張機會卡", "Casino: attacker draws a bonus chance card after paying toll")}<br/>
-      🏨 ${dc("酒店：攻方額外賠錢+扣擲骰次數（見上方監獄/酒店懲罰規則）", "Hotel: attacker pays an extra fine + loses roll(s) (see the Jail/Hotel rule above)")}
+      🏨 ${dc("酒店：攻方額外賠錢+扣擲骰次數（見上方監獄/酒店懲罰規則）", "Hotel: attacker pays an extra fine + loses roll(s) (see the Jail/Hotel rule above)")}${monopolyBldCfg() ? `<br/>${dc("新建築（花費＝原始購買價 ×" + monopolyNewBuildCostMult() + "）：", "New buildings (cost = original price ×" + monopolyNewBuildCostMult() + "):")}<br/>
+      ${monopolyBuildingDesc("vault")}<br/>
+      ${monopolyBuildingDesc("tax_office")}<br/>
+      ${monopolyBuildingDesc("chain_store")}` : ""}
     </div>
     <div class="who" style="margin-top:10px;line-height:1.8;">
       <b>${dc("🌀 特殊通道", "🌀 Special channels")}</b><br/>
@@ -5747,6 +5784,7 @@ function monopolyRulesPanelHtml(){
     <div class="who" style="margin-top:10px;line-height:1.8;">
       <b>${dc("💰 地產收益", "💰 Property Income")}</b><br/>
       ${dc(`你擁有的每格地產每小時都會產生收益，金額是該格過路費的 ${monopolyState.income ? monopolyState.income.income_pct : 10}%（商場、同色塊加成都算在內）。收益先累積起來，最多累積 ${monopolyState.income ? monopolyState.income.income_cap_hours : 12} 小時，按「領取」才會入帳。${monopolyState.income ? (Number(monopolyState.income.cooldown_minutes) > 0 ? `每次領取後需等待 ${monopolyState.income.cooldown_minutes} 分鐘才能再領。` : "") : "每次領取後需等待 10 分鐘才能再領。"}地產被搶走或升級時，會先把當下的收益結算給原本的地主。`, `Every property you own earns ${monopolyState.income ? monopolyState.income.income_pct : 10}% of its toll per hour (Mall and full-zone bonuses count). Income accrues up to ${monopolyState.income ? monopolyState.income.income_cap_hours : 12} hours and is paid out when you press Claim.${monopolyState.income ? (Number(monopolyState.income.cooldown_minutes) > 0 ? ` After each claim you must wait ${monopolyState.income.cooldown_minutes} minute(s) before claiming again.` : "") : " After each claim you must wait 10 minutes before claiming again."} When a property is seized or upgraded, the income earned up to that moment is settled to the previous owner first.`)}
+      ${monopolyIncomeZoneMultSentence() ? `<br/>${monopolyIncomeZoneMultSentence()}` : ""}${monopolyBldCfg() ? `<br/>${dc("🏦金庫、🔗連鎖店會再提高該格收益，詳見上方 Lv.5 建築。", "🏦 Vault and 🔗 Chain Store further boost a tile's income — see Lv.5 Buildings above.")}` : ""}
     </div>
     <div class="who" style="margin-top:10px;line-height:1.8;">
       <b>${dc("📊 持有上限與封號", "📊 Hold Cap & Titles")}</b><br/>
@@ -5791,7 +5829,22 @@ function monopolyGmPanelHtml(){
         <div><label>${dc("💰收益比例（過路費 %／小時）", "Income % of toll per hour")}</label><input type="number" step="0.5" min="0" id="monopoly-gm-incomepct" value="${monopolyState.income.income_pct}" style="width:80px;" /></div>
         <div><label>${dc("💰累積上限（小時）", "Accrual cap (hours)")}</label><input type="number" step="1" min="0" id="monopoly-gm-incomecap" value="${monopolyState.income.income_cap_hours}" style="width:80px;" /></div>
         <div><label>${dc("💰領取冷卻（分鐘，0＝無冷卻）", "Claim cooldown (min, 0 = none)")}</label><input type="number" step="1" min="0" id="monopoly-gm-incomecd" value="${monopolyState.income.cooldown_minutes ?? 10}" style="width:80px;" /></div>
+      </div>
+      ${monopolyState.income.building_cfg ? `<div class="who" style="margin:8px 0 6px;">${dc("🏗 新建築設定（金庫／稅務所／連鎖店）", "🏗 New building settings (Vault / Tax Office / Chain Store)")}</div>
+      <div class="form-row">
+        <div><label>${dc("🏦金庫收益倍率", "Vault income ×")}</label><input type="number" step="0.1" min="1" max="10" id="monopoly-gm-bld-vault" value="${monopolyState.income.building_cfg.vault_income_mult}" style="width:80px;" /></div>
+        <div><label>${dc("🏦金庫多累積（小時）", "Vault extra cap (h)")}</label><input type="number" step="1" min="0" max="72" id="monopoly-gm-bld-vaulth" value="${monopolyState.income.building_cfg.vault_extra_cap_hours}" style="width:80px;" /></div>
+        <div><label>${dc("🏛稅務所抽成 %", "Tax Office cut %")}</label><input type="number" step="0.5" min="0" max="50" id="monopoly-gm-bld-tax" value="${monopolyState.income.building_cfg.tax_office_pct}" style="width:80px;" /></div>
+        <div><label>${dc("🔗連鎖店每間 +%", "Chain Store step %")}</label><input type="number" step="1" min="0" max="100" id="monopoly-gm-bld-chstep" value="${Math.round(monopolyState.income.building_cfg.chain_store_step * 100)}" style="width:80px;" /></div>
+        <div><label>${dc("🔗連鎖店上限 +%", "Chain Store max %")}</label><input type="number" step="5" min="0" max="500" id="monopoly-gm-bld-chmax" value="${Math.round(monopolyState.income.building_cfg.chain_store_max * 100)}" style="width:80px;" /></div>
+        <div><label>${dc("新建築建造費（× 購買價）", "New building cost (× price)")}</label><input type="number" step="0.5" min="1" max="20" id="monopoly-gm-bld-cost" value="${monopolyState.income.building_cfg.new_building_cost_mult}" style="width:80px;" /></div>
       </div>` : ""}
+      ${monopolyState.income.zone_mults ? `<div class="who" style="margin:8px 0 6px;">${dc("💰各區收益倍率（只影響收益，不影響過路費）", "💰 Per-zone income multiplier (income only, not toll)")}</div>
+      <div class="form-row">${[1,2,3,4,5,6,7,8,9].map(id => `<div><label>${monopolyZoneName(id)}</label><input type="number" step="0.1" min="0" max="20" id="monopoly-gm-zinc-${id}" value="${monopolyState.income.zone_mults[String(id)] ?? 1}" style="width:70px;" /></div>`).join("")}</div>
+      <div class="form-row">
+        <div><label>${dc("低階區集滿 5 格收益加成（原 1.5）", "Low-zone full-set income bonus (was 1.5)")}</label><input type="number" step="0.1" min="1" max="5" id="monopoly-gm-lowset-mult" value="${monopolyState.income.low_set_mult ?? 2}" style="width:80px;" /></div>
+        <div><label>${dc("幾號區（含）以下算低階區", "Low zones = zone ≤")}</label><input type="number" min="0" max="9" id="monopoly-gm-lowset-zone" value="${monopolyState.income.low_set_max_zone ?? 3}" style="width:80px;" /></div>
+      </div>` : ""}` : ""}
       ${monopolyState.eventSettings ? `<div class="who" style="margin:12px 0 6px;">${dc("排程事件設定", "Scheduled events")}</div>
       <div class="form-row">
         <div><label>${dc("🚪自動移出（超過幾小時沒移動，0＝關閉）", "Auto-remove after N idle hours (0 = off)")}</label><input type="number" step="1" min="0" id="monopoly-gm-inactive" value="${monopolyState.eventSettings.inactiveHours}" style="width:80px;" /></div>
@@ -5893,6 +5946,7 @@ function monopolyEventText(ev){
     case "tax_exempt": return dc(`🛡️ 新手保護：${Iu(ev.actor)} 踩到稅收格，免稅`, `🛡️ Newbie protection: ${Iu(ev.actor)} landed on a Tax tile — no tax`);
     case "sell_property": return dc(`💰 ${Iu(ev.actor)} 把第${ev.tile_index}格（${Iu(ev.detail||"")}）賣回市場，拿到 ✦${Number(ev.amount).toLocaleString()}`, `💰 ${Iu(ev.actor)} sold tile #${ev.tile_index} (${Iu(ev.detail||"")}) back to the market for ✦${Number(ev.amount).toLocaleString()}`);
     case "toll_forgiven": return dc(`⚠️ ${Iu(ev.actor)} 付不出第${ev.tile_index}格的過路費，剩下的 ✦${Number(ev.amount).toLocaleString()} 已免除（付給 ${Iu(ev.target)}）`, `⚠️ ${Iu(ev.actor)} couldn't fully cover the toll on tile #${ev.tile_index} — the remaining ✦${Number(ev.amount).toLocaleString()} was forgiven (owner: ${Iu(ev.target)})`);
+    case "tax_office": return dc(`🏛 ${Iu(ev.actor)} 的稅務所，從 ${Iu(ev.target)} 第${ev.tile_index}格（${Iu(ev.detail||"")}）的過路費抽了 ✦${Number(ev.amount).toLocaleString()}`, `🏛 ${Iu(ev.actor)}'s Tax Office took ✦${Number(ev.amount).toLocaleString()} from ${Iu(ev.target)}'s toll on tile #${ev.tile_index} (${Iu(ev.detail||"")})`);
     case "toll_liquidate": return dc(`🏚 ${Iu(ev.actor)} 付不出過路費，自動賣出第${ev.tile_index}格（${Iu(ev.detail||"")}）抵債，換得 ✦${Number(ev.amount).toLocaleString()}`, `🏚 ${Iu(ev.actor)} couldn't cover a toll and auto-sold tile #${ev.tile_index} (${Iu(ev.detail||"")}) for ✦${Number(ev.amount).toLocaleString()}`);
     case "use_double_dice": return dc(`🎲🎲 ${Iu(ev.actor)} 使用了雙骰子（${Iu(ev.detail||"")}）`, `🎲🎲 ${Iu(ev.actor)} used a Double Dice card (${Iu(ev.detail||"")})`);
     case "use_choice_dice": return dc(`🎯 ${Iu(ev.actor)} 使用了自選骰子（${Iu(ev.detail||"")}）`, `🎯 ${Iu(ev.actor)} used a Choice Dice card (${Iu(ev.detail||"")})`);
@@ -5972,13 +6026,17 @@ async function monopolyRenderTab(e){
     } else if (posTile.owner_id === zl.nickname && posTile.level < 5 && monopolyState.justBoughtTileIndex !== posTile.tile_index) {
       html += `<button class="btn small" data-monopoly-upgrade="${posTile.tile_index}" style="margin-top:8px;">${dc(`升級到 Lv.${posTile.level+1}`, `Upgrade to Lv.${posTile.level+1}`)}</button>`;
     } else if (posTile.owner_id === zl.nickname && posTile.level >= 5 && !posTile.building) {
-      html += `<div class="who" style="margin-top:8px;">${dc(`已滿級，選一個建築（花費 ✦${(posTile.base_price||0).toLocaleString()}）：`, `Maxed out — choose a building (✦${(posTile.base_price||0).toLocaleString()}):`)}</div>
+      const newBld = monopolyBldCfg() ? ["vault", "tax_office", "chain_store"] : [];
+      html += `<div class="who" style="margin-top:8px;">${dc(`已滿級，選一個建築（商場／要塞／賭場／酒店 ✦${(posTile.base_price||0).toLocaleString()}）：`, `Maxed out — choose a building (Mall/Fortress/Casino/Hotel ✦${(posTile.base_price||0).toLocaleString()}):`)}</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;">
         <button class="btn small" data-monopoly-build="${posTile.tile_index}" data-monopoly-build-type="mall">🏬 ${dc("商場","Mall")}</button>
         <button class="btn small" data-monopoly-build="${posTile.tile_index}" data-monopoly-build-type="fortress">🏰 ${dc("要塞","Fortress")}</button>
         <button class="btn small" data-monopoly-build="${posTile.tile_index}" data-monopoly-build-type="casino">🎰 ${dc("賭場","Casino")}</button>
         <button class="btn small" data-monopoly-build="${posTile.tile_index}" data-monopoly-build-type="hotel">🏨 ${dc("酒店","Hotel")}</button>
-      </div>`;
+      </div>
+      ${newBld.length ? `<div class="who" style="margin-top:8px;">${dc("新建築（花費 購買價 ×" + monopolyNewBuildCostMult() + "）：", "New buildings (cost = price ×" + monopolyNewBuildCostMult() + "):")}</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;">${newBld.map(b => `<button class="btn small" title="${monopolyBuildingDesc(b).replace(/"/g, "&quot;")}" data-monopoly-build="${posTile.tile_index}" data-monopoly-build-type="${b}">${monopolyBuildingIcon(b)} ${monopolyBuildingName(b)} ✦${monopolyBuildCost(posTile, b).toLocaleString()}</button>`).join("")}</div>
+      <div class="who" style="margin-top:6px;color:var(--muted);font-size:12px;">${newBld.map(b => monopolyBuildingDesc(b)).join("<br>")}</div>` : ""}`;
     }
   }
   html += monopolyPvpButtonsHtml();
@@ -7740,7 +7798,7 @@ function pvpEnsureStyleX(){
 }
 function monopolyPvpStakeHtml(tile, owner, o){
   pvpEnsureStyleX();
-  const z = tile ? monopolyZoneColor(tile.zone_id) : "#9a8ca8", bIcon = { mall: "🏬", fortress: "🏰", casino: "🎰", hotel: "🏨" }[tile && tile.building] || "";
+  const z = tile ? monopolyZoneColor(tile.zone_id) : "#9a8ca8", bIcon = monopolyBuildingIcon(tile && tile.building);
   const chips = [];
   o.isFortress && chips.push(`<span class="pvp-chip def">🏰 ${dc(`要塞：守方血量 ×${o.fortMult}`, `Fortress: defender HP ×${o.fortMult}`)}</span>`);
   o.newbieDef && chips.push(`<span class="pvp-chip shield">🛡️ ${dc("新手保護", "Newbie protection")}</span>`);
