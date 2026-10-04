@@ -4300,7 +4300,7 @@ const MONOPOLY_ZONES = [
 function monopolyZoneColor(zoneId){const z=MONOPOLY_ZONES.find(z=>z.id===zoneId);return z?z.color:"#9a8ca8"}
 const monopolyState = {
   loaded: false, tiles: [], position: 0, rollsAvailable: 3, maxRolls: 3, nextRegenSeconds: null, rollRegenHours: 3,
-  isNewbieProtected: true, pvpImmunityCardHeld: false, tollDiscountCards: 0, sellBackPct: 65,
+  isNewbieProtected: true, pvpImmunityCardHeld: false, tollDiscountCards: 0, sellBackPct: 50, resaleBuyPct: 100, rebuildRadius: 3, rebuildCards: 0, channelPending: null, rebuildPickerOpen: false,
   doubleDiceCards: 0, doubleDiceActiveRolls: 0, choiceDiceCards: 0, choiceDicePending: null, obstacleCards: 0,
   lastResult: null, pendingTileIndex: null, pendingPvpTileIndex: null, pendingPvpOwner: null, pendingPvpBuilding: null,
   busy: false, allPositions: [], justBoughtTileIndex: null, events: [], eventLogLimit: 30, jailPenalty: 50000, jailRollsPenalty: 2, hotelPenalty: 50000, hotelRollsPenalty: 2, mallTollMult: 1.3, fortressDefenseMult: 1.3, vip2RollRegenHours: 2,
@@ -4415,6 +4415,7 @@ function monopolyRewardLabel(type, amount){
     case "double_dice": return dc(`🎲🎲 雙骰子 ×${n || 1}`, `🎲🎲 Double Dice ×${n || 1}`);
     case "choice_dice": return dc(`🎯 自選骰子 ×${n || 1}`, `🎯 Choice Dice ×${n || 1}`);
     case "obstacle": return dc(`🚧 停留障礙 ×${n || 1}`, `🚧 Obstacle ×${n || 1}`);
+    case "rebuild": return dc(`🔧 改建卡 ×${n || 1}`, `🔧 Rebuild Card ×${n || 1}`);
     default: return dc("（沒有獎勵）", "(no reward)");
   }
 }
@@ -4428,7 +4429,7 @@ function monopolyNewbieRulesText(){
     `You are in the newbie stage while you own fewer than ${n} properties (it ends when you own ${n}; if you fall back below, protection returns). While protected: no penalty chance cards, ${tollLine}, and Jail and Tax cost you nothing — but you can still enter the special channels. It does NOT stop others taking your properties with PvP, but you get to roll first in the battle, and Hotel fines still apply. Steal Cards and Steal-Coins Cards do not work on you (nothing can be taken from you that way). Every effect triggered by newbie protection is spelled out in the Activity Log with a gold 🛡️.`);
 }
 function monopolyRewardTypeName(type){
-  return ({ none: dc("（沒有獎勵）", "(none)"), shard: dc("🧩 神秘碎片", "🧩 Mystery Shard"), rolls: dc("🎲 擲骰次數", "🎲 Extra rolls"), toll_card: dc("🎫 過路費折扣卡", "🎫 Toll Discount Card"), steal_card: dc("🗡️ 搶奪卡", "🗡️ Steal Card"), steal_coins: dc("💸 搶金幣卡", "💸 Steal-Coins Card"), coins: dc("💰 金幣", "💰 Coins"), upgrade: dc("⬆️ 隨機升級地產", "⬆️ Random upgrade"), double_dice: dc("🎲🎲 雙骰子", "🎲🎲 Double Dice"), choice_dice: dc("🎯 自選骰子", "🎯 Choice Dice"), obstacle: dc("🚧 停留障礙", "🚧 Obstacle") })[type] || type;
+  return ({ none: dc("（沒有獎勵）", "(none)"), shard: dc("🧩 神秘碎片", "🧩 Mystery Shard"), rolls: dc("🎲 擲骰次數", "🎲 Extra rolls"), toll_card: dc("🎫 過路費折扣卡", "🎫 Toll Discount Card"), steal_card: dc("🗡️ 搶奪卡", "🗡️ Steal Card"), steal_coins: dc("💸 搶金幣卡", "💸 Steal-Coins Card"), coins: dc("💰 金幣", "💰 Coins"), upgrade: dc("⬆️ 隨機升級地產", "⬆️ Random upgrade"), double_dice: dc("🎲🎲 雙骰子", "🎲🎲 Double Dice"), choice_dice: dc("🎯 自選骰子", "🎯 Choice Dice"), obstacle: dc("🚧 停留障礙", "🚧 Obstacle"), rebuild: dc("🔧 改建卡", "🔧 Rebuild Card") })[type] || type;
 }
 function monopolyRewardToast(rw){
   if (!rw || !rw.type || rw.type === "none" || rw.type === "error") return "";
@@ -4455,6 +4456,11 @@ function monopolyRewardToast(rw){
       const cappedOb = rw.capped ? dc(`（身上最多收 ${monopolyState.cardHoldCap} 張，超過的部分換成了 ✦${Number(rw.converted_amount || 0).toLocaleString()} 金幣）`, ` (capped at ${monopolyState.cardHoldCap} — the rest converted to ✦${Number(rw.converted_amount || 0).toLocaleString()} coins)`) : "";
       if (n <= 0) return dc(`🎁 停留障礙已經收滿 ${monopolyState.cardHoldCap} 張，這次改發 ✦${Number(rw.converted_amount || 0).toLocaleString()} 金幣`, `🎁 Obstacle cards are full (${monopolyState.cardHoldCap}) — paid ✦${Number(rw.converted_amount || 0).toLocaleString()} coins instead`);
       return dc(`🎁 獲得停留障礙 ×${n}${cappedOb}：收著，之後在大富翁頁面上方按「放置於目前位置」，讓下一位移動路徑經過這格的玩家停在這一格，並觸發這格的效果（過路費、買地等）`, `🎁 Got Obstacle ×${n}${cappedOb}: keep it and press "Place here" at the top of the Monopoly page — the next player whose move passes over that tile stops there and triggers that tile's effects (tolls, buying, etc.)`);
+    }
+    case "rebuild": {
+      const cappedRb = rw.capped ? dc(`（身上最多收 ${monopolyState.cardHoldCap} 張，超過的部分換成了 ✦${Number(rw.converted_amount || 0).toLocaleString()} 金幣）`, ` (capped at ${monopolyState.cardHoldCap} — the rest converted to ✦${Number(rw.converted_amount || 0).toLocaleString()} coins)`) : "";
+      if (n <= 0) return dc(`🎁 改建卡已經收滿 ${monopolyState.cardHoldCap} 張，這次改發 ✦${Number(rw.converted_amount || 0).toLocaleString()} 金幣`, `🎁 Rebuild Cards are full (${monopolyState.cardHoldCap}) — paid ✦${Number(rw.converted_amount || 0).toLocaleString()} coins instead`);
+      return dc(`🎁 獲得改建卡 ×${n}${cappedRb}：在大富翁頁面上方按「使用」，把附近 Lv5 的建築改成你選的建築`, `🎁 Got Rebuild Card ×${n}${cappedRb}: press "Use" at the top of the Monopoly page to convert nearby Lv5 buildings into a building of your choice`);
     }
     case "steal_card": {
       const capped = rw.capped ? dc(`（身上最多收 ${monopolyState.cardHoldCap} 張，超過的部分換成了 ✦${Number(rw.converted_amount || 0).toLocaleString()} 金幣）`, ` (capped at ${monopolyState.cardHoldCap} — the rest converted to ✦${Number(rw.converted_amount || 0).toLocaleString()} coins)`) : "";
@@ -4508,7 +4514,11 @@ function monopolyTileDetailHtml(idx){
   let title = `#${t.tile_index}`;
   if (t.tile_type === "property") {
     title = `🏘 ${Iu(t.zone_name || "")} #${t.tile_index}`;
-    if (!t.owner_id) {
+    if (!t.owner_id && t.level > 0) {
+      const bp = t.buy_price != null ? t.buy_price : t.base_price;
+      lines.push(dc(`🏷 待售中　Lv.${t.level}${t.building ? "　" + monopolyBuildingIcon(t.building) + monopolyBuildingName(t.building) : ""}　購買價 ✦${n(bp)}（買下後等級與建築不變）`, `🏷 For sale — Lv.${t.level}${t.building ? " " + monopolyBuildingIcon(t.building) + monopolyBuildingName(t.building) : ""} — price ✦${n(bp)} (level and building stay as they are)`));
+      lines.push(dc(`買下後過路費約：✦${n(monopolyTileToll({ ...t, owner_id: zl.nickname }))}`, `Toll once bought: about ✦${n(monopolyTileToll({ ...t, owner_id: zl.nickname }))}`));
+    } else if (!t.owner_id) {
       lines.push(dc(`空地，購買價 ✦${n(t.base_price)}（買下是 Lv.1）`, `Vacant — price ✦${n(t.base_price)} (Lv.1 when bought)`));
       lines.push(dc(`買下後過路費：✦${n(Math.round(1.5 * (t.base_price || 0)))}`, `Toll once bought: ✦${n(Math.round(1.5 * (t.base_price || 0)))}`));
     } else {
@@ -4527,13 +4537,13 @@ function monopolyTileDetailHtml(idx){
     title = dc("⛓ 監獄", "⛓ Jail");
     lines.push(dc(`踩到要丟兩顆骰子：對子免罰，否則罰 ✦${n(monopolyState.jailPenalty || 50000)} 並扣 ${monopolyState.jailRollsPenalty || 1} 次擲骰。`, `Roll two dice: a pair is free, otherwise fined ✦${n(monopolyState.jailPenalty || 50000)} and ${monopolyState.jailRollsPenalty || 1} roll(s) lost.`));
     if (monopolyState.newbiePropertyLimit != null && monopolyState.isNewbieProtected) lines.push(dc("🛡️ 你現在是新手階段：踩到監獄免罰款、不用丟骰。", "🛡️ You are in the newbie stage: Jail is free for you."));
-    if (monopolyState.channelsEnabled !== false) lines.push(dc("🌀 結算完會進入棋盤中間的「越獄密道」（6 格）。", "🌀 Afterwards you enter the \"Escape Tunnel\" (6 tiles) in the middle of the board."));
+    if (monopolyState.channelsEnabled !== false) lines.push(dc("🌀 結算完可以按「進入通道」進入棋盤中間的「越獄密道」（6 格）。", "🌀 Afterwards you enter the \"Escape Tunnel\" (6 tiles) in the middle of the board."));
   } else if (t.tile_type === "tax") {
     title = dc("⚖ 稅收", "⚖ Tax");
     lines.push(dc("踩到會扣目前金幣的 5%。", "Landing here costs 5% of your current coins."));
     if (monopolyState.newbiePropertyLimit != null && monopolyState.isNewbieProtected) lines.push(dc("🛡️ 你現在是新手階段：這格免稅。", "🛡️ You are in the newbie stage: no tax for you."));
-    if (t.tile_index === 6 && monopolyState.channelsEnabled !== false) lines.push(dc("🌀 底部中間的「命」這格結算完會進入「中央通道」（11 格）。", "🌀 Landing here leads into the 11-tile \"Central Passage\" afterwards."));
-    if (t.tile_index === 36 && monopolyState.channelsEnabled !== false) lines.push(dc("🌀 右上角這一格結算完會進入「稅務金庫」（6 格）。", "🌀 This top-right corner leads into the 6-tile \"Tax Vault\" afterwards."));
+    if (t.tile_index === 6 && monopolyState.channelsEnabled !== false) lines.push(dc("🌀 底部中間的「命」這格結算完可以按「進入通道」進入「中央通道」（11 格）。", "🌀 Landing here leads into the 11-tile \"Central Passage\" afterwards."));
+    if (t.tile_index === 36 && monopolyState.channelsEnabled !== false) lines.push(dc("🌀 右上角這一格結算完可以按「進入通道」進入「稅務金庫」（6 格）。", "🌀 This top-right corner leads into the 6-tile \"Tax Vault\" afterwards."));
   } else if (t.tile_type === "chance") {
     title = dc("🔮 命運／機會", "🔮 Chance");
     lines.push(dc("抽一張卡：可能得到或損失金幣、免費升級、搶地挑戰、移動位置等。", "Draw a card: coins gained or lost, a free upgrade, a PvP challenge, movement, and more."));
@@ -4672,12 +4682,14 @@ function monopolyApplyChannelState(cs){
   monopolyState.channelsEnabled = cs.channels_enabled !== false;
   monopolyState.unlimitedRolls = !!cs.unlimited_rolls;                                                    // 這個帳號擲骰不耗次數（預設只有 GM）
   monopolyState.newbiePropertyLimit = cs.newbie_property_limit !== undefined ? Number(cs.newbie_property_limit) : null;   // 新手階段：地產少於幾塊（0＝關閉；null＝伺服器還沒更新 SQL，仍是舊規則）
+  monopolyState.resaleBuyPct = cs.resale_buy_pct !== undefined ? Number(cs.resale_buy_pct) : 100;
+  monopolyState.rebuildRadius = cs.rebuild_radius !== undefined ? Number(cs.rebuild_radius) : 3;
   monopolyState.unlimitedPlayers = cs.unlimited_players !== undefined ? String(cs.unlimited_players) : null;   // null＝伺服器還沒更新 SQL
 }
 function monopolyRollsText(){ return monopolyState.unlimitedRolls ? "∞" : `${monopolyState.rollsAvailable} / ${monopolyState.maxRolls}`; }
 async function monopolyRollRpc(){
   try {
-    return await monopolyRpc("monopoly_roll_and_move", { p_player_id: zl.nickname, p_season_id: MONOPOLY_SEASON_ID, p_client_features: 1 });
+    return await monopolyRpc("monopoly_roll_and_move", { p_player_id: zl.nickname, p_season_id: MONOPOLY_SEASON_ID, p_client_features: 2 });
   } catch (e) {
     // 前端先更新、伺服器 SQL 還沒更新時：退回舊版呼叫方式，遊戲照常可玩（只是還沒有通道）
     if (/PGRST202|Could not find the function|schema cache/i.test(String((e && e.message) || ""))) return await monopolyRpc("monopoly_roll_and_move", { p_player_id: zl.nickname, p_season_id: MONOPOLY_SEASON_ID });
@@ -4687,6 +4699,10 @@ async function monopolyRollRpc(){
 // 擲骰之後跟通道有關的收尾：進入通道、停在通道格子的獎勵提示
 async function monopolyChannelAfterRoll(row){
   if (!row) return;
+  if (row.channel_pending) {
+    const pt = monopolyState.tiles.find(t => t.channel === row.channel_pending && t.channel_pos === 1);
+    ac(dc(`🌀 你停在「${pt ? pt.zone_name : ""}」的入口！可以先放障礙、用道具，準備好再按「進入通道」；不想進去就直接擲骰。`, `🌀 You are at the entrance of "${pt ? pt.zone_name : ""}"! Place obstacles or use items first, then press "Enter channel" — or just roll to skip it.`), { legendary: true });
+  }
   const inChannel = row.landed_tile_type === "channel";
   if (row.channel_entered) {
     const t = monopolyTileByIndex(row.channel_tile_index);
@@ -4903,6 +4919,113 @@ async function monopolyUseChoiceDice(value){
   } catch (e) { ac(dc("使用自選骰子失敗，請稍後再試", "Failed to use Choice Dice, please try again")); }
   finally { monopolyState.busy = false; Bu(); }
 }
+// ===== 🌀 特殊通道：停在入口要按確認才進入 =====
+function monopolyChannelPendingHtml(){
+  const key = monopolyState.channelPending;
+  if (!key) return "";
+  const t1 = (monopolyState.tiles || []).find(t => t.channel === key && t.channel_pos === 1);
+  const name = t1 ? Iu(t1.zone_name || "") : Iu(key);
+  const reward = t1 ? monopolyRewardLabel(t1.reward_type, t1.reward_amount) : "";
+  return `<div style="margin:10px 0;padding:10px 12px;border:1px solid var(--gold-bright);border-radius:10px;background:rgba(232,196,104,.08);">
+    <div class="who" style="color:var(--gold-bright);"><b>🌀 ${dc(`你在「${name}」的入口`, `You are at the entrance of "${name}"`)}</b></div>
+    <div class="who" style="color:var(--muted);margin-top:4px;line-height:1.7;">${dc("進去之前可以先放停留障礙、使用雙骰子／自選骰子／改建卡等道具。進入不耗擲骰次數，進去馬上拿第一格獎勵" + (reward ? "：" + reward : "") + "。不想進去就直接擲骰，這次入口就算放棄。", "Before you go in you can place obstacles or use Double Dice / Choice Dice / Rebuild Cards. Entering costs no roll and pays the first tile's reward right away" + (reward ? ": " + reward : "") + ". If you don't want to enter, just roll — the entrance is skipped.")}</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">
+      <button class="btn small" id="monopoly-channel-enter" style="border-color:var(--gold-bright);color:var(--gold-bright);">🌀 ${dc("進入通道", "Enter channel")}</button>
+      <button class="btn small secondary" id="monopoly-channel-skip">${dc("不進入", "Skip")}</button>
+    </div>
+  </div>`;
+}
+async function monopolyEnterChannel(){
+  if (monopolyState.busy) return;
+  monopolyState.busy = true;
+  try {
+    let res = await monopolyRpc("monopoly_enter_channel", { p_player_id: zl.nickname, p_season_id: MONOPOLY_SEASON_ID });
+    if (Array.isArray(res)) res = res[0];
+    if (res && res.success) {
+      const prev = monopolyState.position;
+      const t = monopolyTileByIndex(res.channel_tile_index);
+      monopolyState.position = Number(res.channel_tile_index);
+      monopolyState.channelPending = null;
+      try { await monopolyWalk(prev, [Number(res.channel_tile_index)]); } catch (e) {}
+      ac(dc(`🌀 你進入了「${t ? t.zone_name : ""}」！每次擲骰都在圈內前進，走過最後一格就會回到主棋盤`, `🌀 You entered "${t ? t.zone_name : ""}"! Each roll now moves you around the loop — pass the last tile to return to the main board`));
+      const msg = monopolyRewardToast(res.reward);
+      if (msg) ac(msg);
+      if (res.reward && res.reward.type === "shard") shardNotify(zl.nickname, Number(res.reward.amount), "monopoly");
+      await monopolyRefreshPlayerCoins();
+    } else {
+      const why = {
+        MONOPOLY_NO_CHANNEL_PENDING: dc("你現在不在通道入口", "You are not at a channel entrance"),
+        MONOPOLY_CHANNELS_DISABLED: dc("特殊通道目前關閉中", "Special channels are currently off"),
+        MONOPOLY_NOT_AT_CHANNEL_ENTRANCE: dc("你現在不在通道入口", "You are not at a channel entrance")
+      };
+      ac((res && why[res.message]) || dc("進入通道失敗", "Failed to enter the channel"));
+    }
+    await monopolyLoadState();
+  } catch (e) { ac(dc("進入通道失敗，請稍後再試（若一直失敗，可能是伺服器 SQL 還沒更新）", "Failed to enter the channel, please try again (if it keeps failing, the server SQL may not be updated yet)")); }
+  finally { monopolyState.busy = false; Bu(); }
+}
+async function monopolySkipChannel(){
+  if (monopolyState.busy) return;
+  monopolyState.busy = true;
+  try {
+    await monopolyRpc("monopoly_skip_channel", { p_player_id: zl.nickname, p_season_id: MONOPOLY_SEASON_ID });
+    monopolyState.channelPending = null;
+    ac(dc("你決定不進入通道，下次擲骰會直接往前走", "You skipped the channel — your next roll moves you along the main board"));
+  } catch (e) { monopolyState.channelPending = null; }
+  finally { monopolyState.busy = false; Bu(); }
+}
+
+// ===== 🔧 改建卡：把附近（前後各 rebuildRadius 格）自己名下 Lv5 的建築，全部改成自選的建築 =====
+function monopolyRebuildTargets(){
+  const pos = Number(monopolyState.position);
+  if (!isFinite(pos) || pos >= 100) return [];
+  const r = Number(monopolyState.rebuildRadius);
+  return (monopolyState.tiles || []).filter(t => t.tile_type === "property" && t.owner_id === zl.nickname && t.level >= 5 && t.building && t.tile_index < 100 && monopolyRingDist(t.tile_index, pos) <= r);
+}
+function monopolyToggleRebuildPicker(){ monopolyState.rebuildPickerOpen = !monopolyState.rebuildPickerOpen; Bu(); }
+function monopolyRebuildPanelHtml(){
+  if (!monopolyState.rebuildPickerOpen) return "";
+  const targets = monopolyRebuildTargets();
+  const list = targets.length
+    ? targets.map(t => `#${t.tile_index} ${Iu(t.zone_name || "")} ${monopolyBuildingIcon(t.building)}${monopolyBuildingName(t.building)}`).join("、")
+    : dc("（附近沒有你名下 Lv5 且已有建築的地產）", "(no Lv5 building of yours nearby)");
+  const bs = ["mall", "fortress", "casino", "hotel"].concat(monopolyBldCfg() ? ["vault", "tax_office", "chain_store"] : []);
+  const body = targets.length
+    ? `<div class="who" style="margin-bottom:6px;">${dc("要改成哪一種建築？（免費；已經是這一種的會略過）", "Convert them into which building? (free; ones already of that type are skipped)")}</div>
+       <div style="display:flex;gap:6px;flex-wrap:wrap;">${bs.map(b => `<button class="btn small" data-monopoly-rebuild="${b}" style="border-color:var(--gold-bright);color:var(--gold-bright);">${monopolyBuildingIcon(b)} ${monopolyBuildingName(b)}</button>`).join("")}</div>`
+    : "";
+  return `<div style="margin:10px 0;padding:10px 12px;border:1px solid var(--line);border-radius:10px;">
+    <h2 style="font-size:15px;">🔧 ${dc("改建卡", "Rebuild Card")}</h2>
+    <div class="who" style="color:var(--muted);margin-bottom:6px;line-height:1.7;">${dc(`會改建你目前位置前後各 ${monopolyState.rebuildRadius} 格以內、你名下 Lv5 且已有建築的地產：`, `Affects your Lv5 buildings within ${monopolyState.rebuildRadius} tiles of your current position:`)}<br>${list}</div>
+    ${body}
+    <div class="form-row" style="margin-top:6px;"><button class="btn small secondary" id="monopoly-rebuild-close">${dc("收起", "Close")}</button></div>
+  </div>`;
+}
+async function monopolyUseRebuild(building){
+  if (monopolyState.busy) return;
+  const targets = monopolyRebuildTargets().filter(t => t.building !== building);
+  if (!targets.length) { ac(dc("這些地產已經都是這種建築了", "Those tiles already have that building")); Bu(); return; }
+  if (!window.confirm(dc(`要用 1 張改建卡，把 ${targets.map(t => "#" + t.tile_index).join("、")} 的建築改成「${monopolyBuildingName(building)}」嗎？此動作無法復原。`, `Use 1 Rebuild Card to convert ${targets.map(t => "#" + t.tile_index).join(", ")} into "${monopolyBuildingName(building)}"? This cannot be undone.`))) { Bu(); return; }
+  monopolyState.busy = true;
+  try {
+    let res = await monopolyRpc("monopoly_use_rebuild_card", { p_nickname: zl.nickname, p_season_id: MONOPOLY_SEASON_ID, p_building: building });
+    if (Array.isArray(res)) res = res[0];
+    if (res && res.success) {
+      ac(dc(`🔧 已把 ${res.changed_count} 塊地產改建成「${monopolyBuildingName(building)}」！`, `🔧 Converted ${res.changed_count} propert${res.changed_count === 1 ? "y" : "ies"} into "${monopolyBuildingName(building)}"!`), { legendary: true });
+      monopolyState.rebuildPickerOpen = false;
+    } else {
+      const why = {
+        MONOPOLY_NO_REBUILD_CARD: dc("你沒有改建卡", "You have no Rebuild Card"),
+        MONOPOLY_NO_REBUILD_TARGET: dc("附近沒有可以改建的地產（要是你名下、Lv5、已有建築，而且不是你選的這一種）", "No eligible building nearby (must be yours, Lv5, already built, and not already that type)"),
+        MONOPOLY_CANNOT_USE_IN_CHANNEL: dc("特殊通道裡不能使用改建卡", "Can't use a Rebuild Card inside a special channel"),
+        MONOPOLY_INVALID_BUILDING: dc("建築種類不正確", "Invalid building type")
+      };
+      ac((res && why[res.message]) || dc("改建失敗", "Rebuild failed"));
+    }
+    await monopolyLoadState();
+  } catch (e) { ac(dc("改建失敗，請稍後再試（若一直失敗，可能是伺服器 SQL 還沒更新）", "Rebuild failed, please try again (if it keeps failing, the server SQL may not be updated yet)")); }
+  finally { monopolyState.busy = false; Bu(); }
+}
 async function monopolyUseObstacle(){
   if (monopolyState.busy) return;
   if (monopolyState.position >= 100) { ac(dc("特殊通道裡不能放置障礙", "You can't place an obstacle while inside a special channel")); return; }
@@ -5004,8 +5127,8 @@ async function monopolyDoGiveProperty(target){
 function monopolySellEstimate(t){
   const lv = Math.max(t.level || 1, 1);
   let invested = Math.round((t.base_price || 0) * (Math.pow(2, lv) - 1));
-  if (t.building) invested += (t.base_price || 0);
-  return Math.round(invested * (monopolyState.sellBackPct != null ? monopolyState.sellBackPct : 65) / 100);
+  if (t.building) invested += monopolyBuildCost(t, t.building);
+  return Math.round(invested * (monopolyState.sellBackPct != null ? monopolyState.sellBackPct : 50) / 100);
 }
 function monopolyToggleSellPropertyPicker(){ monopolyState.sellPropertyPickerOpen = !monopolyState.sellPropertyPickerOpen; Bu(); }
 function monopolySellPropertyPanelHtml(){
@@ -5016,7 +5139,7 @@ function monopolySellPropertyPanelHtml(){
   else body = mine.map(t => `<div class="listing"><div class="left"><div class="meta"><div>${dc(`第${t.tile_index}格`, `Tile #${t.tile_index}`)}　${Iu(t.zone_name || "")}　Lv.${t.level}${t.building ? "　" + Iu(t.building) : ""}</div></div></div><div class="right"><button class="btn small" data-monopoly-sell-tile="${t.tile_index}" style="border-color:var(--gold-bright);color:var(--gold-bright);">💰 ${dc(`賣 ✦${monopolySellEstimate(t).toLocaleString()}`, `Sell ✦${monopolySellEstimate(t).toLocaleString()}`)}</button></div></div>`).join("");
   return `<div class="panel" style="margin:10px 0;border:1px solid var(--gold-bright);">
     <h2 style="font-size:15px;">💰 ${dc("賣回市場", "Sell to Market")}</h2>
-    <p class="sub">${dc(`把手上一塊地產賣掉換金幣，折現比例為投入成本（買價＋所有升級花費，已蓋建築的話再加建築花費）的 ${monopolyState.sellBackPct != null ? monopolyState.sellBackPct : 65}%。地產會直接回到市場上，等級與建築一起清空，任何時候都能用，不受持有上限限制。`, `Sell one of your properties for coins — the payout is ${monopolyState.sellBackPct != null ? monopolyState.sellBackPct : 65}% of what you invested (purchase price + all upgrade costs, plus building cost if built). The tile returns to the market, level and building reset. Available any time, regardless of the hold cap.`)}</p>
+    <p class="sub">${dc(`把手上一塊地產賣掉換金幣，折現比例為投入成本（買價＋所有升級花費，已蓋建築的話再加建築花費）的 ${monopolyState.sellBackPct != null ? monopolyState.sellBackPct : 50}%。地產會直接回到市場上，等級與建築一起清空，任何時候都能用，不受持有上限限制。`, `Sell one of your properties for coins — the payout is ${monopolyState.sellBackPct != null ? monopolyState.sellBackPct : 50}% of what you invested (purchase price + all upgrade costs, plus building cost if built). The tile returns to the market, level and building reset. Available any time, regardless of the hold cap.`)}</p>
     ${body}
     <div class="form-row" style="margin-top:6px;"><button class="btn small secondary" id="monopoly-sell-close">${dc("收起", "Close")}</button></div>
   </div>`;
@@ -5025,13 +5148,13 @@ async function monopolyDoSellProperty(tileIndex){
   if (monopolyState.busy) return;
   const t = monopolyMyProperties().find(x => x.tile_index === tileIndex);
   const est = t ? monopolySellEstimate(t) : 0;
-  if (!window.confirm(dc(`確定要把第${tileIndex}格賣回市場嗎？大約可以拿到 ✦${est.toLocaleString()}，此動作無法復原。`, `Sell tile #${tileIndex} back to the market for about ✦${est.toLocaleString()}? This cannot be undone.`))) { Bu(); return; }
+  if (!window.confirm(dc(`確定要把第${tileIndex}格賣回市場嗎？大約可以拿到 ✦${est.toLocaleString()}（投入成本的 ${monopolyState.sellBackPct}%）。地產會保留等級與建築變成「待售」，下一位玩家可以直接買走，此動作無法復原。`, `Sell tile #${tileIndex} back to the market for about ✦${est.toLocaleString()} (${monopolyState.sellBackPct}% of what you invested)? It keeps its level and building and goes up for sale — the next player can buy it as-is. This cannot be undone.`))) { Bu(); return; }
   monopolyState.busy = true;
   try {
     let res = await monopolyRpc("monopoly_sell_property", { p_nickname: zl.nickname, p_season_id: MONOPOLY_SEASON_ID, p_tile_index: tileIndex });
     if (Array.isArray(res)) res = res[0];
     if (res && res.success) {
-      ac(dc(`💰 已把第${tileIndex}格賣回市場，拿到 ✦${Number(res.sold_amount || 0).toLocaleString()}`, `💰 Sold tile #${tileIndex} back to the market for ✦${Number(res.sold_amount || 0).toLocaleString()}`), { legendary: true });
+      ac(dc(`💰 已把第${tileIndex}格賣回市場，拿到 ✦${Number(res.sold_amount || 0).toLocaleString()}（地產保留等級，變成待售）`, `💰 Sold tile #${tileIndex} back to the market for ✦${Number(res.sold_amount || 0).toLocaleString()}`), { legendary: true });
     } else {
       ac(dc("這塊地不是你的，賣不了", "That tile isn't yours — can't sell it"));
     }
@@ -5089,12 +5212,14 @@ async function monopolyLoadState(){
   monopolyState.pvpImmunityCardHeld = !!row.pvp_immunity_card_held;
   monopolyState.tollDiscountCards = Number(row.toll_discount_cards) || 0;
   monopolyState.tollDiscountProtected = row.toll_discount_protected != null ? Number(row.toll_discount_protected) : 0.5;
-  monopolyState.sellBackPct = row.sell_back_pct != null ? Number(row.sell_back_pct) : 65;
+  monopolyState.sellBackPct = row.sell_back_pct != null ? Number(row.sell_back_pct) : 50;
   monopolyState.doubleDiceCards = Number(row.double_dice_cards) || 0;
   monopolyState.doubleDiceActiveRolls = Number(row.double_dice_active_rolls) || 0;
   monopolyState.choiceDiceCards = Number(row.choice_dice_cards) || 0;
   monopolyState.choiceDicePending = row.choice_dice_pending != null ? Number(row.choice_dice_pending) : null;
   monopolyState.obstacleCards = Number(row.obstacle_cards) || 0;
+  monopolyState.rebuildCards = Number(row.rebuild_cards) || 0;
+  monopolyState.channelPending = row.channel_pending || null;
   monopolyState.vip0BaseRolls = row.vip0_base_rolls || 3;
   monopolyState.vipRollsPerLevel = row.vip_rolls_per_level || 1;
   monopolyState.holdCap = row.hold_cap || 13;
@@ -5264,6 +5389,7 @@ async function monopolyRoll(){
     }
     const prevPos = monopolyState.position;
     monopolyState.position = row.channel_tile_index != null ? row.channel_tile_index : row.new_position;
+    monopolyState.channelPending = row.channel_pending || null;
     monopolyState.rollsAvailable = row.rolls_available;
     monopolyState.maxRolls = row.max_rolls;
     monopolyState.isNewbieProtected = !!row.is_newbie_protected;
@@ -5595,11 +5721,13 @@ function monopolySquareBoardHtml(){
     const levelGlow = (t.owner_id && t.level >= 5) ? ", 0 0 10px rgba(232,196,104,.85)" : (t.owner_id && t.level >= 3 ? ", 0 0 5px rgba(255,255,255,.35)" : "");
     const ownedRing = t.owner_id ? (t.owner_id === zl.nickname ? `box-shadow:inset 0 0 0 2px var(--gold-bright), 0 0 8px rgba(232,196,104,.5)${levelGlow};` : `box-shadow:inset 0 0 0 1px rgba(255,255,255,0.55)${levelGlow};`) : "";
     const here = playersByTile[t.tile_index] || [];
-    const title = `${Iu(t.zone_name || t.tile_type)} #${t.tile_index}${t.tile_type === "channel" ? " · " + monopolyRewardLabel(t.reward_type, t.reward_amount) : ""}${t.owner_id ? (" · " + Iu(t.owner_id) + " Lv." + t.level) : ""}${t.building ? (" · " + Iu(t.building)) : ""}${here.length ? (" · " + dc("站在此", "here") + "：" + here.map(Iu).join(",")) : ""}`;
+    const title = `${Iu(t.zone_name || t.tile_type)} #${t.tile_index}${t.tile_type === "channel" ? " · " + monopolyRewardLabel(t.reward_type, t.reward_amount) : ""}${t.owner_id ? (" · " + Iu(t.owner_id) + " Lv." + t.level) : ((t.tile_type === "property" && t.level > 0) ? (" · " + dc("待售", "For sale") + " Lv." + t.level) : "")}${t.building ? (" · " + Iu(t.building)) : ""}${here.length ? (" · " + dc("站在此", "here") + "：" + here.map(Iu).join(",")) : ""}`;
     const buildingIcon = monopolyBuildingIcon(t.building);
     const badge = buildingIcon ? buildingIcon
       : (t.tile_type === "property" && t.owner_id)
       ? (t.level >= 5 ? "♛" : String(t.level))
+      : (t.tile_type === "property" && t.level > 0)
+      ? "🏷"
       : monopolyTileBadge(t);
     const badgeSize = buildingIcon ? 14 : t.tile_type === "channel" ? 14 : (t.tile_type === "property" && t.owner_id) ? (10 + t.level) : 11;
     const dots = here.slice(0,3).map(nick => `<span${nick === zl.nickname ? ' data-mono-me="1"' : ""} style="width:12px;height:12px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;margin:0.5px;background:${nick === zl.nickname ? "var(--gold-bright)" : "#444"};border:1px solid ${nick === zl.nickname ? "var(--gold-bright)" : "#fff"};box-shadow:0 0 3px ${nick === zl.nickname ? "rgba(232,196,104,.9)" : "rgba(255,255,255,.6)"};font-size:8px;font-weight:700;color:${nick === zl.nickname ? "#2a1f0a" : "#fff"};line-height:1;">${Iu(nick).charAt(0).toUpperCase()}</span>`).join("") + (here.length > 3 ? `<span style="font-size:8px;color:#fff;">+${here.length-3}</span>` : "");
@@ -5637,11 +5765,15 @@ async function monopolyGmSaveSettings(){
   const hotelRolls = parseInt(document.getElementById("monopoly-gm-hotelrolls").value, 10) || 2;
   const jailPenalty = parseInt(document.getElementById("monopoly-gm-jailpenalty").value, 10) || 50000;
   const jailRolls = parseInt(document.getElementById("monopoly-gm-jailrolls").value, 10) || 2;
-  const sellBackEl = document.getElementById("monopoly-gm-sellbackpct"), sellBackPct = sellBackEl ? (parseFloat(sellBackEl.value) || 65) : 65;
+  const sellBackEl = document.getElementById("monopoly-gm-sellbackpct"), sellBackPct = sellBackEl ? (isNaN(parseFloat(sellBackEl.value)) ? 50 : parseFloat(sellBackEl.value)) : 50;
   try {
     await monopolyRpc("monopoly_gm_update_settings", { p_vip0_base_rolls: v0, p_vip_rolls_per_level: perLv, p_newbie_protection_steps: steps, p_toll_discount_protected: discount, p_hold_cap: cap, p_roll_regen_hours: regenHours, p_event_log_limit: logLimit, p_mall_toll_mult: mallMult, p_fortress_defense_mult: fortressMult, p_hotel_penalty: hotelPenalty, p_hotel_rolls_penalty: hotelRolls, p_jail_penalty: jailPenalty, p_jail_rolls_penalty: jailRolls, p_vip2_roll_regen_hours: vip2RegenHours, p_sell_back_pct: sellBackPct });
     const nbEl = document.getElementById("monopoly-gm-newbielimit");
     if (nbEl && monopolyState.newbiePropertyLimit != null) { const nv = Math.max(0, Math.min(20, parseInt(nbEl.value, 10))); if (!isNaN(nv) && nv !== monopolyState.newbiePropertyLimit) await monopolyRpc("monopoly_gm_set_newbie_limit", { p_limit: nv }); }
+    const rsEl = document.getElementById("monopoly-gm-resalebuypct");
+    if (rsEl) { const rv = parseFloat(rsEl.value); if (!isNaN(rv) && rv >= 0 && rv <= 300 && rv !== monopolyState.resaleBuyPct) await monopolyRpc("monopoly_gm_set_resale_buy_pct", { p_pct: rv }); }
+    const rrEl = document.getElementById("monopoly-gm-rebuildradius");
+    if (rrEl) { const rr = parseInt(rrEl.value, 10); if (!isNaN(rr) && rr >= 0 && rr <= 10 && rr !== monopolyState.rebuildRadius) await monopolyRpc("monopoly_gm_set_rebuild_radius", { p_radius: rr }); }
     const scpEl = document.getElementById("monopoly-gm-stealcoinspct");
     if (scpEl && monopolyState.stealCoinsSupported) { const sv = parseFloat(scpEl.value); if (!isNaN(sv) && sv >= 0 && sv <= 100 && sv !== monopolyState.stealCoinsPct) await monopolyRpc("monopoly_gm_set_steal_coins_pct", { p_pct: sv }); }
     const chcEl = document.getElementById("monopoly-gm-cardholdcap");
@@ -5716,9 +5848,10 @@ async function monopolyGmGrantItems(){
   const ob = parseInt(document.getElementById("monopoly-gm-grant-ob").value, 10) || 0;
   const sc = parseInt(document.getElementById("monopoly-gm-grant-sc").value, 10) || 0;
   const scc = parseInt(document.getElementById("monopoly-gm-grant-scc").value, 10) || 0;
-  if (toll <= 0 && dd <= 0 && cd <= 0 && ob <= 0 && sc <= 0 && scc <= 0) { ac(dc("請至少填寫一項要發放的道具數量", "Please fill in at least one item quantity to grant")); Bu(); return; }
+  const rbEl = document.getElementById("monopoly-gm-grant-rb"), rb = rbEl ? (parseInt(rbEl.value, 10) || 0) : 0;
+  if (toll <= 0 && dd <= 0 && cd <= 0 && ob <= 0 && sc <= 0 && scc <= 0 && rb <= 0) { ac(dc("請至少填寫一項要發放的道具數量", "Please fill in at least one item quantity to grant")); Bu(); return; }
   try {
-    const res = await monopolyRpc("monopoly_gm_grant_items", { p_target: target, p_season_id: MONOPOLY_SEASON_ID, p_toll_discount: toll, p_double_dice: dd, p_choice_dice: cd, p_obstacle: ob, p_steal_card: sc, p_steal_coins: scc });
+    const res = await monopolyRpc("monopoly_gm_grant_items", { p_target: target, p_season_id: MONOPOLY_SEASON_ID, p_toll_discount: toll, p_double_dice: dd, p_choice_dice: cd, p_obstacle: ob, p_steal_card: sc, p_steal_coins: scc, ...(rb > 0 ? { p_rebuild: rb } : {}) });
     const out = Array.isArray(res) ? res[0] : res;
     ac(dc(`🎁 已發送道具給 ${target}`, `🎁 Items granted to ${target}`));
     try { await wd(target, zl.nickname, "gm_grant", { grantKind: "monopoly_items", label: dc("大富翁道具", "Monopoly items"), qty: 1 }); } catch (e) {}
@@ -5782,7 +5915,15 @@ function monopolyRulesPanelHtml(){
     </div>
     <div class="who" style="margin-top:10px;line-height:1.8;">
       <b>${dc("💰 賣回市場", "💰 Sell to Market")}</b><br/>
-      ${dc(`除了持有已滿時可以讓地，任何時候都能主動把自己名下一塊地產「賣回市場」換金幣：折現比例是投入成本（買價＋所有已花的升級費用，已蓋建築的話再加建築花費）的 ${monopolyState.sellBackPct != null ? monopolyState.sellBackPct : 65}%（GM 可調整）。賣掉的地產會直接回到市場上，等級與建築一起清空，不受持有上限限制，可以用來汰弱留強。`, `Besides giving away a property while at the hold cap, you can sell one of your properties back to the market for coins at any time — the payout is ${monopolyState.sellBackPct != null ? monopolyState.sellBackPct : 65}% of what you invested (purchase price + all upgrade costs, plus building cost if built; GM-adjustable). The tile returns to the market, level and building reset, and this works regardless of the hold cap — useful for swapping out a weak tile.`)}
+      ${dc(`除了持有已滿時可以讓地，任何時候都能主動把自己名下一塊地產「賣回市場」換金幣：折現比例是投入成本（買價＋所有已花的升級費用，已蓋建築的話再加建築花費）的 ${monopolyState.sellBackPct != null ? monopolyState.sellBackPct : 50}%（GM 可調整）。賣掉的地產不會變成平地：會保留等級與建築、變成「待售」，下一位玩家可以直接買上來（買價是投入成本的 ${monopolyState.resaleBuyPct}%，買到後等級與建築不變）。賣地不受持有上限限制，可以用來汰弱留強。`, `Besides giving away a property while at the hold cap, you can sell one of your properties back to the market for coins at any time — the payout is ${monopolyState.sellBackPct != null ? monopolyState.sellBackPct : 50}% of what you invested (purchase price + all upgrade costs, plus building cost if built; GM-adjustable). The tile does not turn into empty land: it keeps its level and building and goes up for sale, and the next player can buy it as-is (price = ${monopolyState.resaleBuyPct}% of the invested cost). Selling ignores the hold cap — useful for swapping out a weak tile.`)}
+    </div>
+    <div class="who" style="margin-top:10px;line-height:1.8;">
+      <b>${dc("🔧 改建卡", "🔧 Rebuild Card")}</b><br/>
+      ${dc(`機會命運卡、通道獎勵或 GM 發放可以拿到。使用時選一種建築，會把你目前位置前後各 ${monopolyState.rebuildRadius} 格以內、你名下 Lv5 且已有建築的地產，全部改成選的那一種（免費，已經是同一種的略過）。特殊通道裡不能使用。`, `Won from Chance cards, channel rewards or the GM. Pick a building and every Lv5 building of yours within ${monopolyState.rebuildRadius} tiles of your position is converted to it (free; ones already of that type are skipped). Not usable inside a special channel.`)}
+    </div>
+    <div class="who" style="margin-top:10px;line-height:1.8;">
+      <b>${dc("🌀 進入特殊通道", "🌀 Entering a channel")}</b><br/>
+      ${dc("停在通道入口（第 6、12、36 格）不會自動進去，會出現「進入通道」按鈕。進去之前可以先放停留障礙、用雙骰子／自選骰子／改建卡；進入不耗擲骰次數。不想進去就直接擲骰。", "Stopping on a channel entrance (tiles 6, 12, 36) no longer pulls you in automatically — an \"Enter channel\" button appears. Before entering you can place an obstacle or use Double Dice / Choice Dice / Rebuild Cards. Entering costs no roll; to skip it, just roll.")}
     </div>
     <div class="who" style="margin-top:10px;line-height:1.8;">
       <b>${dc("🚪 自動移出與 👑 地產大王事件", "🚪 Auto-removal & 👑 Property Baron event")}</b><br/>
@@ -5819,7 +5960,9 @@ function monopolyGmPanelHtml(){
         <div><label>${dc("保護期過路費折扣%（新手實付比例）", "Protected toll discount % (newbie pays this %)")}</label><input type="number" min="0" max="100" id="monopoly-gm-tolldiscount" value="${Math.round((monopolyState.tollDiscountProtected ?? 0.5) * 100)}" style="width:80px;" /></div>
         <div><label>${dc("持有上限", "Hold cap")}</label><input type="number" id="monopoly-gm-holdcap" value="${monopolyState.holdCap}" style="width:80px;" /></div>
         <div><label>${dc("動態紀錄顯示上限", "Activity log display limit")}</label><input type="number" id="monopoly-gm-loglimit" value="${monopolyState.eventLogLimit}" min="5" style="width:80px;" /></div>
-        <div><label>${dc("💰賣回市場折現比例%", "Sell-to-market payout %")}</label><input type="number" min="0" max="100" id="monopoly-gm-sellbackpct" value="${monopolyState.sellBackPct != null ? monopolyState.sellBackPct : 65}" style="width:80px;" /></div>
+        <div><label>${dc("🏷待售地買價 %（相對投入成本）", "🏷 For-sale buy price % (of invested)")}</label><input type="number" min="0" max="300" id="monopoly-gm-resalebuypct" value="${monopolyState.resaleBuyPct}" style="width:80px;" /></div>
+        <div><label>${dc("🔧改建卡範圍（前後各幾格）", "🔧 Rebuild Card range (tiles each way)")}</label><input type="number" min="0" max="10" id="monopoly-gm-rebuildradius" value="${monopolyState.rebuildRadius}" style="width:80px;" /></div>
+        <div><label>${dc("💰賣回市場折現比例%", "Sell-to-market payout %")}</label><input type="number" min="0" max="100" id="monopoly-gm-sellbackpct" value="${monopolyState.sellBackPct != null ? monopolyState.sellBackPct : 50}" style="width:80px;" /></div>
         ${monopolyState.stealCoinsSupported ? `<div><label>${dc("💸搶金幣卡：奪取對方金幣 %", "💸 Steal-Coins Card: % of target's coins")}</label><input type="number" min="0" max="100" step="0.5" id="monopoly-gm-stealcoinspct" value="${monopolyState.stealCoinsPct}" style="width:80px;" /></div>` : ""}
         ${monopolyState.stealCoinsSupported ? `<div><label>${dc("🗡️💸身上最多收幾張（搶奪卡／搶金幣卡各自）", "🗡️💸 Max held (Steal Card / Steal-Coins Card, each)")}</label><input type="number" min="0" max="20" id="monopoly-gm-cardholdcap" value="${monopolyState.cardHoldCap}" style="width:80px;" /></div>` : ""}
       </div>
@@ -5872,7 +6015,7 @@ function monopolyGmPanelHtml(){
       <div class="who" style="color:var(--muted);font-size:12px;margin-bottom:6px;">${dc("目前狀態：", "Status: ")}${monopolyBoostActive() ? dc(`⚡ 加速中 ${monopolyBoostMultText()}`, `⚡ Active ${monopolyBoostMultText()}`) : dc("未加速", "Not active")}${dc("。時段每天重複；按下方「儲存設定」生效。", ". The schedule repeats daily; click Save Settings below to apply.")}</div>` : ""}
       ${(monopolyState.tiles || []).some(t => t.tile_type === "channel") ? `<div class="who" style="margin:12px 0 6px;">${dc("🌀 特殊通道設定", "🌀 Special channel settings")}</div>
       <div class="form-row"><div><label>${dc("通道開關", "Channels")}</label><select id="monopoly-gm-channels-enabled"><option value="1"${monopolyState.channelsEnabled !== false ? " selected" : ""}>${dc("開", "On")}</option><option value="0"${monopolyState.channelsEnabled === false ? " selected" : ""}>${dc("關", "Off")}</option></select></div></div>
-      ${(monopolyState.tiles || []).filter(t => t.tile_type === "channel").sort((a, b) => a.tile_index - b.tile_index).map(t => `<div class="form-row" style="align-items:center;gap:6px;"><span style="min-width:120px;font-size:12px;">${Iu(t.zone_name)} #${t.channel_pos}${t.channel_pos === 1 ? dc("（入口，進入就拿）", " (entry)") : ""}</span><select id="monopoly-gm-ch-type-${t.tile_index}">${["none", "shard", "rolls", "toll_card", "steal_card", "steal_coins", "coins", "upgrade", "double_dice", "choice_dice", "obstacle"].map(k => `<option value="${k}"${(t.reward_type || "none") === k ? " selected" : ""}>${monopolyRewardTypeName(k)}</option>`).join("")}</select><input type="number" min="0" id="monopoly-gm-ch-amt-${t.tile_index}" value="${t.reward_amount != null ? t.reward_amount : ""}" placeholder="${dc("數量", "amount")}" style="width:110px;" /></div>`).join("")}
+      ${(monopolyState.tiles || []).filter(t => t.tile_type === "channel").sort((a, b) => a.tile_index - b.tile_index).map(t => `<div class="form-row" style="align-items:center;gap:6px;"><span style="min-width:120px;font-size:12px;">${Iu(t.zone_name)} #${t.channel_pos}${t.channel_pos === 1 ? dc("（入口，進入就拿）", " (entry)") : ""}</span><select id="monopoly-gm-ch-type-${t.tile_index}">${["none", "shard", "rolls", "toll_card", "steal_card", "steal_coins", "coins", "upgrade", "double_dice", "choice_dice", "obstacle", "rebuild"].map(k => `<option value="${k}"${(t.reward_type || "none") === k ? " selected" : ""}>${monopolyRewardTypeName(k)}</option>`).join("")}</select><input type="number" min="0" id="monopoly-gm-ch-amt-${t.tile_index}" value="${t.reward_amount != null ? t.reward_amount : ""}" placeholder="${dc("數量", "amount")}" style="width:110px;" /></div>`).join("")}
       <div class="who" style="color:var(--muted);font-size:12px;margin-bottom:6px;">${dc("數量欄只對碎片、擲骰次數、搶奪卡、搶金幣卡、金幣有用；折扣卡和隨機升級不用填。停到某格的機率：入口一定拿到，其他格子越靠後越容易停到（約 17%～31%）。", "The amount only matters for shards, rolls, steal cards, steal-coins cards and coins. The entry tile is always granted; other tiles get easier to hit the further along they are (about 17%–31%).")}</div>` : ""}
       ${monopolyState.unlimitedPlayers !== null ? `<div class="form-row"><div style="flex:1;"><label>${dc("♾ 無限擲骰的帳號（暱稱，逗號分隔，不分大小寫；留空＝沒有人）", "♾ Unlimited-roll accounts (nicknames, comma-separated, case-insensitive; empty = nobody)")}</label><input type="text" id="monopoly-gm-unlimited" value="${Iu(monopolyState.unlimitedPlayers)}" style="width:100%;" /></div></div>` : ""}
       <button class="btn small" id="monopoly-gm-save-settings-btn">${dc("儲存設定", "Save Settings")}</button>
@@ -5885,6 +6028,7 @@ function monopolyGmPanelHtml(){
         <div><label>🎲🎲 ${dc("雙骰子", "Double Dice")}</label><input type="number" min="0" id="monopoly-gm-grant-dd" value="0" style="width:70px;" /></div>
         <div><label>🎯 ${dc("自選骰子", "Choice Dice")}</label><input type="number" min="0" id="monopoly-gm-grant-cd" value="0" style="width:70px;" /></div>
         <div><label>🚧 ${dc("停留障礙", "Obstacle")}</label><input type="number" min="0" id="monopoly-gm-grant-ob" value="0" style="width:70px;" /></div>
+        <div><label>🔧 ${dc("改建卡", "Rebuild Card")}</label><input type="number" min="0" id="monopoly-gm-grant-rb" value="0" style="width:70px;" /></div>
         <div><label>🗡️ ${dc("搶奪卡", "Steal Card")}</label><input type="number" min="0" id="monopoly-gm-grant-sc" value="0" style="width:70px;" /></div>
         <div><label>💸 ${dc("搶金幣卡", "Steal-Coins")}</label><input type="number" min="0" id="monopoly-gm-grant-scc" value="0" style="width:70px;" /></div>
       </div>
@@ -5958,6 +6102,7 @@ function monopolyEventText(ev){
     case "toll_liquidate": return dc(`🏚 ${Iu(ev.actor)} 付不出過路費，自動賣出第${ev.tile_index}格（${Iu(ev.detail||"")}）抵債，換得 ✦${Number(ev.amount).toLocaleString()}`, `🏚 ${Iu(ev.actor)} couldn't cover a toll and auto-sold tile #${ev.tile_index} (${Iu(ev.detail||"")}) for ✦${Number(ev.amount).toLocaleString()}`);
     case "use_double_dice": return dc(`🎲🎲 ${Iu(ev.actor)} 使用了雙骰子（${Iu(ev.detail||"")}）`, `🎲🎲 ${Iu(ev.actor)} used a Double Dice card (${Iu(ev.detail||"")})`);
     case "use_choice_dice": return dc(`🎯 ${Iu(ev.actor)} 使用了自選骰子（${Iu(ev.detail||"")}）`, `🎯 ${Iu(ev.actor)} used a Choice Dice card (${Iu(ev.detail||"")})`);
+    case "use_rebuild": return dc(`🔧 ${Iu(ev.actor)} 使用改建卡，改建了 ${ev.amount} 塊地產（${Iu(ev.detail||"")}）`, `🔧 ${Iu(ev.actor)} used a Rebuild Card and converted ${ev.amount} propert${Number(ev.amount) === 1 ? "y" : "ies"} (${Iu(ev.detail||"")})`);
     case "use_obstacle": return dc(`🚧 ${Iu(ev.actor)} 在第${ev.tile_index}格放置了停留障礙`, `🚧 ${Iu(ev.actor)} placed a stay obstacle on tile #${ev.tile_index}`);
     case "obstacle_blocked": return dc(`🚧 ${Iu(ev.actor)} 踩到第${ev.tile_index}格的停留障礙，停在這一格`, `🚧 ${Iu(ev.actor)} hit the stay obstacle on tile #${ev.tile_index} and stopped there`);
     case "gm_grant_items": return dc(`⚡ GM 發放了道具給 ${Iu(ev.target)}`, `⚡ GM granted items to ${Iu(ev.target)}`);
@@ -6000,13 +6145,16 @@ async function monopolyRenderTab(e){
       ${monopolyState.obstacleCards > 0 ? `<div class="stat">🚧 ${dc("停留障礙", "Obstacle")} <b>${monopolyState.obstacleCards}/${monopolyState.cardHoldCap}</b> <button class="btn small" id="monopoly-obstacle-use" style="margin-left:6px;border-color:var(--gold-bright);color:var(--gold-bright);">${dc("放置於目前位置", "Place here")}</button></div>` : ""}
       ${monopolyState.isNewbieProtected ? `<div class="stat" style="color:var(--gold-bright);">${dc("新手保護中", "Newbie protected")}${monopolyState.newbiePropertyLimit != null ? dc(`（地產少於 ${monopolyState.newbiePropertyLimit} 塊）`, ` (< ${monopolyState.newbiePropertyLimit} properties)`) : ""}</div>` : ""}
       ${monopolyAtHoldCap() ? `<div class="stat">🤝 ${dc("持有已滿", "At hold cap")} <b>${monopolyOwnedCount()}/${monopolyState.holdCap}</b> <button class="btn small" id="monopoly-give-open" style="margin-left:6px;border-color:var(--gold-bright);color:var(--gold-bright);">${monopolyState.givePropertyPickerOpen ? dc("收起", "Close") : dc("讓地", "Give")}</button></div>` : ""}
+      ${monopolyState.rebuildCards > 0 ? `<div class="stat">🔧 ${dc("改建卡", "Rebuild Card")} <b>${monopolyState.rebuildCards}/${monopolyState.cardHoldCap}</b> <button class="btn small" id="monopoly-rebuild-open" style="margin-left:6px;border-color:var(--gold-bright);color:var(--gold-bright);">${monopolyState.rebuildPickerOpen ? dc("收起", "Close") : dc("使用", "Use")}</button></div>` : ""}
       ${monopolyOwnedCount() > 0 ? `<div class="stat">💰 ${dc("賣回市場", "Sell to Market")} <button class="btn small" id="monopoly-sell-open" style="margin-left:6px;border-color:var(--gold-bright);color:var(--gold-bright);">${monopolyState.sellPropertyPickerOpen ? dc("收起", "Close") : dc("賣地", "Sell")}</button></div>` : ""}
     </div>
     ${monopolyStealCardPanelHtml()}
     ${monopolyChoiceDicePanelHtml()}
+    ${monopolyRebuildPanelHtml()}
     ${monopolySellPropertyPanelHtml()}
     ${monopolyStealCoinsPanelHtml()}
     ${monopolyGivePropertyPanelHtml()}
+    ${monopolyChannelPendingHtml()}
     <button class="btn" id="monopoly-roll-btn" ${rollsLeft <= 0 && !monopolyState.unlimitedRolls ? "disabled" : ""}>${dc("🎲 擲骰前進", "🎲 Roll & Move")}</button>
     <div id="monopoly-dice-anim" class="dice-roll-anim" style="display:none;justify-content:center;gap:8px;margin-top:10px;"></div>
     ${monopolySquareBoardHtml()}
@@ -6030,7 +6178,9 @@ async function monopolyRenderTab(e){
   }
   if (posTile && posTile.tile_type === "property") {
     if (!posTile.owner_id) {
-      html += `<button class="btn small" data-monopoly-buy="${posTile.tile_index}" style="margin-top:8px;">${dc(`購買（✦${(posTile.base_price||0).toLocaleString()}）`, `Buy (✦${(posTile.base_price||0).toLocaleString()})`)}</button>`;
+      const buyPrice = posTile.buy_price != null ? posTile.buy_price : (posTile.base_price || 0);
+      if (posTile.level > 0) html += `<div class="who" style="margin-top:6px;color:var(--gold-bright);">🏷 ${dc(`待售中：Lv.${posTile.level}${posTile.building ? " " + monopolyBuildingIcon(posTile.building) + monopolyBuildingName(posTile.building) : ""}，買下後等級與建築不變`, `For sale: Lv.${posTile.level}${posTile.building ? " " + monopolyBuildingIcon(posTile.building) + monopolyBuildingName(posTile.building) : ""} — level and building stay as they are`)}</div>`;
+      html += `<button class="btn small" data-monopoly-buy="${posTile.tile_index}" style="margin-top:8px;">${dc(`購買（✦${buyPrice.toLocaleString()}）`, `Buy (✦${buyPrice.toLocaleString()})`)}</button>`;
     } else if (posTile.owner_id === zl.nickname && posTile.level < 5 && monopolyState.justBoughtTileIndex !== posTile.tile_index) {
       html += `<button class="btn small" data-monopoly-upgrade="${posTile.tile_index}" style="margin-top:8px;">${dc(`升級到 Lv.${posTile.level+1}`, `Upgrade to Lv.${posTile.level+1}`)}</button>`;
     } else if (posTile.owner_id === zl.nickname && posTile.level >= 5 && !posTile.building) {
@@ -6081,6 +6231,15 @@ async function monopolyRenderTab(e){
   const cdCloseBtn = document.getElementById("monopoly-choicedice-close");
   if (cdCloseBtn) cdCloseBtn.onclick = () => monopolyToggleChoiceDicePicker();
   e.querySelectorAll("[data-monopoly-choicedice]").forEach(btn => { btn.onclick = () => { btn.disabled = true; monopolyUseChoiceDice(btn.dataset.monopolyChoicedice); }; });
+  const chEnterBtn = document.getElementById("monopoly-channel-enter");
+  if (chEnterBtn) chEnterBtn.onclick = () => { chEnterBtn.disabled = true; monopolyEnterChannel(); };
+  const chSkipBtn = document.getElementById("monopoly-channel-skip");
+  if (chSkipBtn) chSkipBtn.onclick = () => { chSkipBtn.disabled = true; monopolySkipChannel(); };
+  const rbOpenBtn = document.getElementById("monopoly-rebuild-open");
+  if (rbOpenBtn) rbOpenBtn.onclick = () => monopolyToggleRebuildPicker();
+  const rbCloseBtn = document.getElementById("monopoly-rebuild-close");
+  if (rbCloseBtn) rbCloseBtn.onclick = () => monopolyToggleRebuildPicker();
+  e.querySelectorAll("[data-monopoly-rebuild]").forEach(btn => { btn.onclick = () => { btn.disabled = true; monopolyUseRebuild(btn.dataset.monopolyRebuild); }; });
   const obUseBtn = document.getElementById("monopoly-obstacle-use");
   if (obUseBtn) obUseBtn.onclick = () => monopolyUseObstacle();
   const sellOpenBtn = document.getElementById("monopoly-sell-open");
