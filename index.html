@@ -6962,6 +6962,8 @@ function monopolyIncomeZoneMultSentence(){
   if (lm > 1.5 && lz >= 1) out += dc(` 前 ${lz} 區集滿 5 格收益 ×${lm}。`, ` Full set (5/5) in zones 1–${lz}: income ×${lm}.`);
   const fb = Number(monopolyState.income.full_hold_bonus_pct);
   if (fb > 0) out += dc(` 🏛地產大王（持有地產最多的人；並列者都算）收益再 +${Math.round(fb * 100) / 100}%。`, ` The 🏛 Property Baron (most properties; ties all count) earns an extra +${Math.round(fb * 100) / 100}% income.`);
+  const hf = Number(monopolyState.income.hold_full_bonus_pct), hc = Number(monopolyState.income.hold_cap) || 9;
+  if (hf > 0) out += dc(` 🏠持有地產達上限（${hc} 塊）收益再 +${Math.round(hf * 100) / 100}%（可與地產大王疊加）。`, ` 🏠 Holding the maximum (${hc}) properties earns an extra +${Math.round(hf * 100) / 100}% income (stacks with the Baron bonus).`);
   return out;
 }
 // 地產大王加成：顯示「含加成 +✦X」；伺服器還是舊版 SQL 時顯示提示
@@ -6972,9 +6974,11 @@ function monopolyIncomeBonusNote(inc, rate){
       return ` <span style="color:var(--muted);font-size:.85em;">${dc("（伺服器 SQL 還是舊版，請重跑 v3.1 補丁）", "(server SQL is outdated — re-run the v3.1 patch)")}</span>`;
     return "";
   }
-  if (inc.is_baron && pct > 0) {
-    const bonus = Math.floor(rate - rate / (1 + pct / 100));
-    return bonus > 0 ? ` <span style="color:var(--gold-bright);font-size:.85em;">${dc(`（含地產大王加成 +✦${bonus.toLocaleString()}）`, `(incl. Property Baron bonus +✦${bonus.toLocaleString()})`)}</span>` : "";
+  const mult = Number(inc.bonus_mult) > 1 ? Number(inc.bonus_mult) : ((inc.is_baron && pct > 0) ? 1 + pct / 100 : 1);
+  if (mult > 1) {
+    const bonus = Math.floor(rate - rate / mult);
+    const tag = (inc.is_baron && pct > 0 ? "🏛" : "") + (inc.hold_full_active ? "🏠" : "");
+    return bonus > 0 ? ` <span style="color:var(--gold-bright);font-size:.85em;">${dc(`（含${tag}加成 +✦${bonus.toLocaleString()}）`, `(incl. ${tag} bonus +✦${bonus.toLocaleString()})`)}</span>` : "";
   }
   return "";
 }
@@ -6988,6 +6992,9 @@ function monopolyIncomePanelHtml(){
     <div class="stat-row">
       <div class="stat">${dc("每小時收益", "Per hour")} <b>✦${rate.toLocaleString()}</b>${monopolyIncomeBonusNote(inc, rate)}</div>
       ${inc.is_baron && Number(inc.full_hold_bonus_pct) > 0 ? `<div class="stat">🏛 ${dc("你是地產大王", "You are the Property Baron")} <b>${Number(inc.owned_count) || 0}</b> ${dc("塊", "tiles")} <span style="color:var(--gold-bright);">${dc(`收益 +${Math.round(Number(inc.full_hold_bonus_pct) * 100) / 100}% 生效中`, `income +${Math.round(Number(inc.full_hold_bonus_pct) * 100) / 100}% active`)}</span></div>` : ""}
+      ${Number(inc.hold_full_bonus_pct) > 0 ? (inc.hold_full_active
+        ? `<div class="stat">🏠 ${dc("地產已達上限", "Property cap reached")} <b>${Number(inc.owned_count) || 0}/${Number(inc.hold_cap) || 9}</b> <span style="color:var(--gold-bright);">${dc(`收益 +${Math.round(Number(inc.hold_full_bonus_pct) * 100) / 100}% 生效中`, `income +${Math.round(Number(inc.hold_full_bonus_pct) * 100) / 100}% active`)}</span></div>`
+        : `<div class="stat">🏠 ${dc("持有地產", "Properties")} <b>${Number(inc.owned_count) || 0}/${Number(inc.hold_cap) || 9}</b> <span style="color:var(--muted);">${dc(`集滿 ${Number(inc.hold_cap) || 9} 塊，收益 +${Math.round(Number(inc.hold_full_bonus_pct) * 100) / 100}%`, `hold ${Number(inc.hold_cap) || 9} for +${Math.round(Number(inc.hold_full_bonus_pct) * 100) / 100}% income`)}</span></div>`) : ""}
       <div class="stat">${dc("已累積", "Accrued")} <b id="monopoly-income-pending">✦${live.toLocaleString()}</b> <span style="color:var(--muted);">/ ✦${cap.toLocaleString()}</span><span id="monopoly-income-full-text" style="color:var(--muted);">${monopolyIncomeFullText(live)}</span></div>
     </div>
     <button class="btn small" id="monopoly-income-claim-btn" ${live >= 1 && cdLeft <= 0 ? "" : "disabled"}>${monopolyIncomeClaimLabel(cdLeft)}</button>
@@ -7482,6 +7489,12 @@ async function monopolyGmSaveSettings(){
           if (!isNaN(fv) && fv >= 0 && fv <= 100 && fv !== Number(monopolyState.income.full_hold_bonus_pct))
             await monopolyRpc("monopoly_gm_set_full_hold_bonus", { p_pct: fv });
         }
+        const hfEl = document.getElementById("monopoly-gm-holdfull");
+        if (hfEl && monopolyState.income.hold_full_bonus_pct !== undefined) {
+          const hv2 = parseFloat(hfEl.value);
+          if (!isNaN(hv2) && hv2 >= 0 && hv2 <= 300 && hv2 !== Number(monopolyState.income.hold_full_bonus_pct))
+            await monopolyRpc("monopoly_gm_set_hold_full_bonus", { p_pct: hv2 });
+        }
       }
     }
     if (monopolyState.eventSettings) {
@@ -7674,6 +7687,7 @@ function monopolyGmPanelHtml(){
         <div><label>${dc("低階區集滿 5 格收益加成（原 1.5）", "Low-zone full-set income bonus (was 1.5)")}</label><input type="number" step="0.1" min="1" max="5" id="monopoly-gm-lowset-mult" value="${monopolyState.income.low_set_mult ?? 2}" style="width:80px;" /></div>
         <div><label>${dc("幾號區（含）以下算低階區", "Low zones = zone ≤")}</label><input type="number" min="0" max="9" id="monopoly-gm-lowset-zone" value="${monopolyState.income.low_set_max_zone ?? 3}" style="width:80px;" /></div>
         ${monopolyState.income.full_hold_bonus_pct !== undefined ? `<div><label>${dc("🏛 地產大王收益加成 %（持有最多者；0＝關閉）", "🏛 Property Baron income bonus % (most properties; 0 = off)")}</label><input type="number" step="1" min="0" max="100" id="monopoly-gm-fullbonus" value="${Number(monopolyState.income.full_hold_bonus_pct)}" style="width:80px;" /></div>` : ""}
+        ${monopolyState.income.hold_full_bonus_pct !== undefined ? `<div><label>${dc("🏠 地產滿（達持有上限）收益加成 %（0＝關閉）", "🏠 Full-hold (at property cap) income bonus % (0 = off)")}</label><input type="number" step="1" min="0" max="300" id="monopoly-gm-holdfull" value="${Number(monopolyState.income.hold_full_bonus_pct)}" style="width:80px;" /></div>` : ""}
       </div>` : ""}` : ""}
       ${monopolyState.eventSettings ? `<div class="who" style="margin:12px 0 6px;">${dc("排程事件設定", "Scheduled events")}</div>
       <div class="form-row">
