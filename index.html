@@ -14,7 +14,70 @@
 .bomb-grid.zones-on.zr .bomb-cell.z-core:not(.revealed){background-image:linear-gradient(rgba(230,190,80,.30),rgba(230,190,80,.30))}
 .bomb-zone-chip.zr.z-out{background:rgba(255,255,255,.06)}
 .bomb-zone-chip.zr.z-mid{background:rgba(230,190,80,.22)}
-.bomb-zone-chip.zr.z-core{background:rgba(230,190,80,.42)}.bomb-action-bar{min-height:46px;margin-top:6px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:12px;background:var(--bg-panel-raised)}.bomb-cell.revealed.bomb{background:var(--danger)}@media (hover:hover){.bomb-cell:not(.revealed):hover{background:var(--gold)}}.bomb-lb-list{display:flex;flex-direction:column;gap:6px}.bomb-lb-row{display:flex;align-items:center;gap:8px;padding:6px 8px;background:var(--bg-panel-raised);border-radius:8px;font-size:12px}.bomb-lb-rank{font-family:'Space Mono',monospace;color:var(--muted);width:26px}.bomb-lb-avatar{width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;color:#fff;flex-shrink:0}.bomb-lb-name{flex:1;color:var(--cream)}.bomb-lb-gold{color:var(--gold-bright);font-family:'Space Mono',monospace}.bomb-lb-meta{color:var(--muted);font-size:11px}</style><link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#120a1e"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Mystic Tarot"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png"><link rel="apple-touch-icon" href="icons/apple-touch-icon.png"><script id="pwa-install-js">(function () {
+.bomb-zone-chip.zr.z-core{background:rgba(230,190,80,.42)}.bomb-action-bar{min-height:46px;margin-top:6px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:12px;background:var(--bg-panel-raised)}.bomb-cell.revealed.bomb{background:var(--danger)}@media (hover:hover){.bomb-cell:not(.revealed):hover{background:var(--gold)}}.bomb-lb-list{display:flex;flex-direction:column;gap:6px}.bomb-lb-row{display:flex;align-items:center;gap:8px;padding:6px 8px;background:var(--bg-panel-raised);border-radius:8px;font-size:12px}.bomb-lb-rank{font-family:'Space Mono',monospace;color:var(--muted);width:26px}.bomb-lb-avatar{width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;color:#fff;flex-shrink:0}.bomb-lb-name{flex:1;color:var(--cream)}.bomb-lb-gold{color:var(--gold-bright);font-family:'Space Mono',monospace}.bomb-lb-meta{color:var(--muted);font-size:11px}</style><style id="bomb-ui-v2">
+/* ===== 全服數字炸彈 UI v2 ===== */
+.bomb-panel{position:relative;overflow:hidden;background:linear-gradient(160deg,rgba(70,32,115,.55),var(--bg-panel) 55%);border:1px solid rgba(201,162,74,.38);box-shadow:0 10px 30px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.07)}
+.bomb-panel::before{content:"";position:absolute;top:-120px;right:-80px;width:320px;height:320px;background:radial-gradient(circle,rgba(232,196,104,.15),transparent 65%);pointer-events:none}
+.bomb-panel>h2{background:linear-gradient(90deg,var(--gold-bright),#ff9a6a);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:.5px}
+.bomb-stats-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin:12px 0}
+.bomb-stat{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:12px;min-width:0;background:linear-gradient(180deg,rgba(255,255,255,.07),rgba(255,255,255,.02));border:1px solid rgba(201,162,74,.24);box-shadow:0 2px 8px rgba(0,0,0,.25)}
+.bomb-stat.wide{grid-column:1/-1;flex-wrap:wrap}
+.bs-ico{font-size:20px;line-height:1;filter:drop-shadow(0 2px 4px rgba(0,0,0,.55))}
+.bs-txt{display:flex;flex-direction:column;min-width:0}
+.bs-lbl{font-family:inherit;font-size:10px;letter-spacing:.5px;color:var(--muted)}
+.bs-val{font-family:'Space Mono',monospace;font-size:15px;color:var(--gold-bright)}
+.bomb-progress{flex:1 1 100%;height:8px;border-radius:99px;overflow:hidden;background:rgba(0,0,0,.45);box-shadow:inset 0 1px 3px rgba(0,0,0,.65)}
+.bomb-progress i{display:block;height:100%;width:0;border-radius:inherit;background:linear-gradient(90deg,#5a3fd0,#c9a24a,#ffe28a,#c9a24a,#5a3fd0);background-size:200% 100%;animation:bomb-bar-shine 3s linear infinite;transition:width .5s ease}
+@keyframes bomb-bar-shine{to{background-position:-200% 0}}
+.bomb-help{margin:8px 0;border:1px solid var(--line);border-radius:10px;background:rgba(0,0,0,.18)}
+.bomb-help>summary{cursor:pointer;padding:8px 12px;font-size:12px;color:var(--gold-bright);list-style:none;user-select:none}
+.bomb-help>summary::-webkit-details-marker{display:none}
+.bomb-help>summary::after{content:"▾";float:right;transition:transform .2s}
+.bomb-help[open]>summary::after{transform:rotate(180deg)}
+.bomb-help>p{margin:0;padding:4px 12px 8px}
+.bomb-legend{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+.bl-chip{display:inline-flex;align-items:center;gap:5px;padding:3px 9px 3px 5px;border-radius:99px;font-size:11px;color:var(--cream);background:rgba(0,0,0,.28);border:1px solid var(--line)}
+.bl-dot{width:16px;height:16px;border-radius:5px;display:inline-flex;align-items:center;justify-content:center;font-size:10px;line-height:1}
+.bl-dot.u{background:#2c1b4c;box-shadow:inset 1px 1px 0 rgba(255,255,255,.14),inset -1px -1px 0 rgba(0,0,0,.45)}
+.bl-dot.t{background:radial-gradient(circle at 30% 25%,#b08a1a,#4a3a0a)}
+.bl-dot.s{background:radial-gradient(circle at 30% 25%,#2a76b8,#123a5b)}
+.bl-dot.c{background:radial-gradient(circle at 30% 25%,#b3a21c,#5b5210)}
+.bl-dot.b{background:radial-gradient(circle,#e0524a,#8f1f2b)}
+.bl-nums{display:inline-flex;gap:3px;font-family:'Space Mono',monospace;font-weight:800;font-size:11px}
+.bomb-toolbar{padding:6px 8px;border-radius:12px;background:rgba(0,0,0,.22);border:1px solid var(--line)}
+.bomb-action-bar{border-radius:12px;border:1px solid rgba(201,162,74,.35);border-left:3px solid var(--gold-bright);background:linear-gradient(90deg,rgba(201,162,74,.12),rgba(0,0,0,.2));padding:10px 12px}
+.bomb-grid-wrap{border-radius:12px;border:1px solid rgba(201,162,74,.42);background:#0a0613;box-shadow:inset 0 0 24px rgba(0,0,0,.7),0 4px 18px rgba(0,0,0,.4)}
+.bomb-grid{background:#0a0613}
+.bomb-cell{background:#2c1b4c;border-radius:2px;transition:filter .12s}
+.bomb-cell:not(.revealed){box-shadow:inset 1px 1px 0 rgba(255,255,255,.13),inset -1px -1px 0 rgba(0,0,0,.45)}
+@media (hover:hover){.bomb-cell:not(.revealed):hover{background:#5b3fa0;filter:brightness(1.2)}}
+.bomb-cell.revealed.safe.num{background:linear-gradient(180deg,#2a2146,#20193a);font-weight:800;text-shadow:0 0 6px currentColor}
+.bomb-cell.revealed.safe.zero{background:#151026}
+.bomb-cell.revealed.safe.bn1{color:#7db4ff}.bomb-cell.revealed.safe.bn2{color:#63d99a}.bomb-cell.revealed.safe.bn3{color:#ff8080}.bomb-cell.revealed.safe.bn4{color:#b99cff}
+.bomb-cell.revealed.safe.bn5{color:#ffab7a}.bomb-cell.revealed.safe.bn6{color:#5fd8d8}.bomb-cell.revealed.safe.bn7{color:#f2f2f2}.bomb-cell.revealed.safe.bn8{color:#b0b0b0}
+.bomb-cell.revealed.safe.t-treasure{background:radial-gradient(circle at 30% 25%,#9b7a12,#4a3a0a);animation:bomb-glow 2.4s ease-in-out infinite}
+.bomb-cell.revealed.safe.t-shield{background:radial-gradient(circle at 30% 25%,#1f6aa8,#123a5b);animation:bomb-glow 2.8s ease-in-out infinite}
+.bomb-cell.revealed.safe.t-chain{background:radial-gradient(circle at 30% 25%,#a8981a,#5b5210);animation:bomb-glow 2s ease-in-out infinite}
+@keyframes bomb-glow{50%{filter:brightness(1.35)}}
+.bomb-grid:not(.z-big) .bomb-cell.t-treasure::before,.bomb-grid:not(.z-big) .bomb-cell.t-shield::before,.bomb-grid:not(.z-big) .bomb-cell.t-chain::before{content:"";position:absolute;top:1px;right:1px;width:3px;height:3px;border-radius:50%}
+.bomb-grid:not(.z-big) .bomb-cell.t-treasure::before{background:#ffd76a}.bomb-grid:not(.z-big) .bomb-cell.t-shield::before{background:#6cc4ff}.bomb-grid:not(.z-big) .bomb-cell.t-chain::before{background:#fff27a}
+.bomb-cell.revealed.bomb{background:radial-gradient(circle,#e0524a 0%,#8f1f2b 72%)}
+.bomb-cell.sel{animation:bomb-sel 1s ease-in-out infinite}
+@keyframes bomb-sel{50%{outline-color:#fff;filter:brightness(1.35)}}
+.bomb-cell.flag::after{display:inline-block;animation:bomb-flag .25s ease-out}
+@keyframes bomb-flag{from{transform:translateY(-6px) scale(1.4);opacity:0}to{transform:none;opacity:1}}
+.bomb-cell.just-safe{animation:bomb-pop .45s ease-out;z-index:1}
+.bomb-cell.just-bomb{animation:bomb-boom .7s ease-out;z-index:3}
+@keyframes bomb-pop{0%{transform:scale(.4);filter:brightness(2.2)}60%{transform:scale(1.25)}100%{transform:scale(1);filter:none}}
+@keyframes bomb-boom{0%{transform:scale(.3) rotate(-20deg);filter:brightness(3) saturate(2)}30%{transform:scale(1.9)}60%{transform:scale(.9) rotate(8deg)}100%{transform:scale(1);filter:none}}
+.bomb-lb-row{border:1px solid transparent;padding:8px 10px;border-radius:10px;background:linear-gradient(90deg,rgba(255,255,255,.06),rgba(255,255,255,.015));transition:transform .15s}
+.bomb-lb-row:hover{transform:translateX(2px)}
+.bomb-lb-row.r1{border-color:rgba(232,196,104,.65);background:linear-gradient(90deg,rgba(232,196,104,.24),rgba(232,196,104,.04))}
+.bomb-lb-row.r2{border-color:rgba(192,200,216,.55);background:linear-gradient(90deg,rgba(192,200,216,.18),rgba(192,200,216,.03))}
+.bomb-lb-row.r3{border-color:rgba(205,138,90,.55);background:linear-gradient(90deg,rgba(205,138,90,.2),rgba(205,138,90,.03))}
+.bomb-lb-rank{width:30px;text-align:center;font-size:15px}
+@media (prefers-reduced-motion:reduce){.bomb-cell,.bomb-progress i{animation:none!important}}
+</style><link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#120a1e"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Mystic Tarot"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png"><link rel="apple-touch-icon" href="icons/apple-touch-icon.png"><script id="pwa-install-js">(function () {
   var deferred = null;
   function ua() { return navigator.userAgent || ""; }
   function isStandalone() {
@@ -490,8 +553,8 @@ function bombNameColor(name){
 }
 function bombLeaderboardRowsHtml(){
   return (bombState.leaderboard || []).map((row, i) => `
-    <div class="bomb-lb-row">
-      <span class="bomb-lb-rank">#${i + 1}</span>
+    <div class="bomb-lb-row${i < 3 ? " r" + (i + 1) : ""}">
+      <span class="bomb-lb-rank">${i < 3 ? ["🥇", "🥈", "🥉"][i] : "#" + (i + 1)}</span>
       <span class="bomb-lb-avatar" style="background:${bombNameColor(row.display_name)};box-shadow:0 0 0 2px ${bombFrameColor(row.display_name)}">${Iu((row.display_name || "?").slice(0, 1))}</span>
       <span class="bomb-lb-name">${Iu(row.display_name)}</span>
       <span class="bomb-lb-gold">✦${row.gold_this_round}</span>
@@ -592,13 +655,26 @@ async function bombFlagPull(force){
   } finally { S.pulling = false; }
 }
 // 一格畫成什麼樣：炸彈 💣；安全格顯示「周圍 8 格的炸彈數」（0 = 空白）；寶箱／護盾／連鎖格用底色區分；翻開的人用底部色條表示
+let bombPopStamp = 0, bombPopBudget = 0;
+function bombPopCell(el, isBomb){
+  if (bombState.paintingBulk) return;
+  const now = Date.now();
+  if (now - bombPopStamp > 500) { bombPopStamp = now; bombPopBudget = 60; }
+  if (bombPopBudget <= 0) return;
+  bombPopBudget--;
+  const cls = isBomb ? "just-bomb" : "just-safe";
+  el.classList.remove("just-safe", "just-bomb"); void el.offsetWidth; el.classList.add(cls);
+  setTimeout(() => el.classList.remove(cls), 800);
+}
 function bombPaintCell(el, c){
   const sig = [c.is_bomb ? 1 : 0, c.cell_type || "", typeof c.nearby_count === "number" ? c.nearby_count : "", c.revealed_by_name || ""].join("|");
   if (el.dataset.sig === sig) return;
   el.dataset.sig = sig;
+  const wasRevealed = el.classList.contains("revealed");
 ["safe", "bomb", "num", "zero", "t-treasure", "t-shield", "t-chain", "bn1", "bn2", "bn3", "bn4", "bn5", "bn6", "bn7", "bn8", "flag", "hasw"].forEach(k => el.classList.remove(k));
   el.style.removeProperty("--who");
   el.classList.add("revealed");
+  if (!wasRevealed) bombPopCell(el, !!c.is_bomb);
   el.style.background = ""; el.style.boxShadow = "";
   const by = c.revealed_by_name || "?", n = c.nearby_count;
   if (c.is_bomb) { el.classList.add("bomb", "hasw"); el.style.setProperty("--who", bombFrameColor(by)); el.textContent = "💣"; el.title = by; return; }
@@ -625,26 +701,35 @@ function bombApplyCellDom(cellData){
 function bombPaintAll(){
   const grid = document.getElementById("bomb-grid");
   if (!grid) return;
-  Object.keys(bombState.cells).forEach(k => { const el = grid.children[+k]; if (el) bombPaintCell(el, bombState.cells[k]); });
+  bombState.paintingBulk = true;
+  try { Object.keys(bombState.cells).forEach(k => { const el = grid.children[+k]; if (el) bombPaintCell(el, bombState.cells[k]); }); }
+  finally { bombState.paintingBulk = false; }
+}
+function bombStatInner(icon, label, value, pct){
+  return `<span class="bs-ico">${icon}</span><span class="bs-txt"><span class="bs-lbl">${label}</span><b class="bs-val">${value}</b></span>` + (pct != null ? `<span class="bomb-progress"><i style="width:${pct}%"></i></span>` : "");
+}
+function bombSetStat(id, icon, label, value, pct){
+  const el = document.getElementById(id);
+  if (!el) return;
+  const v = el.querySelector(".bs-val");
+  if (v) {
+    v.textContent = value;
+    const fill = el.querySelector(".bomb-progress i");
+    if (fill && pct != null) fill.style.width = pct + "%";
+  } else el.innerHTML = bombStatInner(icon, label, value, pct);
 }
 function bombUpdateProgressDom(){
-  const el = document.getElementById("bomb-progress-text");
-  if (!el) return;
   const safeTotal = bombState.totalCells - bombState.bombCount;
   const pct = safeTotal > 0 ? Math.round(100 * bombState.revealedSafeCount / safeTotal) : 0;
-  el.textContent = `${dc("本輪進度", "Round progress")}: ${bombState.revealedSafeCount}/${safeTotal} (${pct}%)`;
+  bombSetStat("bomb-progress-text", "🗺", dc("本輪進度", "Round progress"), `${bombState.revealedSafeCount}/${safeTotal} (${pct}%)`, pct);
 }
 function bombUpdatePersonalStatsDom(){
   const p = zl.player;
   if (!p) return;
-  const s1 = document.getElementById("bomb-streak-text");
-  if (s1) s1.textContent = `${dc("你的連勝", "Your streak")}: ${p.bombStreak || 0}`;
-  const s2 = document.getElementById("bomb-deaths-text");
-  if (s2) s2.textContent = `${dc("本輪死亡", "Deaths this round")}: ${p.bombDeathCount || 0}`;
-  const s3 = document.getElementById("bomb-rare-text");
-  if (s3) s3.textContent = `${dc("持有稀有卡", "Rare cards")}: ${countRareCards(p)}`;
-  const s4 = document.getElementById("bomb-shield-text");
-  if (s4) s4.textContent = `${dc("護盾庫存", "Shields")}: ${bombState.shieldCount || 0}`;
+  bombSetStat("bomb-streak-text", "🔥", dc("你的連勝", "Your streak"), p.bombStreak || 0);
+  bombSetStat("bomb-deaths-text", "💀", dc("本輪死亡", "Deaths this round"), p.bombDeathCount || 0);
+  bombSetStat("bomb-rare-text", "🃏", dc("持有稀有卡", "Rare cards"), countRareCards(p));
+  bombSetStat("bomb-shield-text", "🛡", dc("護盾庫存", "Shields"), bombState.shieldCount || 0);
 }
 function bombUpdateBannerDom(){
   const el = document.getElementById("bomb-banner");
@@ -982,19 +1067,29 @@ function bombBuildHtml(){
     </div>` : "";
 
   return `
-    <div class="panel">
+    <div class="panel bomb-panel">
       <h2>💣 ${dc("全服數字炸彈", "Bomb Map")}</h2>
       <p class="sub">${dc("每走一步消耗1張稀有塔羅牌，安全格獲得金幣（連續存活翻倍），踩到炸彈本條命結束", "Each step costs 1 rare tarot card. Safe cells pay gold that doubles with your streak. Bombs end that life.")}</p>
+      <details class="bomb-help"><summary>📖 ${dc("玩法說明（點開）", "How to play (tap to open)")}</summary>
       <p class="sub" style="font-size:12px;">${dc("🔢 翻開的格子會顯示「周圍 8 格有幾顆炸彈」（已炸開的💣也算；空白＝周圍沒有炸彈）。全服玩家的數字合在一起，就能推理出哪些格子是安全的！格子外框的顏色＝翻開的人（點格子看名字；排行榜頭像旁邊的光圈是同一個顏色）。", "🔢 Every revealed cell shows how many bombs touch it (8 neighbours; exploded 💣 count; blank = none). Put everybody's numbers together and you can work out which cells are safe! The colour of a cell frame shows who opened it (tap a cell for the name; the glow around a leaderboard avatar is the same colour).")}</p>
       <p class="sub" style="font-size:11px;">${dc("💰寶箱格（金色底）獎勵大爆發｜🛡護盾格（藍色底）可累積、下次踩雷免死一次｜⚡連鎖格（黃色底）自動開周圍格子（連到雷不算死亡）", "💰Treasure cells (gold) pay big｜🛡Shield cells (blue) stack and block your next bomb death｜⚡Chain cells (yellow) auto-reveal neighbours")}${bombZoneNote()}</p>
       <p class="sub" style="font-size:11px;">${dc("🌅 每天換日時，前一天沒清完的地圖會自動換成全新地圖（連勝與死亡次數一併重置）。", "🌅 At each daily rollover, an unfinished map from the previous day is automatically replaced with a brand-new one (streak and death count reset too).")}</p>
       <p class="sub" style="font-size:11px;">${dc("👆 點格子選取，按「探索」才會扣牌；長按（電腦按右鍵）標記地雷 🚩，手機也可以開「標記模式」＝點一下就標記；用 ＋／－ 或雙指縮放地圖；「快速模式」＝點一下就探索", "👆 Tap a cell to select it — the card is only spent when you press Explore. Long-press (right-click on desktop) flags a bomb 🚩 — on phones you can also turn on Flag mode so one tap flags. Zoom with ＋／－ or two fingers. Quick mode = one tap explores.")}</p>
+      </details>
+      <div class="bomb-legend">
+        <span class="bl-chip"><span class="bl-dot u"></span>${dc("未翻開", "Hidden")}</span>
+        <span class="bl-chip"><span class="bl-dot t">💰</span>${dc("寶箱", "Treasure")}</span>
+        <span class="bl-chip"><span class="bl-dot s">🛡</span>${dc("護盾", "Shield")}</span>
+        <span class="bl-chip"><span class="bl-dot c">⚡</span>${dc("連鎖", "Chain")}</span>
+        <span class="bl-chip"><span class="bl-dot b">💣</span>${dc("炸彈", "Bomb")}</span>
+        <span class="bl-chip"><span class="bl-nums"><span style="color:#7db4ff">1</span><span style="color:#63d99a">2</span><span style="color:#ff8080">3</span><span style="color:#b99cff">4</span><span style="color:#ffab7a">5</span><span style="color:#5fd8d8">6</span></span>${dc("周圍炸彈數", "Nearby bombs")}</span>
+      </div>
       <div class="bomb-stats-row">
-        <span id="bomb-progress-text">${dc("本輪進度", "Round progress")}: ${st.revealedSafeCount}/${safeTotal} (${progressPct}%)</span>
-        <span id="bomb-streak-text">${dc("你的連勝", "Your streak")}: ${player.bombStreak || 0}</span>
-        <span id="bomb-deaths-text">${dc("本輪死亡", "Deaths this round")}: ${player.bombDeathCount || 0}</span>
-        <span id="bomb-rare-text">${dc("持有稀有卡", "Rare cards")}: ${rareCount}</span>
-        <span id="bomb-shield-text">${dc("護盾庫存", "Shields")}: ${st.shieldCount || 0}</span>
+        <span class="bomb-stat wide" id="bomb-progress-text">${bombStatInner("🗺", dc("本輪進度", "Round progress"), `${st.revealedSafeCount}/${safeTotal} (${progressPct}%)`, progressPct)}</span>
+        <span class="bomb-stat" id="bomb-streak-text">${bombStatInner("🔥", dc("你的連勝", "Your streak"), player.bombStreak || 0)}</span>
+        <span class="bomb-stat" id="bomb-deaths-text">${bombStatInner("💀", dc("本輪死亡", "Deaths this round"), player.bombDeathCount || 0)}</span>
+        <span class="bomb-stat" id="bomb-rare-text">${bombStatInner("🃏", dc("持有稀有卡", "Rare cards"), rareCount)}</span>
+        <span class="bomb-stat" id="bomb-shield-text">${bombStatInner("🛡", dc("護盾庫存", "Shields"), st.shieldCount || 0)}</span>
       </div>
       <div id="bomb-banner">${banner}</div>
       ${bombToolbarHtml()}
