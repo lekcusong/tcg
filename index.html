@@ -113,6 +113,20 @@ html.bomb-lite .bomb-grid .bomb-cell.revealed.hasw.tint.num:not(.t-treasure):not
 html.bomb-lite .bomb-cell.revealed.safe.t-treasure{background:#6e560e}
 html.bomb-lite .bomb-cell.revealed.safe.t-shield{background:#194f7e}
 html.bomb-lite .bomb-cell.revealed.safe.t-chain{background:#7d7016}
+/* ===== 簡化畫面：實色格子、無表情符號、無陰影／漸層／外框 ===== */
+html.bomb-lite .bomb-grid{gap:0;background:#0a0613}
+html.bomb-lite .bomb-cell{border-radius:0;box-shadow:none!important;outline:none;border:.5px solid rgba(0,0,0,.35);background:#2c1b4c}
+html.bomb-lite .bomb-cell.revealed.safe.num,html.bomb-lite .bomb-cell.revealed.safe.zero{background:#2a2146;text-shadow:none}
+html.bomb-lite .bomb-grid .bomb-cell.revealed.hasw.tint:not(.t-treasure):not(.t-shield):not(.t-chain){background-image:none;background-color:var(--wt)}
+html.bomb-lite .bomb-cell.revealed.bomb{background:#8f1f2b;color:#fff}
+html.bomb-lite .bomb-cell.mine{outline:none}
+html.bomb-lite .bomb-cell.sel{outline:2px solid #fff;outline-offset:-2px;z-index:2}
+html.bomb-lite .bomb-cell.flag::after{content:"⚑";color:#ff5a5a;font-size:.9em;animation:none}
+html.bomb-lite .bomb-grid.z-big .bomb-cell.t-treasure::before,html.bomb-lite .bomb-grid.z-big .bomb-cell.t-shield::before,html.bomb-lite .bomb-grid.z-big .bomb-cell.t-chain::before{content:""}
+html.bomb-lite .bomb-cell.shard-found::after,html.bomb-lite .bomb-cell.feather-found::after{content:"★";font-size:.7em;color:#fff;right:1px;bottom:0}
+html.bomb-lite .bomb-cell.shard-found{background:#5a3fd0!important}
+html.bomb-lite .bomb-cell.feather-found{background:#c42aa8!important}
+html.bomb-lite .bomb-grid-wrap{will-change:scroll-position}
 </style><link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#120a1e"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Mystic Tarot"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png"><link rel="apple-touch-icon" href="icons/apple-touch-icon.png"><script id="pwa-install-js">(function () {
   var deferred = null;
   function ua() { return navigator.userAgent || ""; }
@@ -237,7 +251,7 @@ const BOMB_URL = "https://hmkpwrefecwjxnyggcej.supabase.co";
 const BOMB_KEY = "sb_publishable_vs1K1Ao4Gjl2JK5xrK-GpQ_aXsHyty7";
 const BOMB_HEADERS = { apikey: BOMB_KEY, Authorization: `Bearer ${BOMB_KEY}` };
 
-const BOMB_LITE = (() => { try { const u = navigator.userAgent || ""; const r = /iPad/.test(u) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1); if (r) document.documentElement.classList.add("bomb-lite"); return r; } catch (e) { return false; } })();
+const BOMB_LITE = (() => { try { const u = navigator.userAgent || ""; const r = true; /* 簡化畫面：所有裝置都用輕量版（不分 iPad / 手機 / 電腦） */ document.documentElement.classList.add("bomb-lite"); return r; } catch (e) { return false; } })();
 // 格子元素陣列只建一次（每次重畫整盤是新的 grid 元素，會自動重建）；避免對 5625 個子節點反覆 grid.children[i]
 function bombCell(grid, idx){
   if (!grid) return null;
@@ -291,6 +305,14 @@ async function bombFetchRevealedSince(mapId, since){
   return bombFetch(base);
 }
 // 剛翻開的格子（和連鎖翻開的格子）馬上去讀它們的數字／碎片提示，不用等下一次輪詢
+const bombNumRetry = { q: new Set(), timer: null, tries: {} };
+function bombQueueNumberRetry(idx){
+  const R = bombNumRetry;
+  if (bombState.numbersSupported === false || (R.tries[idx] || 0) >= 2) return;
+  R.tries[idx] = (R.tries[idx] || 0) + 1; R.q.add(idx);
+  if (R.timer) return;
+  R.timer = setTimeout(() => { R.timer = null; const a = Array.from(R.q).slice(0, 300); R.q.clear(); if (a.length) bombRefreshNumbers(a); }, 2500);
+}
 async function bombRefreshNumbers(idxs){
   if (bombState.numbersSupported === false || !bombState.mapId || !idxs || !idxs.length) return;
   try {
@@ -304,7 +326,7 @@ async function bombRefreshNumbers(idxs){
       if ("feather_hint" in r) { c.feather_hint = (typeof r.feather_hint === "number") ? r.feather_hint : null; c.is_feather = !!r.is_feather; }
       bombApplyCellDom(c);
     });
-  } catch (err) {}
+  } catch (err) { idxs.forEach(i => bombQueueNumberRetry(i)); }
 }
 async function bombFetchMyShields(playerId){
   try {
@@ -654,7 +676,7 @@ function bombNameKey(name){
 function bombNameHue(name){ return BOMB_HUES[bombNameKey(name) % 12]; }   // 每個人（包含你自己）都用暱稱算出專屬顏色
 function bombNameLight(name){ return bombNameKey(name) < 12 ? 60 : 45; }
 function bombFrameColor(name){ return `hsl(${bombNameHue(name)},72%,${bombNameLight(name)}%)`; }   // 格子外框（翻開者）的顏色
-function bombTintColor(name){ return `hsla(${bombNameHue(name)},72%,${bombNameLight(name)}%,${bombIsMe(name) ? .4 : .28})`; }   // 領地底色
+function bombTintColor(name){ return `hsl(${bombNameHue(name)},${bombIsMe(name) ? 50 : 38}%,${bombIsMe(name) ? 30 : 22}%)`; }   // 實色底（不用半透明疊圖層，比較不卡）   // 領地底色
 function bombFrameWidth(px){ return px >= 32 ? 4 : px >= 20 ? 3 : 2; }   // 外框粗細：格子越大越粗
 function bombNameColor(name){ return `hsl(${bombNameHue(name)},55%,42%)`; }
 function bombLeaderboardRowsHtml(){
@@ -763,7 +785,7 @@ async function bombFlagPull(force){
 // 一格畫成什麼樣：炸彈 💣；安全格顯示「周圍 8 格的炸彈數」（0 = 空白）；寶箱／護盾／連鎖格用底色區分；翻開的人用底部色條表示
 let bombPopStamp = 0, bombPopBudget = 0;
 function bombPopCell(el, isBomb){
-  if (bombState.paintingBulk) return;
+  if (BOMB_LITE || bombState.paintingBulk) return;
   const now = Date.now();
   if (now - bombPopStamp > 500) { bombPopStamp = now; bombPopBudget = (window.matchMedia && matchMedia("(pointer:coarse) and (min-width:700px)").matches) ? 12 : 60; }
   if (bombPopBudget <= 0) return;
@@ -807,7 +829,7 @@ function bombPaintCell(el, c){
   if (!wasRevealed) bombPopCell(el, !!c.is_bomb);
   el.style.background = ""; el.style.boxShadow = "";
   const by = c.revealed_by_name || "?", n = c.nearby_count;
-  if (c.is_bomb) { el.classList.add("bomb", "hasw"); el.style.setProperty("--who", bombFrameColor(by)); el.textContent = "💣"; el.title = by; return; }
+  if (c.is_bomb) { el.classList.add("bomb", "hasw"); el.style.setProperty("--who", bombFrameColor(by)); el.textContent = BOMB_LITE ? "✖" : "💣"; el.title = by; return; }
   el.classList.add("safe");
   if (bombIsMe(by)) el.classList.add("mine");   // 自己翻的格子：自己的專屬顏色加粗外框，一眼看出哪些是你的
   if (typeof n === "number") {
@@ -817,9 +839,11 @@ function bombPaintCell(el, c){
     el.classList.add("hasw", "tint"); el.style.setProperty("--who", bombFrameColor(by)); el.style.setProperty("--wt", bombTintColor(by));   // 領地：外框＋底色＝翻開的人
     el.title = `${by}${dc("　周圍炸彈 ", "  nearby bombs ")}${n}${c.cell_type === "treasure" ? " 💰" : c.cell_type === "shield" ? " 🛡" : c.cell_type === "chain" ? " ⚡" : ""}`;
   } else {   // 舊伺服器（還沒有數字欄位）：維持原本的畫法
-    el.style.background = bombNameColor(by);
-    el.textContent = c.cell_type === "treasure" ? "💰" : c.cell_type === "shield" ? "🛡" : c.cell_type === "chain" ? "⚡" : by.slice(0, 1);
+    el.classList.add("hasw", "tint", "zero"); el.style.setProperty("--who", bombFrameColor(by)); el.style.setProperty("--wt", bombTintColor(by));   // 還沒拿到數字：只畫領地底色，不顯示玩家名字
+    el.textContent = "";
+    if (c.cell_type === "treasure" || c.cell_type === "shield" || c.cell_type === "chain") el.classList.add("t-" + c.cell_type);
     el.title = by;
+    bombQueueNumberRetry(c.cell_index);
   }
   bombPaintShardHint(el, c);
   bombPaintFeatherHint(el, c);
@@ -857,6 +881,7 @@ function bombPaintAll(){
 }
 /* ===== 領地視覺：同一個人的格子連成一片（只畫邊界）、玩家名單、只看某人的領地 ===== */
 function bombPaintEdge(idx){
+  if (BOMB_LITE) return;   // 簡化：不再逐格畫領地邊框（5625 格 × 4 條內陰影太吃效能），改用實色底分辨
   const st = bombState, c = st.cells[idx], grid = document.getElementById("bomb-grid");
   if (!grid || !c || c.is_bomb || !st.width) return;
   const el = bombCell(grid, idx);
