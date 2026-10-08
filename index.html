@@ -127,6 +127,11 @@ html.bomb-lite .bomb-cell.shard-found::after,html.bomb-lite .bomb-cell.feather-f
 html.bomb-lite .bomb-cell.shard-found{background:#5a3fd0!important}
 html.bomb-lite .bomb-cell.feather-found{background:#c42aa8!important}
 html.bomb-lite .bomb-grid-wrap{will-change:scroll-position}
+/* 未翻開 vs 已翻開要一眼分得出來：未翻開＝亮邊框的「凸起磚塊」，已翻開＝無邊框的平面實色 */
+html.bomb-lite .bomb-cell:not(.revealed){border:1px solid rgba(255,255,255,.34)!important;background-image:none!important}
+html.bomb-lite .bomb-cell.revealed{border:0!important}
+html.bomb-lite .bomb-grid .bomb-cell:not(.revealed){filter:none}
+html.bomb-lite .bomb-cell.revealed.safe.zero:not(.tint){background:#0d0818}
 </style><link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#120a1e"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Mystic Tarot"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png"><link rel="apple-touch-icon" href="icons/apple-touch-icon.png"><script id="pwa-install-js">(function () {
   var deferred = null;
   function ua() { return navigator.userAgent || ""; }
@@ -231,7 +236,12 @@ html.bomb-lite .bomb-grid-wrap{will-change:scroll-position}
 @keyframes wb-tw-float{0%{transform:translate(-50%,0) scale(.4);opacity:0}15%{transform:translate(-50%,-10px) scale(1.25);opacity:1}100%{transform:translate(-50%,-80px) scale(1);opacity:0}}
 @media (prefers-reduced-motion:reduce){.wb-orb{animation:none}}
 </style>
-</head><body><div id="app"><div class="loading-line" id="initial-loading-line">Opening the mystic gate 🔮</div></div><audio id="bgm-audio" loop preload="none">  <source src="bgm.mp3" type="audio/mpeg"></audio><button id="bgm-toggle" class="bgm-toggle" title="播放背景音樂">🔇</button><button id="lang-toggle" class="lang-toggle" title="Switch language / 切換語言">EN</button><div class="bgm-credit">🎵 Background Music</div><div id="card-modal" class="card-modal-overlay" style="display:none;">  <div class="card-modal-box">    <button class="card-modal-close" id="card-modal-close">✕</button>    <div id="card-modal-nav-slot"></div>    <div id="card-modal-content"></div>  </div></div><div id="announce-modal" class="card-modal-overlay" style="display:none;">  <div class="announce-frame-wrap">    <div class="announce-frame-box">      <div class="announce-frame-text" id="announce-frame-text"></div>    </div>    <div class="announce-frame-btn-row" id="announce-frame-btn-row"></div>  </div></div><div id="daily-popup-modal" class="card-modal-overlay" style="display:none;">  <div class="daily-popup-box">    <img src="daily-popup.png" alt="" id="daily-popup-img" class="daily-popup-img">    <button class="btn full" id="daily-popup-ok-btn">確定</button>  </div></div><div id="achievement-modal" class="card-modal-overlay" style="display:none;">  <div class="card-modal-box achievement-modal-box">    <button class="card-modal-close" id="achievement-modal-close">✕</button>    <div id="achievement-modal-content"></div>  </div></div><div id="profile-modal" class="card-modal-overlay" style="display:none;">  <div class="card-modal-box achievement-modal-box">    <button class="card-modal-close" id="profile-modal-close">✕</button>    <div id="profile-modal-content"></div>  </div></div><div id="chest-drop-modal" class="card-modal-overlay" style="display:none;">  <div class="card-modal-box achievement-modal-box">    <button class="card-modal-close" id="chest-drop-modal-close">✕</button>    <div id="chest-drop-modal-content"></div>  </div></div><script>!function(){const e="https://hmkpwrefecwjxnyggcej.supabase.co",t="sb_publishable_vs1K1Ao4Gjl2JK5xrK-GpQ_aXsHyty7",n={apikey:t,Authorization:`Bearer ${t}`},a={async get(t){const a=await fetch(`${e}/rest/v1/kv_store?key=eq.${encodeURIComponent(t)}&select=value`,{headers:n,cache:"no-store"});if(!a.ok)throw new Error("storage get failed: "+a.status);const i=await a.json();return i&&0!==i.length?{key:t,value:i[0].value}:null},async set(t,a){const i=await fetch(`${e}/rest/v1/kv_store`,{method:"POST",headers:{...n,"Content-Type":"application/json",Prefer:"resolution=merge-duplicates,return=minimal"},body:JSON.stringify({key:t,value:a,updated_at:(new Date).toISOString()})});if(!i.ok)throw new Error("storage set failed: "+i.status);return{key:t,value:a}},async delete(t){const a=await fetch(`${e}/rest/v1/kv_store?key=eq.${encodeURIComponent(t)}`,{method:"DELETE",headers:n});if(!a.ok)throw new Error("storage delete failed: "+a.status);return{key:t,deleted:!0}},async list(t){const a=(t||"")+"*",i=await fetch(`${e}/rest/v1/kv_store?key=like.${encodeURIComponent(a)}&select=key&order=key.desc`,{headers:n,cache:"no-store"});if(!i.ok)throw new Error("storage list failed: "+i.status);return{keys:(await i.json()).map(e=>e.key)}},async listValues(t){const a=(t||"")+"*",i=await fetch(`${e}/rest/v1/kv_store?key=like.${encodeURIComponent(a)}&select=key,value&order=key.desc`,{headers:n,cache:"no-store"});if(!i.ok)throw new Error("storage listValues failed: "+i.status);return await i.json()}};function i(e,t){t=t||(e=>e);const n=[];for(const a of e||[])try{n.push(t(JSON.parse(a.value),a.key))}catch(e){}return n}
+<style id="bomb-canvas-css">
+/* 炸彈地圖改用 Canvas：容器只負責捲動，畫布固定貼在可視範圍，捲動／縮放時只重畫看得到的格子 */
+.bomb-cvgrid{position:relative;display:block;background:#0a0613}
+#bomb-cv{position:sticky;top:0;left:0;display:block;background:#0a0613;cursor:pointer;touch-action:pan-x pan-y;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+.bomb-grid-wrap{background:#0a0613;overscroll-behavior:contain}
+</style></head><body><div id="app"><div class="loading-line" id="initial-loading-line">Opening the mystic gate 🔮</div></div><audio id="bgm-audio" loop preload="none">  <source src="bgm.mp3" type="audio/mpeg"></audio><button id="bgm-toggle" class="bgm-toggle" title="播放背景音樂">🔇</button><button id="lang-toggle" class="lang-toggle" title="Switch language / 切換語言">EN</button><div class="bgm-credit">🎵 Background Music</div><div id="card-modal" class="card-modal-overlay" style="display:none;">  <div class="card-modal-box">    <button class="card-modal-close" id="card-modal-close">✕</button>    <div id="card-modal-nav-slot"></div>    <div id="card-modal-content"></div>  </div></div><div id="announce-modal" class="card-modal-overlay" style="display:none;">  <div class="announce-frame-wrap">    <div class="announce-frame-box">      <div class="announce-frame-text" id="announce-frame-text"></div>    </div>    <div class="announce-frame-btn-row" id="announce-frame-btn-row"></div>  </div></div><div id="daily-popup-modal" class="card-modal-overlay" style="display:none;">  <div class="daily-popup-box">    <img src="daily-popup.png" alt="" id="daily-popup-img" class="daily-popup-img">    <button class="btn full" id="daily-popup-ok-btn">確定</button>  </div></div><div id="achievement-modal" class="card-modal-overlay" style="display:none;">  <div class="card-modal-box achievement-modal-box">    <button class="card-modal-close" id="achievement-modal-close">✕</button>    <div id="achievement-modal-content"></div>  </div></div><div id="profile-modal" class="card-modal-overlay" style="display:none;">  <div class="card-modal-box achievement-modal-box">    <button class="card-modal-close" id="profile-modal-close">✕</button>    <div id="profile-modal-content"></div>  </div></div><div id="chest-drop-modal" class="card-modal-overlay" style="display:none;">  <div class="card-modal-box achievement-modal-box">    <button class="card-modal-close" id="chest-drop-modal-close">✕</button>    <div id="chest-drop-modal-content"></div>  </div></div><script>!function(){const e="https://hmkpwrefecwjxnyggcej.supabase.co",t="sb_publishable_vs1K1Ao4Gjl2JK5xrK-GpQ_aXsHyty7",n={apikey:t,Authorization:`Bearer ${t}`},a={async get(t){const a=await fetch(`${e}/rest/v1/kv_store?key=eq.${encodeURIComponent(t)}&select=value`,{headers:n,cache:"no-store"});if(!a.ok)throw new Error("storage get failed: "+a.status);const i=await a.json();return i&&0!==i.length?{key:t,value:i[0].value}:null},async set(t,a){const i=await fetch(`${e}/rest/v1/kv_store`,{method:"POST",headers:{...n,"Content-Type":"application/json",Prefer:"resolution=merge-duplicates,return=minimal"},body:JSON.stringify({key:t,value:a,updated_at:(new Date).toISOString()})});if(!i.ok)throw new Error("storage set failed: "+i.status);return{key:t,value:a}},async delete(t){const a=await fetch(`${e}/rest/v1/kv_store?key=eq.${encodeURIComponent(t)}`,{method:"DELETE",headers:n});if(!a.ok)throw new Error("storage delete failed: "+a.status);return{key:t,deleted:!0}},async list(t){const a=(t||"")+"*",i=await fetch(`${e}/rest/v1/kv_store?key=like.${encodeURIComponent(a)}&select=key&order=key.desc`,{headers:n,cache:"no-store"});if(!i.ok)throw new Error("storage list failed: "+i.status);return{keys:(await i.json()).map(e=>e.key)}},async listValues(t){const a=(t||"")+"*",i=await fetch(`${e}/rest/v1/kv_store?key=like.${encodeURIComponent(a)}&select=key,value&order=key.desc`,{headers:n,cache:"no-store"});if(!i.ok)throw new Error("storage listValues failed: "+i.status);return await i.json()}};function i(e,t){t=t||(e=>e);const n=[];for(const a of e||[])try{n.push(t(JSON.parse(a.value),a.key))}catch(e){}return n}
 async function listAllValuesPaginated(prefix){
   const pageSize=1000;
   let allRows=[],offset=0;
@@ -252,11 +262,245 @@ const BOMB_KEY = "sb_publishable_vs1K1Ao4Gjl2JK5xrK-GpQ_aXsHyty7";
 const BOMB_HEADERS = { apikey: BOMB_KEY, Authorization: `Bearer ${BOMB_KEY}` };
 
 const BOMB_LITE = (() => { try { const u = navigator.userAgent || ""; const r = true; /* 簡化畫面：所有裝置都用輕量版（不分 iPad / 手機 / 電腦） */ document.documentElement.classList.add("bomb-lite"); return r; } catch (e) { return false; } })();
-// 格子元素陣列只建一次（每次重畫整盤是新的 grid 元素，會自動重建）；避免對 5625 個子節點反覆 grid.children[i]
-function bombCell(grid, idx){
-  if (!grid) return null;
-  if (bombState.elsGrid !== grid || !bombState.els) { bombState.els = Array.from(grid.children); bombState.elsGrid = grid; }
-  return bombState.els[idx] || null;
+/* ===== 炸彈地圖：Canvas 繪製引擎 =====
+   整張地圖只用 1 個 <canvas>，只畫螢幕上看得到的格子（取代原本 5625 個 div）。
+   資料流程（bombState.cells / 輪詢 / 旗標 / 選取）完全沒變，只換最底層的畫法。
+   畫面風格：領地色塊——翻開的格子整格塗上「翻開者」的顏色，同一個人相連的格子連成一片。 */
+const BOMB_COLOR_NUMBERS = false;   // true＝數字依大小上色（1 藍 2 綠 3 紅…）；false＝統一淡白
+const BOMB_NUM_COLORS = ["", "#8fc2ff", "#7ee8ac", "#ff9a9a", "#c9b1ff", "#ffbf94", "#79e6e6", "#f4f4f4", "#c4c4c4"];
+const BOMB_CV = {
+  bg: "#0a0613", fog: "#3b2c66", bombFill: "#8f1f2b", shard: "#5a3fd0", feather: "#c42aa8",
+  zoneRisk: ["", "#3f3b77", "#614c61", "#6e3a62"],     // 外圈 藍／中圈 琥珀／核心 紅
+  zoneReward: ["", "#3b2c66", "#534063", "#6e585f"],   // 獎勵模式：只用金色深淺
+  typeCol: ["", "#ffd76a", "#6cc4ff", "#fff27a"], typeIcon: ["", "💰", "🛡", "⚡"]
+};
+const BC = { cv: null, ctx: null, wrap: null, grid: null, mapId: null, W: 0, H: 0, N: 0, px: 16, dpr: 1, cssW: 0, cssH: 0,
+  own: null, num: null, bomb: null, typ: null, sp: null, zc: null, zcSrc: null, zoneOn: false, zr: false, sig: null, xs: null, ys: null,
+  names: [], nameIdx: new Map(), cols: [], raf: 0, flash: new Map(), glyph: [], glyphKey: "", gs: 0, hover: -1, ro: null, bulk: false };
+function bombCell(){ return null; }   // 舊版「每格一個 div」已經不存在，保留空函式避免舊呼叫出錯
+
+function bombCvOwner(name){
+  let id = BC.nameIdx.get(name);
+  if (!id) { id = BC.names.length + 1; BC.names.push(name); BC.nameIdx.set(name, id); }
+  return id;
+}
+function bombCvCols(id){
+  let c = BC.cols[id]; if (c) return c;
+  const name = BC.names[id - 1], hue = bombNameHue(name), hi = bombNameKey(name) < 12, me = bombIsMe(name);
+  c = BC.cols[id] = {
+    tint: `hsl(${hue},${me ? 56 : 46}%,${(hi ? 29 : 22) + (me ? 7 : 0)}%)`,   // 有數字的格子：領地色
+    zero: `hsl(${hue},${me ? 46 : 38}%,${(hi ? 18 : 13) + (me ? 6 : 0)}%)`,   // 數字 0 的空地：同色但更深
+    frame: bombFrameColor(name)
+  };
+  return c;
+}
+function bombCvInit(grid, wrap){
+  const B = BC, st = bombState;
+  if (B.ro) { try { B.ro.disconnect(); } catch (e) {} B.ro = null; }
+  B.grid = grid; B.wrap = wrap; B.cv = grid ? grid.querySelector("canvas") : null;
+  if (!B.cv || !wrap) { B.own = null; return; }
+  B.ctx = B.cv.getContext("2d", { alpha: false });
+  B.mapId = st.mapId; B.W = st.width; B.H = st.height; B.N = st.width * st.height;
+  B.px = st.cellPx || 16;
+  B.own = new Uint16Array(B.N); B.num = new Int8Array(B.N).fill(-1); B.bomb = new Uint8Array(B.N);
+  B.typ = new Uint8Array(B.N); B.sp = new Uint8Array(B.N); B.zc = new Uint8Array(B.N); B.zcSrc = null; B.zoneOn = false;
+  B.sig = new Array(B.N); B.xs = new Float32Array(B.W + 2); B.ys = new Float32Array(B.H + 2);
+  B.names = []; B.nameIdx = new Map(); B.cols = []; B.flash.clear(); B.glyphKey = ""; B.hover = -1;
+  wrap.addEventListener("scroll", bombCvInvalidate, { passive: true });
+  if (typeof ResizeObserver !== "undefined") { B.ro = new ResizeObserver(() => bombCvResize()); B.ro.observe(wrap); }
+  bombCvResize();
+  try { if (document.fonts && document.fonts.load) document.fonts.load("700 12px 'Space Mono'").then(() => { B.glyphKey = ""; bombCvInvalidate(); }).catch(() => {}); } catch (e) {}
+}
+function bombCvResize(){
+  const B = BC; if (!B.cv || !B.wrap || !B.grid) return;
+  const gw = Math.round(B.W * B.px), gh = Math.round(B.H * B.px);
+  B.grid.style.width = gw + "px"; B.grid.style.height = gh + "px";
+  const cw = Math.max(1, Math.min(B.wrap.clientWidth, gw)), ch = Math.max(1, Math.min(B.wrap.clientHeight, gh));
+  B.dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const pw = Math.round(cw * B.dpr), ph = Math.round(ch * B.dpr);
+  if (B.cv.width !== pw || B.cv.height !== ph) { B.cv.width = pw; B.cv.height = ph; }
+  B.cv.style.width = cw + "px"; B.cv.style.height = ch + "px";
+  B.cssW = cw; B.cssH = ch;
+  bombCvInvalidate();
+}
+function bombCvInvalidate(){
+  if (BC.raf || !BC.cv) return;
+  BC.raf = requestAnimationFrame(() => { BC.raf = 0; bombCvDraw(); });
+}
+function bombCvSetCell(idx, c){
+  const B = BC;
+  const sig = (c.is_bomb ? 1 : 0) + "|" + (c.cell_type || "") + "|" + (typeof c.nearby_count === "number" ? c.nearby_count : "") + "|" + (c.revealed_by_name || "") + "|" + (c.is_shard ? 1 : 0) + "|" + (c.is_feather ? 1 : 0);
+  if (B.sig[idx] === sig) return 0;
+  const was = B.own[idx];
+  B.sig[idx] = sig;
+  bombState._statsVer = (bombState._statsVer || 0) + 1;   // 領地統計（排行／圖例）的快取版本
+  B.own[idx] = bombCvOwner(c.revealed_by_name || "?");
+  B.bomb[idx] = c.is_bomb ? 1 : 0;
+  const n = c.nearby_count;
+  B.num[idx] = (!c.is_bomb && typeof n === "number") ? n : -1;
+  B.typ[idx] = c.cell_type === "treasure" ? 1 : c.cell_type === "shield" ? 2 : c.cell_type === "chain" ? 3 : 0;
+  B.sp[idx] = c.is_shard ? 1 : c.is_feather ? 2 : 0;
+  if (!c.is_bomb && typeof n !== "number") bombQueueNumberRetry(idx);   // 還沒拿到數字：稍後補抓
+  return was ? 2 : 1;
+}
+function bombCvFlash(idx, isBomb){
+  if (BC.bulk || BC.px < 8 || BC.flash.size > 60) return;
+  BC.flash.set(idx, [performance.now(), isBomb ? 1 : 0]);
+}
+function bombCvGlyphs(){
+  const B = BC, key = B.px + "|" + B.dpr + "|" + (BOMB_COLOR_NUMBERS ? 1 : 0);
+  if (B.glyphKey === key) return;
+  B.glyphKey = key; B.glyph = [];
+  const gs = Math.ceil(B.px), dev = Math.max(1, Math.round(gs * B.dpr)), fs = Math.max(8, Math.round(B.px * 0.62));
+  B.gs = gs;
+  for (let d = 1; d <= 8; d++) {   // 1～8 各預先畫成小圖，畫面上每個數字只是貼一張圖
+    const cv = document.createElement("canvas"); cv.width = dev; cv.height = dev;
+    const g = cv.getContext("2d"); g.scale(dev / gs, dev / gs);
+    g.font = `700 ${fs}px 'Space Mono',monospace`; g.textAlign = "center"; g.textBaseline = "middle";
+    g.shadowColor = "rgba(0,0,0,.5)"; g.shadowOffsetY = 1; g.shadowBlur = 0;
+    g.fillStyle = BOMB_COLOR_NUMBERS ? BOMB_NUM_COLORS[d] : "#f4eeff";
+    g.fillText(String(d), gs / 2, gs / 2 + 1);
+    B.glyph[d] = cv;
+  }
+}
+function bombCvColor(k){
+  if (k === 0) return BOMB_CV.fog;
+  if (k > 0 && k < 4) return (BC.zr ? BOMB_CV.zoneReward : BOMB_CV.zoneRisk)[k];
+  if (k === -1) return BOMB_CV.bombFill;
+  if (k === 5) return BOMB_CV.shard;
+  if (k === 6) return BOMB_CV.feather;
+  const c = bombCvCols((k - 10) >> 1);
+  return (k - 10) & 1 ? c.zero : c.tint;
+}
+function bombCvFlag(ctx, x, y, w, h){
+  if (w < 10) { ctx.fillStyle = "#ff5a5a"; ctx.fillRect(x + w * .3, y + h * .3, w * .4, h * .4); return; }
+  const m = Math.max(2, w * .2), fx = x + w * .38, top = y + m, bot = y + h - m - 1;
+  ctx.fillStyle = "#ff5a5a"; ctx.beginPath(); ctx.moveTo(fx, top); ctx.lineTo(fx + w * .4, top + (bot - top) * .27); ctx.lineTo(fx, top + (bot - top) * .54); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = "#f2e8ff"; ctx.fillRect(fx - 1, top, 1.6, bot - top);
+}
+function bombCvDraw(){
+  const B = BC, st = bombState;
+  if (!B.cv || !B.cv.isConnected || !B.own || !B.ctx || !B.cssW) return;
+  const ctx = B.ctx, px = B.px, W = B.W, H = B.H, vw = B.cssW, vh = B.cssH, dpr = B.dpr;
+  const sl = B.wrap.scrollLeft, stp = B.wrap.scrollTop;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.globalAlpha = 1;
+  ctx.fillStyle = BOMB_CV.bg; ctx.fillRect(0, 0, vw, vh);
+  const c0 = Math.max(0, Math.floor(sl / px)), c1 = Math.min(W - 1, Math.floor((sl + vw) / px));
+  const r0 = Math.max(0, Math.floor(stp / px)), r1 = Math.min(H - 1, Math.floor((stp + vh) / px));
+  if (c1 < c0 || r1 < r0) return;
+  const gap = px >= 10 ? 1 : 0, xs = B.xs, ys = B.ys;
+  for (let c = c0; c <= c1 + 1; c++) xs[c] = Math.round(c * px) - sl;
+  for (let r = r0; r <= r1 + 1; r++) ys[r] = Math.round(r * px) - stp;
+  const own = B.own, num = B.num, bomb = B.bomb, sp = B.sp, zc = B.zc, zoneOn = B.zoneOn;
+  const spotId = st.spot ? (B.nameIdx.get(st.spot) || -1) : 0;
+  // 第 1 步：依「顏色」分組，同一種顏色只設定一次 fillStyle（比逐格設定快很多）
+  const groups = new Map();
+  for (let r = r0; r <= r1; r++) {
+    const base = r * W;
+    for (let c = c0; c <= c1; c++) {
+      const i = base + c, o = own[i];
+      let key;
+      if (!o) key = zoneOn ? zc[i] : 0;
+      else if (bomb[i]) key = -1;
+      else if (sp[i]) key = 4 + sp[i];
+      else key = 10 + o * 2 + (num[i] === 0 ? 1 : 0);
+      if (o && spotId && o !== spotId) key += 100000;   // 「只看某人領地」：其他人變暗
+      let g = groups.get(key); if (!g) { g = []; groups.set(key, g); } g.push(i);
+    }
+  }
+  groups.forEach((list, key) => {
+    const dim = key >= 99999, k = dim ? key - 100000 : key, merge = k >= 12 && gap > 0;
+    ctx.globalAlpha = dim ? 0.2 : 1; ctx.fillStyle = bombCvColor(k);
+    for (let n = 0; n < list.length; n++) {
+      const i = list[n], r = (i / W) | 0, c = i - r * W, x = xs[c], y = ys[r], w = xs[c + 1] - x, h = ys[r + 1] - y;
+      if (merge) {   // 同一個人相連的格子：把中間的格線補起來，連成一整片領地
+        const o = own[i], sr = c < W - 1 && own[i + 1] === o && !bomb[i + 1], sb = r < H - 1 && own[i + W] === o && !bomb[i + W];
+        ctx.fillRect(x, y, w - (sr ? 0 : gap), h - (sb ? 0 : gap));
+        if (sr && sb && own[i + W + 1] === o && !bomb[i + W + 1]) ctx.fillRect(x + w - gap, y + h - gap, gap, gap);
+      } else ctx.fillRect(x, y, w - gap, h - gap);
+    }
+  });
+  ctx.globalAlpha = 1;
+  if (px >= 14) {   // 沒翻開的格子：上緣一條細亮線，看起來像微微凸起
+    ctx.fillStyle = "rgba(255,255,255,.09)";
+    for (let k = 0; k < 4; k++) { const list = groups.get(k); if (!list) continue; for (let n = 0; n < list.length; n++) { const i = list[n], r = (i / W) | 0, c = i - r * W; ctx.fillRect(xs[c], ys[r], xs[c + 1] - xs[c] - gap, 1); } }
+  }
+  // 第 2 步：數字、炸彈、旗標
+  const flags = st.flags, showNum = px >= 9, specials = [];
+  if (showNum) bombCvGlyphs();
+  const gs = B.gs;
+  for (let r = r0; r <= r1; r++) {
+    const base = r * W;
+    for (let c = c0; c <= c1; c++) {
+      const i = base + c, o = own[i], x = xs[c], y = ys[r], w = xs[c + 1] - x - gap, h = ys[r + 1] - y - gap;
+      if (!o) { if (flags[i]) bombCvFlag(ctx, x, y, w, h); continue; }
+      if (spotId && o !== spotId) continue;
+      if (bomb[i]) {
+        if (gap) { ctx.lineWidth = 2; ctx.strokeStyle = bombCvCols(o).frame; ctx.strokeRect(x + 1, y + 1, w - 2, h - 2); }   // 誰踩到的：外框用他的顏色
+        const m = Math.max(2, w * .28); ctx.lineWidth = Math.max(1.5, w * .1); ctx.strokeStyle = "#fff";
+        ctx.beginPath(); ctx.moveTo(x + m, y + m); ctx.lineTo(x + w - m, y + h - m); ctx.moveTo(x + w - m, y + m); ctx.lineTo(x + m, y + h - m); ctx.stroke();
+        continue;
+      }
+      const n = num[i];
+      if (n > 0 && showNum) ctx.drawImage(B.glyph[n], Math.round((x + (w - gs) / 2) * dpr) / dpr, Math.round((y + (h - gs) / 2) * dpr) / dpr, gs, gs);
+      if (B.typ[i] || sp[i]) specials.push(i);
+    }
+  }
+  // 第 3 步：寶箱／護盾／連鎖、神秘碎片、羽毛的標記
+  for (let n = 0; n < specials.length; n++) {
+    const i = specials[n], r = (i / W) | 0, c = i - r * W, x = xs[c], y = ys[r], w = xs[c + 1] - x - gap, h = ys[r + 1] - y - gap, t = B.typ[i];
+    if (t) {
+      const col = BOMB_CV.typeCol[t]; ctx.fillStyle = col; ctx.strokeStyle = col;
+      if (px < 10) ctx.fillRect(x + w * .25, y + h * .25, w * .5, h * .5);
+      else {
+        ctx.lineWidth = 1; ctx.strokeRect(x + .5, y + .5, w - 1, h - 1);
+        ctx.beginPath(); ctx.arc(x + w - 3.5, y + 3.5, 2.2, 0, 6.2832); ctx.fill();
+        if (px >= 22) { ctx.font = Math.round(px * .36) + "px sans-serif"; ctx.textAlign = "left"; ctx.textBaseline = "top"; ctx.fillText(BOMB_CV.typeIcon[t], x + 2, y + 1); }
+      }
+    }
+    if (sp[i] && px >= 10) { ctx.fillStyle = "#fff"; ctx.font = "700 " + Math.round(px * .45) + "px sans-serif"; ctx.textAlign = "right"; ctx.textBaseline = "bottom"; ctx.fillText("★", x + w - 1, y + h); }
+  }
+  // 第 4 步：選取框
+  const sel = st.selected;
+  if (sel != null && sel >= 0 && sel < B.N) {
+    const r = (sel / W) | 0, c = sel - r * W;
+    if (c >= c0 && c <= c1 && r >= r0 && r <= r1) {
+      const x = xs[c], y = ys[r], w = xs[c + 1] - x - gap, h = ys[r + 1] - y - gap;
+      ctx.lineWidth = 3; ctx.strokeStyle = "rgba(0,0,0,.65)"; ctx.strokeRect(x + 1, y + 1, w - 2, h - 2);
+      ctx.lineWidth = 2; ctx.strokeStyle = "#fff"; ctx.strokeRect(x + 1, y + 1, w - 2, h - 2);
+    }
+  }
+  // 第 5 步：剛翻開的格子閃一下（只閃最多 60 格、0.4 秒）
+  if (B.flash.size) {
+    const now = performance.now();
+    B.flash.forEach((v, i) => {
+      const age = now - v[0];
+      if (age > 420) { B.flash.delete(i); return; }
+      const r = (i / W) | 0, c = i - r * W;
+      if (c < c0 || c > c1 || r < r0 || r > r1) return;
+      const k = age / 420, e = (1 - k) * px * .3, x = xs[c], y = ys[r];
+      ctx.globalAlpha = (1 - k) * .85; ctx.fillStyle = v[1] ? "#ff6a5a" : "#ffffff";
+      ctx.fillRect(x - e, y - e, xs[c + 1] - x - gap + 2 * e, ys[r + 1] - y - gap + 2 * e);
+    });
+    ctx.globalAlpha = 1;
+    if (B.flash.size) bombCvInvalidate();
+  }
+}
+// 手指／滑鼠點在哪一格（回傳格子編號，點在地圖外回傳 -1）
+function bombCvHit(ev){
+  const B = BC; if (!B.cv || !ev || !B.cv.isConnected) return -1;
+  const rc = B.cv.getBoundingClientRect();
+  const gx = ev.clientX - rc.left + B.wrap.scrollLeft, gy = ev.clientY - rc.top + B.wrap.scrollTop;
+  if (gx < 0 || gy < 0) return -1;
+  const c = Math.floor(gx / B.px), r = Math.floor(gy / B.px);
+  if (c >= B.W || r >= B.H) return -1;
+  return r * B.W + c;
+}
+function bombCvHover(ev){   // 滑鼠移到格子上：顯示誰翻開的（觸控裝置用點選看詳情）
+  if (!ev || ev.pointerType !== "mouse" || !BC.cv) return;
+  const i = bombCvHit(ev); if (i === BC.hover) return; BC.hover = i;
+  const c = i >= 0 ? bombState.cells[i] : null;
+  BC.cv.title = c ? (c.revealed_by_name || "?") + (c.is_bomb ? " 💣" : typeof c.nearby_count === "number" ? dc("　周圍炸彈 ", "  nearby bombs ") + c.nearby_count : "") : "";
 }
 const bombState = {
   mapId: null, width: 0, height: 0, totalCells: 0, bombCount: 0,
@@ -745,9 +989,8 @@ async function bombFlagFlush(){
   }
 }
 function bombSyncFlagDom(idxs){
-  const grid = document.getElementById("bomb-grid");
-  if (!grid || !bombGridMatchesCurrentMap()) return;
-  idxs.forEach(i => { const el = bombCell(grid, i); if (el) el.classList.toggle("flag", !bombState.cells[i] && !!bombState.flags[i]); });
+  if (!bombGridMatchesCurrentMap()) return;
+  bombCvInvalidate();
   if (bombState.selected != null && idxs.indexOf(bombState.selected) >= 0) bombUpdateActionBar();
 }
 async function bombFlagPull(force){
@@ -784,27 +1027,12 @@ async function bombFlagPull(force){
 }
 // 一格畫成什麼樣：炸彈 💣；安全格顯示「周圍 8 格的炸彈數」（0 = 空白）；寶箱／護盾／連鎖格用底色區分；翻開的人用底部色條表示
 let bombPopStamp = 0, bombPopBudget = 0;
-function bombPopCell(el, isBomb){
-  if (BOMB_LITE || bombState.paintingBulk) return;
-  const now = Date.now();
-  if (now - bombPopStamp > 500) { bombPopStamp = now; bombPopBudget = (window.matchMedia && matchMedia("(pointer:coarse) and (min-width:700px)").matches) ? 12 : 60; }
-  if (bombPopBudget <= 0) return;
-  bombPopBudget--;
-  const cls = isBomb ? "just-bomb" : "just-safe";
-  if (el.classList.contains("just-safe") || el.classList.contains("just-bomb")) { el.classList.remove("just-safe", "just-bomb"); void el.offsetWidth; }
-  el.classList.add(cls);
-  setTimeout(() => el.classList.remove(cls), 800);
-}
 /* ---- 🧩 隱藏的神秘碎片：場上藏 3 個，翻開附近的格子會有顏色提示（格子底部的色條） ---- */
 function bombShardsActive(){ return (bombState.shardsTotal || 0) > (bombState.shardsFound || 0); }   // 還有碎片沒被找到才顯示提示
 function bombShardTier(d){ return d <= 2 ? 1 : d <= 4 ? 2 : 3; }
 function bombShardHintText(d){
   const tag = d <= 2 ? dc("🔥 超近", "🔥 Very close") : d <= 4 ? dc("🌡 不遠", "🌡 Getting warm") : dc("❄ 有點遠", "❄ Somewhere around");
   return dc(`🧩 ${tag}：最近的神秘碎片距離這格 ${d} 格（含斜角）`, `🧩 ${tag}: the nearest Mystery Shard is ${d} cell(s) away (diagonals count)`);
-}
-function bombPaintShardHint(el, c){
-  if (c.is_shard) { el.classList.add("shard-found"); el.title += "　🧩 " + dc("隱藏的神秘碎片！", "Hidden Mystery Shard!"); return; }
-  /* 距離提示小點已移除 */
 }
 /* ---- 🕊️ 隱藏的羽毛：場上藏 30 根（每根 100 羽毛），翻開附近的格子會有顏色提示（格子頂部的色條） ---- */
 function bombFeathersActive(){ return (bombState.feathersTotal || 0) > (bombState.feathersFound || 0); }
@@ -813,104 +1041,26 @@ function bombFeatherHintText(d){
   const tag = d <= 2 ? dc("🔥 超近", "🔥 Very close") : d <= 4 ? dc("🌡 不遠", "🌡 Getting warm") : dc("❄ 有點遠", "❄ Somewhere around");
   return dc(`🕊️ 附近有寶物！${tag}：最近的羽毛距離這格 ${d} 格（含斜角）`, `🕊️ Treasure nearby! ${tag}: the nearest Feather is ${d} cell(s) away (diagonals count)`);
 }
-function bombPaintFeatherHint(el, c){
-  if (c.is_feather) { el.classList.remove("shd1", "shd2", "shd3"); el.classList.add("feather-found"); el.title += "　🕊️ " + dc("隱藏的羽毛寶物！", "Hidden Feather treasure!"); return; }
-  /* 距離提示小點已移除 */
-}
-function bombPaintCell(el, c){
-  const sig = [c.is_bomb ? 1 : 0, c.cell_type || "", typeof c.nearby_count === "number" ? c.nearby_count : "", c.revealed_by_name || "", typeof c.shard_hint === "number" ? c.shard_hint : "", c.is_shard ? 1 : 0, bombShardsActive() ? 1 : 0, typeof c.feather_hint === "number" ? c.feather_hint : "", c.is_feather ? 1 : 0, bombFeathersActive() ? 1 : 0].join("|");
-  if (el.dataset.sig === sig) return;
-  el.dataset.sig = sig;
-  bombState._statsVer = (bombState._statsVer || 0) + 1;
-  const wasRevealed = el.classList.contains("revealed");
-["safe", "bomb", "num", "zero", "t-treasure", "t-shield", "t-chain", "bn1", "bn2", "bn3", "bn4", "bn5", "bn6", "bn7", "bn8", "flag", "hasw", "tint", "dim", "shd1", "shd2", "shd3", "shard-found", "fth1", "fth2", "fth3", "feather-found", "mine"].forEach(k => el.classList.remove(k));
-  el.style.removeProperty("--who"); el.style.removeProperty("--wt");
-  el.classList.add("revealed");
-  if (!wasRevealed) bombPopCell(el, !!c.is_bomb);
-  el.style.background = ""; el.style.boxShadow = "";
-  const by = c.revealed_by_name || "?", n = c.nearby_count;
-  if (c.is_bomb) { el.classList.add("bomb", "hasw"); el.style.setProperty("--who", bombFrameColor(by)); el.textContent = BOMB_LITE ? "✖" : "💣"; el.title = by; return; }
-  el.classList.add("safe");
-  if (bombIsMe(by)) el.classList.add("mine");   // 自己翻的格子：自己的專屬顏色加粗外框，一眼看出哪些是你的
-  if (typeof n === "number") {
-    el.classList.add("num");
-    if (n === 0) { el.classList.add("zero"); el.textContent = ""; } else { el.classList.add("bn" + n); el.textContent = String(n); }
-    if (c.cell_type === "treasure" || c.cell_type === "shield" || c.cell_type === "chain") el.classList.add("t-" + c.cell_type);
-    el.classList.add("hasw", "tint"); el.style.setProperty("--who", bombFrameColor(by)); el.style.setProperty("--wt", bombTintColor(by));   // 領地：外框＋底色＝翻開的人
-    el.title = `${by}${dc("　周圍炸彈 ", "  nearby bombs ")}${n}${c.cell_type === "treasure" ? " 💰" : c.cell_type === "shield" ? " 🛡" : c.cell_type === "chain" ? " ⚡" : ""}`;
-  } else {   // 舊伺服器（還沒有數字欄位）：維持原本的畫法
-    el.classList.add("hasw", "tint", "zero"); el.style.setProperty("--who", bombFrameColor(by)); el.style.setProperty("--wt", bombTintColor(by));   // 還沒拿到數字：只畫領地底色，不顯示玩家名字
-    el.textContent = "";
-    if (c.cell_type === "treasure" || c.cell_type === "shield" || c.cell_type === "chain") el.classList.add("t-" + c.cell_type);
-    el.title = by;
-    bombQueueNumberRetry(c.cell_index);
-  }
-  bombPaintShardHint(el, c);
-  bombPaintFeatherHint(el, c);
-}
 function bombApplyCellDom(cellData){
-  const grid = document.getElementById("bomb-grid");
-  if (!grid) return;
-  let el = bombCell(grid, +cellData.cell_index);
-  if (!el || String(el.dataset.cell) !== String(cellData.cell_index)) el = grid.querySelector(`.bomb-cell[data-cell="${cellData.cell_index}"]`);
-  if (el) { bombPaintCell(el, cellData); bombPostPaint(+cellData.cell_index, true); }
+  if (!BC.own || !bombGridMatchesCurrentMap()) return;
+  const idx = +cellData.cell_index;
+  if (!(idx >= 0 && idx < BC.N)) return;
+  const r = bombCvSetCell(idx, cellData);
+  if (!r) return;
+  if (r === 1) bombCvFlash(idx, !!cellData.is_bomb);
+  bombRefreshLegend(false);
+  bombCvInvalidate();
 }
 let bombPaintToken = 0;
 function bombPaintAll(){
-  const grid = document.getElementById("bomb-grid");
-  if (!grid) return;
-  const keys = Object.keys(bombState.cells), tok = ++bombPaintToken, CH = BOMB_LITE ? 200 : 500;
-  const finish = () => { bombState.paintingBulk = false; bombApplySpotAll(); bombRefreshLegend(true); };
-  bombState.paintingBulk = true;
-  if (keys.length <= CH) {
-    try { keys.forEach(k => { const el = bombCell(grid, +k); if (el) { bombPaintCell(el, bombState.cells[k]); bombPaintEdge(+k); } }); }
-    finally { finish(); }
-    return;
-  }
-  // 已翻開的格子很多（幾千格）：分批上色，每一幀只畫一小批，畫面不會整個卡住或黑屏
-  let i = 0;
-  const step = () => {
-    if (tok !== bombPaintToken || !grid.isConnected) { if (tok === bombPaintToken) bombState.paintingBulk = false; return; }
-    try {
-      const end = Math.min(keys.length, i + CH);
-      for (; i < end; i++) { const k = keys[i], el = bombCell(grid, +k); if (el) { bombPaintCell(el, bombState.cells[k]); bombPaintEdge(+k); } }
-    } catch (err) { i = keys.length; }
-    if (i < keys.length) requestAnimationFrame(step); else finish();
-  };
-  requestAnimationFrame(step);
+  if (!BC.own || !bombGridMatchesCurrentMap()) return;
+  const cells = bombState.cells;
+  BC.bulk = true;
+  try { for (const k in cells) { const i = +k; if (i >= 0 && i < BC.N) bombCvSetCell(i, cells[k]); } }
+  finally { BC.bulk = false; }
+  bombApplySpotAll(); bombRefreshLegend(true); bombCvInvalidate();
 }
 /* ===== 領地視覺：同一個人的格子連成一片（只畫邊界）、玩家名單、只看某人的領地 ===== */
-function bombPaintEdge(idx){
-  if (BOMB_LITE) return;   // 簡化：不再逐格畫領地邊框（5625 格 × 4 條內陰影太吃效能），改用實色底分辨
-  const st = bombState, c = st.cells[idx], grid = document.getElementById("bomb-grid");
-  if (!grid || !c || c.is_bomb || !st.width) return;
-  const el = bombCell(grid, idx);
-  if (!el || !el.classList.contains("hasw")) return;
-  const W = st.width, by = c.revealed_by_name || "?", x = idx % W;
-  const same = (j, ok) => { if (!ok) return false; const o = st.cells[j]; return !!o && !o.is_bomb && (o.revealed_by_name || "?") === by; };
-  const t = same(idx - W, idx >= W), b = same(idx + W, idx + W < st.totalCells), l = same(idx - 1, x > 0), r = same(idx + 1, x < W - 1);
-  const fw = "var(--fw,2px)", sh = ["inset 0 0 0 1px rgba(0,0,0,.28)"];
-  if (!t) sh.push(`inset 0 ${fw} 0 0 var(--who)`);
-  if (!b) sh.push(`inset 0 calc(${fw} * -1) 0 0 var(--who)`);
-  if (!l) sh.push(`inset ${fw} 0 0 0 var(--who)`);
-  if (!r) sh.push(`inset calc(${fw} * -1) 0 0 0 var(--who)`);
-  el.style.boxShadow = sh.join(",");
-}
-function bombPostPaint(idx, withNeighbors){
-  const st = bombState;
-  if (!st.width || Number.isNaN(idx)) return;
-  bombPaintEdge(idx);
-  if (withNeighbors) {
-    const W = st.width, x = idx % W;
-    if (idx >= W) bombPaintEdge(idx - W);
-    if (idx + W < st.totalCells) bombPaintEdge(idx + W);
-    if (x > 0) bombPaintEdge(idx - 1);
-    if (x < W - 1) bombPaintEdge(idx + 1);
-    const grid = document.getElementById("bomb-grid"), c = st.cells[idx];
-    if (st.spot && grid && c && bombCell(grid, idx)) bombCell(grid, idx).classList.toggle("dim", (c.revealed_by_name || "?") !== st.spot);
-    bombRefreshLegend(false);
-  }
-}
 function bombOwnerStats(){
   const C = bombState._ownerCache, ver = bombState._statsVer || 0;
   if (C && C.cells === bombState.cells && C.ver === ver) return C.res;
@@ -939,11 +1089,9 @@ function bombRefreshLegend(now){
   if (!bombLegendTimer) bombLegendTimer = setTimeout(run, 400);
 }
 function bombApplySpotAll(){
-  const st = bombState, grid = document.getElementById("bomb-grid");
-  if (!grid) return;
+  const st = bombState;
   if (st.spot && !Object.keys(st.cells).some(k => (st.cells[k].revealed_by_name || "?") === st.spot)) st.spot = null;   // 換新地圖後這個人沒有領地了
-  grid.classList.toggle("spot-on", !!st.spot);
-  Object.keys(st.cells).forEach(k => { const el = bombCell(grid, +k); if (el) el.classList.toggle("dim", !!st.spot && (st.cells[k].revealed_by_name || "?") !== st.spot); });
+  bombCvInvalidate();
 }
 function bombSetSpot(name){
   bombState.spot = (!name || bombState.spot === name) ? null : name;
@@ -1316,8 +1464,6 @@ function bombBuildHtml(){
   if (bombState.flagsFor !== st.mapId) { bombLoadFlags(); bombState.flagsFor = st.mapId; }
   const px = bombState.cellPx || 16;
   const gridStyle = `--bw:${st.width};--bc:${px}px;--fw:${bombFrameWidth(px)}px;`;
-  let cellsHtml = "";
-  for (let idx = 0; idx < st.totalCells; idx++) cellsHtml += `<div class="bomb-cell${!st.cells[idx] && st.flags[idx] ? " flag" : ""}${st.selected === idx ? " sel" : ""}" data-cell="${idx}"></div>`;   // 翻開的格子在畫面建好後統一上色（bombPaintAll）
 
   const lbRows = bombLeaderboardRowsHtml();
 
@@ -1387,7 +1533,7 @@ function bombBuildHtml(){
       <div id="bomb-banner">${banner}</div>
       ${bombToolbarHtml()}
       <div class="bomb-action-bar" id="bomb-action-bar">${bombActionBarHtml()}</div>
-      <div id="bomb-owner-legend" class="bomb-owner-legend">${bombLegendInner()}</div><div class="bomb-grid-wrap"><div class="bomb-grid${px >= 22 ? " z-big" : ""}" id="bomb-grid" data-map-id="${st.mapId}" style="${gridStyle}">${cellsHtml}</div></div>
+      <div id="bomb-owner-legend" class="bomb-owner-legend">${bombLegendInner()}</div><div class="bomb-grid-wrap"><div class="bomb-cvgrid" id="bomb-grid" data-map-id="${st.mapId}" style="width:${Math.round(st.width * px)}px;height:${Math.round(st.height * px)}px;"><canvas id="bomb-cv" aria-label="${dc("數字炸彈地圖", "Bomb map")}"></canvas></div></div>
     </div>
     <div class="panel">
       <h3>🏆 ${dc("本輪排行榜", "This Round's Leaderboard")}</h3>
@@ -1437,16 +1583,17 @@ async function bombLoadZones(){
   if (Array.isArray(arr) && arr.length === n) { st.zones = arr; st.zonesKey = key; bombApplyZones(); bombRefreshZoneUi(); }
 }
 function bombApplyZones(){
-  const grid = document.getElementById("bomb-grid"), z = bombState.zones;
-  if (!grid || !z) return;
-  const zn = Math.min(z.length, grid.children.length);
-  for (let i = 0; i < zn; i++) {
-    const el = bombCell(grid, i), cls = bombZoneClass(z[i]);
-    if (el.dataset.z !== cls) { if (el.dataset.z) el.classList.remove(el.dataset.z); el.classList.add(cls); el.dataset.z = cls; }
-  }
+  const B = BC, z = bombState.zones;
+  if (!B.cv || !B.own || !bombGridMatchesCurrentMap()) return;
   const mode = bombZoneMode();
-  grid.classList.toggle("zones-on", !!bombState.zonesOn && mode !== "none");
-  grid.classList.toggle("zr", mode === "reward");
+  B.zr = mode === "reward";
+  B.zoneOn = !!(z && bombState.zonesOn && mode !== "none");
+  if (z && B.zcSrc !== z) {
+    const n = Math.min(z.length, B.N);
+    for (let i = 0; i < n; i++) { const p = z[i]; B.zc[i] = p >= 66 ? 1 : p >= 33 ? 2 : 3; }   // 1 外圈 2 中圈 3 核心
+    B.zcSrc = z;
+  }
+  bombCvInvalidate();
 }
 function bombZoneLegendHtml(){
   const st = bombState;
@@ -1489,11 +1636,9 @@ function bombActionBarHtml(){
 }
 function bombUpdateActionBar(){ const el = document.getElementById("bomb-action-bar"); if (el) el.innerHTML = bombActionBarHtml(); }
 function bombSetSelected(idx){
-  const grid = document.getElementById("bomb-grid");
-  if (grid && bombState.selected != null && bombCell(grid, bombState.selected)) bombCell(grid, bombState.selected).classList.remove("sel");
   bombState.selected = idx;
   bombState.selHidden = idx != null && !bombState.cells[idx];
-  if (grid && idx != null && grid.children[idx]) grid.children[idx].classList.add("sel");
+  bombCvInvalidate();
   bombUpdateActionBar();
 }
 function bombToggleFlag(idx){
@@ -1501,8 +1646,7 @@ function bombToggleFlag(idx){
   if (bombState.flags[idx]) delete bombState.flags[idx]; else bombState.flags[idx] = 1;
   bombSaveFlags();
   bombFlagQueue(idx, !!bombState.flags[idx]);   // 同步到伺服器（手機標的電腦也看得到）
-  const grid = document.getElementById("bomb-grid");
-  if (grid && bombCell(grid, idx)) bombCell(grid, idx).classList.toggle("flag", !!bombState.flags[idx]);
+  bombCvInvalidate();
   if (bombState.selected === idx) bombUpdateActionBar();
   try { navigator.vibrate && navigator.vibrate(15); } catch (e) {}
 }
@@ -1514,10 +1658,10 @@ function bombConfirmExplore(){
   bombDoStep(idx);
 }
 // 縮放：以指定的點（手指中心）為基準，縮放後那個點仍停在原處
-function bombZoomAnchor(oldPx, newPx, scroll, focal){ return ((scroll + focal) / (oldPx + 1)) * (newPx + 1) - focal; }
+function bombZoomAnchor(oldPx, newPx, scroll, focal){ return ((scroll + focal) / oldPx) * newPx - focal; }
 function bombApplyZoom(px, fx, fy){
   px = Math.max(6, Math.min(48, Math.round(px * 10) / 10));
-  const old = bombState.cellPx || 16, wrap = document.querySelector(".bomb-grid-wrap"), grid = document.getElementById("bomb-grid");
+  const old = bombState.cellPx || 16, wrap = document.querySelector(".bomb-grid-wrap");
   let sl = 0, stp = 0;
   if (wrap) {
     const rect = wrap.getBoundingClientRect ? wrap.getBoundingClientRect() : { left: 0, top: 0 };
@@ -1525,13 +1669,15 @@ function bombApplyZoom(px, fx, fy){
     sl = bombZoomAnchor(old, px, wrap.scrollLeft, ox); stp = bombZoomAnchor(old, px, wrap.scrollTop, oy);
   }
   bombState.cellPx = px; bombLsSet("bomb-cellpx", String(Math.round(px)));
-  if (grid) { grid.style.setProperty("--bc", px + "px"); grid.style.setProperty("--fw", bombFrameWidth(px) + "px"); grid.classList.toggle("z-big", px >= 22); }
+  BC.px = px;
+  bombCvResize();   // 先把地圖區域改成新大小，才能設定捲動位置
   if (wrap) { wrap.scrollLeft = Math.max(0, sl); wrap.scrollTop = Math.max(0, stp); }
+  bombCvDraw();
   const lab = document.getElementById("bomb-zoom-label"); if (lab) lab.textContent = Math.round(px) + "px";
 }
 function bombScrollToCell(idx){
   const wrap = document.querySelector(".bomb-grid-wrap"); if (!wrap || !bombState.width) return;
-  const pitch = (bombState.cellPx || 16) + 1, x = (idx % bombState.width) * pitch, y = Math.floor(idx / bombState.width) * pitch;
+  const pitch = (bombState.cellPx || 16), x = (idx % bombState.width) * pitch, y = Math.floor(idx / bombState.width) * pitch;
   wrap.scrollLeft = Math.max(0, x - wrap.clientWidth / 2 + pitch / 2); wrap.scrollTop = Math.max(0, y - wrap.clientHeight / 2 + pitch / 2);
 }
 function bombMyLastCell(){
@@ -1542,6 +1688,7 @@ function bombMyLastCell(){
 function bombWireGrid(){
   const grid = document.getElementById("bomb-grid"), wrap = document.querySelector(".bomb-grid-wrap");
   if (!grid) return;
+  bombCvInit(grid, wrap);   // 地圖改用 Canvas 畫：先建立畫布，最後再 bombPaintAll() 上色
   let lpTimer = null, lpStart = null;
   const stopLp = () => { if (lpTimer) { clearTimeout(lpTimer); lpTimer = null; } };
   // 長按／右鍵標記：同一次按壓只會切換一次標記。
@@ -1555,28 +1702,24 @@ function bombWireGrid(){
   };
   grid.onpointerdown = ev => {
     bombState.suppressClick = false; bombState.pressId++;
-    const cell = ev.target.closest && ev.target.closest(".bomb-cell");
-    if (!cell || cell.classList.contains("revealed")) return;
+    const idx = bombCvHit(ev);
+    if (idx < 0 || bombState.cells[idx]) return;
     if (ev.pointerType === "mouse" && ev.button !== 0) return;   // 滑鼠右鍵交給 contextmenu
     lpStart = { x: ev.clientX || 0, y: ev.clientY || 0 }; stopLp();
-    const idx = parseInt(cell.dataset.cell, 10);
     lpTimer = setTimeout(() => { lpTimer = null; flagOncePerPress(idx); }, 450);   // 長按＝標記／取消標記
   };
-  grid.onpointermove = ev => { if (lpTimer && lpStart && Math.hypot((ev.clientX || 0) - lpStart.x, (ev.clientY || 0) - lpStart.y) > 10) stopLp(); };   // 手指在滑動（捲動地圖）就不算長按
+  grid.onpointermove = ev => { bombCvHover(ev); if (lpTimer && lpStart && Math.hypot((ev.clientX || 0) - lpStart.x, (ev.clientY || 0) - lpStart.y) > 10) stopLp(); };   // 手指在滑動（捲動地圖）就不算長按
   grid.onpointerup = stopLp; grid.onpointercancel = stopLp; grid.onpointerleave = stopLp;
   grid.oncontextmenu = ev => {
-    const cell = ev.target.closest && ev.target.closest(".bomb-cell");
-    if (!cell) return;
     ev.preventDefault();   // 擋掉手機長按的系統選單
-    if (!cell.classList.contains("revealed")) flagOncePerPress(parseInt(cell.dataset.cell, 10));
+    const i = bombCvHit(ev);
+    if (i >= 0 && !bombState.cells[i]) flagOncePerPress(i);
   };
   grid.onclick = ev => {
     if (bombState.suppressClick) { bombState.suppressClick = false; return; }
-    const cell = ev.target.closest && ev.target.closest(".bomb-cell");
-    if (!cell) return;
-    const idx = parseInt(cell.dataset.cell, 10);
-    if (Number.isNaN(idx)) return;
-    if (cell.classList.contains("revealed")) { bombSetSelected(bombState.selected === idx ? null : idx); return; }   // 點已翻開的格子＝看詳情
+    const idx = bombCvHit(ev);
+    if (idx < 0) return;
+    if (bombState.cells[idx]) { bombSetSelected(bombState.selected === idx ? null : idx); return; }   // 點已翻開的格子＝看詳情
     if (bombState.flagMode) { bombToggleFlag(idx); return; }   // 標記模式：點一下＝標記／取消標記（手機最穩的方式）
     if (bombState.quick) {
       if (bombState.flags[idx]) { ac(dc("這格標記了炸彈（長按，或開「標記模式」點一下可取消標記）", "This cell is flagged (long-press, or turn on Flag mode and tap, to remove the flag)")); return; }
@@ -1589,7 +1732,7 @@ function bombWireGrid(){
     const dist = t => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
     wrap.addEventListener("touchstart", ev => { if (ev.touches && ev.touches.length === 2) { stopLp(); pinch = { d: dist(ev.touches), px: bombState.cellPx || 16 }; } }, { passive: true });
     let zoomRaf = 0, zoomArgs = null;
-    wrap.addEventListener("touchmove", ev => { if (pinch && ev.touches && ev.touches.length === 2) { ev.preventDefault(); const t = ev.touches; zoomArgs = [pinch.px * dist(t) / pinch.d, (t[0].clientX + t[1].clientX) / 2, (t[0].clientY + t[1].clientY) / 2]; if (!zoomRaf) zoomRaf = (BOMB_LITE ? (fn => setTimeout(fn, 90)) : requestAnimationFrame)(() => { zoomRaf = 0; if (zoomArgs) { const a = zoomArgs; zoomArgs = null; bombApplyZoom(a[0], a[1], a[2]); } }); } }, { passive: false });
+    wrap.addEventListener("touchmove", ev => { if (pinch && ev.touches && ev.touches.length === 2) { ev.preventDefault(); const t = ev.touches; zoomArgs = [pinch.px * dist(t) / pinch.d, (t[0].clientX + t[1].clientX) / 2, (t[0].clientY + t[1].clientY) / 2]; if (!zoomRaf) zoomRaf = requestAnimationFrame(() => { zoomRaf = 0; if (zoomArgs) { const a = zoomArgs; zoomArgs = null; bombApplyZoom(a[0], a[1], a[2]); } }); } }, { passive: false });
     wrap.addEventListener("touchend", ev => { if (!ev.touches || ev.touches.length < 2) { pinch = null; if (zoomArgs) { const a = zoomArgs; zoomArgs = null; bombApplyZoom(a[0], a[1], a[2]); } } }, { passive: true });
   }
   const bar = document.getElementById("bomb-action-bar");
@@ -1604,7 +1747,7 @@ function bombWireGrid(){
   const $ = id => document.getElementById(id);
   if ($("bomb-zoom-in")) $("bomb-zoom-in").onclick = () => bombApplyZoom((bombState.cellPx || 16) * 1.25);
   if ($("bomb-zoom-out")) $("bomb-zoom-out").onclick = () => bombApplyZoom((bombState.cellPx || 16) / 1.25);
-  if ($("bomb-zoom-fit")) $("bomb-zoom-fit").onclick = () => { if (wrap && bombState.width) bombApplyZoom((wrap.clientWidth - 4) / bombState.width - 1); };
+  if ($("bomb-zoom-fit")) $("bomb-zoom-fit").onclick = () => { if (wrap && bombState.width) bombApplyZoom((wrap.clientWidth - 4) / bombState.width); };
   if ($("bomb-jump-me")) $("bomb-jump-me").onclick = () => { const i = bombMyLastCell(); bombScrollToCell(i != null ? i : Math.floor(bombState.totalCells / 2)); if (i == null) ac(dc("你在這張地圖還沒有翻過格子，先帶你到地圖中心", "You have not revealed anything on this map yet — showing the centre")); };
   if ($("bomb-jump-center")) $("bomb-jump-center").onclick = () => bombScrollToCell(Math.floor(bombState.height / 2) * bombState.width + Math.floor(bombState.width / 2));
   if ($("bomb-flag-toggle")) $("bomb-flag-toggle").onchange = ev => { bombState.flagMode = !!ev.target.checked; bombSetSelected(null); };
