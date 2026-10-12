@@ -513,7 +513,7 @@ const bombState = {
 };
 let bombActionBusy = false;
 const BOMB_DEATH_COOLDOWN_DEFAULT_SEC = 30;
-const BOMB_RANK1_SHARDS = 1;   // 一輪結束時，金幣第一名拿到的神秘碎片數量
+const BOMB_RANK1_SHARDS = 5;   // 一輪結束時，金幣第一名拿到的神秘碎片數量
 
 async function bombFetch(path, opts){
   opts = opts || {};
@@ -633,9 +633,17 @@ function bombRoundKey(){
 }
 function bombSettledKey(roundKey){ return `config:bomb_round_settle:${roundKey}`; }
 async function bombTryClaimSettlement(roundKey){
-  let claimed = false;
-  await Vl(bombSettledKey(roundKey), v => v ? v : (claimed = true, JSON.stringify({ settledAt: Date.now() })), "");
-  return claimed;
+  // 原子搶結算權：只「新增」、不覆蓋。key 已存在時伺服器回空陣列 → 這個人沒搶到。
+  // （舊寫法用 Vl：key 還不存在時它是無條件 upsert，同時結算的兩個人都會以為自己搶到 → 碎片發兩次）
+  const res = await fetch(`${BOMB_URL}/rest/v1/kv_store`, {
+    method: "POST",
+    headers: { ...BOMB_HEADERS, "Content-Type": "application/json", Prefer: "resolution=ignore-duplicates,return=representation" },
+    body: JSON.stringify({ key: bombSettledKey(roundKey), value: JSON.stringify({ settledAt: Date.now() }), updated_at: new Date().toISOString() }),
+    cache: "no-store"
+  });
+  if (!res.ok) throw new Error("bomb claim failed: " + res.status);
+  const rows = await res.json();
+  return Array.isArray(rows) && rows.length > 0;
 }
 function bombPickTitleWinner(list, field){
   const eligible = (list || []).filter(e => (e[field] || 0) > 0);
@@ -645,12 +653,27 @@ function bombPickTitleWinner(list, field){
   return winners[Math.floor(Math.random() * winners.length)].display_name;
 }
 /* ---- 🧩 神秘碎片發放 ---- */
-async function bombGrantShard(nick, qty, source){
+// onceKey（選填）：同一個 key 在玩家存檔裡只會發一次（冪等性記在玩家自己的存檔，跟擂臺賽 tourneyPaid 同一套做法）
+async function bombGrantShard(nick, qty, source, onceKey){
   qty = Math.floor(Number(qty) || 0);
   if (!nick || qty <= 0) return false;
-  const upd = await Wl(nick, p => { p.materials = p.materials || {}; p.materials.mysteryShard = (p.materials.mysteryShard || 0) + qty; });
+  let granted = false;
+  const upd = await Wl(nick, p => {
+    granted = false;   // Wl 撞版本重試時要歸零
+    p.materials = p.materials || {};
+    if (onceKey) {
+      if (!p.bombPaid || typeof p.bombPaid !== "object") p.bombPaid = {};
+      if (p.bombPaid[onceKey]) return;   // 這一輪已經發過了
+      p.bombPaid[onceKey] = Date.now();
+      const ks = Object.keys(p.bombPaid).sort((a, b) => p.bombPaid[a] - p.bombPaid[b]);
+      while (ks.length > 20) delete p.bombPaid[ks.shift()];   // 只留最近 20 筆
+    }
+    p.materials.mysteryShard = (p.materials.mysteryShard || 0) + qty;
+    granted = true;
+  });
   if (!upd) return false;
   if (zl.nickname && String(nick).toLowerCase() === zl.nickname.toLowerCase()) zl.player = upd;
+  if (!granted) return false;
   try { await shardNotify(nick, qty, source); } catch (e) {}
   return true;
 }
@@ -700,7 +723,7 @@ async function bombSettleRound(roundKey){
     const victim = bombPickTitleWinner(byDeaths, "death_count_this_round");
     if (explorer) {
       await setTitleHolder("bombExplorer", explorer);
-      try { await bombGrantShard(explorer, BOMB_RANK1_SHARDS, "bomb_rank1"); } catch (e) { /* 發碎片失敗不擋結算 */ }   // 一輪結束：金幣第一名 +1 神秘碎片
+      try { await bombGrantShard(explorer, BOMB_RANK1_SHARDS, "bomb_rank1", "bomb_rank1:" + roundKey); } catch (e) { /* 發碎片失敗不擋結算 */ }   // 一輪結束：金幣第一名 +5 神秘碎片
     }
     if (victim) await setTitleHolder("bombVictim", victim);
     return { explorer, victim };
@@ -1508,7 +1531,7 @@ function bombBuildHtml(){
       <p class="sub" style="font-size:12px;">${dc("🔢 翻開的格子會顯示「周圍 8 格有幾顆炸彈」（已炸開的💣也算；空白＝周圍沒有炸彈）。全服玩家的數字合在一起，就能推理出哪些格子是安全的！格子外框的顏色＝翻開的人（點格子看名字；排行榜頭像旁邊的光圈是同一個顏色）。", "🔢 Every revealed cell shows how many bombs touch it (8 neighbours; exploded 💣 count; blank = none). Put everybody's numbers together and you can work out which cells are safe! The colour of a cell frame shows who opened it (tap a cell for the name; the glow around a leaderboard avatar is the same colour).")}</p>
       <p class="sub" style="font-size:11px;">${dc("💰寶箱格（金色底）獎勵大爆發｜🛡護盾格（藍色底）可累積、下次踩雷免死一次｜⚡連鎖格（黃色底）自動開周圍格子（連到雷不算死亡）", "💰Treasure cells (gold) pay big｜🛡Shield cells (blue) stack and block your next bomb death｜⚡Chain cells (yellow) auto-reveal neighbours")}${bombZoneNote()}</p>
       <p class="sub" style="font-size:11px;">${dc("🗺 領地：同一個人翻開的格子會連成一片同色底，只在跟別人交界的地方畫邊線；你自己永遠是金色。點地圖上方的名字（或排行榜、點開格子的「只看 Ta 的領地」）可以只亮出某個人的領地，其他人的格子會變暗。", "🗺 Territory: cells opened by the same player merge into one tinted area, with outlines only where it meets someone else. You are always gold. Tap a name above the map (or in the leaderboard, or \"show only their land\" on a cell) to spotlight one player — everyone else dims.")}</p>
-      <p class="sub" style="font-size:11px;">${dc("🧩 每張地圖的安全格裡藏著 3 個神秘碎片（找到的人直接拿走）。翻開格子時，如果附近（6 格內，含斜角）還有沒被找到的碎片，格子底部會出現色條：🔴 2 格內｜🟠 3～4 格內｜🔵 5～6 格內（點格子看確切距離）。全服一起交叉比對，就能把碎片圈出來！另外，一輪結束時金幣第一名可獲得 1 個神秘碎片。", "🧩 Each map hides 3 Mystery Shards inside safe cells — whoever opens one keeps it. When you reveal a cell with an unfound shard nearby (within 6 cells, diagonals count) a colour bar appears at its bottom: 🔴 within 2｜🟠 3–4｜🔵 5–6 (tap the cell for the exact distance). Compare notes server-wide to pin them down! Also, when a round ends the #1 coin earner gets 1 Mystery Shard.")}</p>
+      <p class="sub" style="font-size:11px;">${dc("🧩 每張地圖的安全格裡藏著 3 個神秘碎片（找到的人直接拿走）。翻開格子時，如果附近（6 格內，含斜角）還有沒被找到的碎片，格子底部會出現色條：🔴 2 格內｜🟠 3～4 格內｜🔵 5～6 格內（點格子看確切距離）。全服一起交叉比對，就能把碎片圈出來！另外，一輪結束時金幣第一名可獲得 5 個神秘碎片。", "🧩 Each map hides 3 Mystery Shards inside safe cells — whoever opens one keeps it. When you reveal a cell with an unfound shard nearby (within 6 cells, diagonals count) a colour bar appears at its bottom: 🔴 within 2｜🟠 3–4｜🔵 5–6 (tap the cell for the exact distance). Compare notes server-wide to pin them down! Also, when a round ends the #1 coin earner gets 5 Mystery Shards.")}</p>
       <p class="sub" style="font-size:11px;">${dc("🌅 每天換日時，前一天沒清完的地圖會自動換成全新地圖（連勝與死亡次數一併重置）。", "🌅 At each daily rollover, an unfinished map from the previous day is automatically replaced with a brand-new one (streak and death count reset too).")}</p>
       <p class="sub" style="font-size:11px;">${dc("👆 點格子選取，按「探索」才會扣牌；長按（電腦按右鍵）標記地雷 🚩，手機也可以開「標記模式」＝點一下就標記；用 ＋／－ 或雙指縮放地圖；「快速模式」＝點一下就探索", "👆 Tap a cell to select it — the card is only spent when you press Explore. Long-press (right-click on desktop) flags a bomb 🚩 — on phones you can also turn on Flag mode so one tap flags. Zoom with ＋／－ or two fingers. Quick mode = one tap explores.")}</p>
       </details>
