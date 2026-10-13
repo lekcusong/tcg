@@ -255,7 +255,7 @@ async function listAllValuesPaginated(prefix){
   }
   return allRows
 }
-const o="1.7.0";function s(e){return String(e||"0").split(".").map(e=>parseInt(e,10)||0)}function r(e,t){const n=s(e),a=s(t),i=Math.max(n.length,a.length);for(let e=0;e<i;e++){const t=n[e]||0,i=a[e]||0;if(t!==i)return t<i?-1:1}return 0}async function l(){try{const e=await a.get("config:min_app_version");return e?JSON.parse(e.value):null}catch(e){return null}}let c=!1;const d=[{key:"wands",label:"Wands",icon:"🔥"},{key:"cups",label:"Cups",icon:"💧"},{key:"swords",label:"Swords",icon:"⚔"},{key:"pentacles",label:"Pentacles",icon:"✦"}],u=["Ace","2","3","4","5","6","7","8","9","10","Page","Knight","Queen","King"],m={wands_0:"https://lekcusong.github.io/tcg/assets/wands_0.jpg",wands_1:"https://lekcusong.github.io/tcg/assets/wands_1.jpg",wands_2:"https://lekcusong.github.io/tcg/assets/wands_2.jpg",wands_3:"https://lekcusong.github.io/tcg/assets/wands_3.jpg",wands_4:"https://lekcusong.github.io/tcg/assets/wands_4.jpg",wands_5:"https://lekcusong.github.io/tcg/assets/wands_5.jpg",wands_6:"https://lekcusong.github.io/tcg/assets/wands_6.jpg",wands_7:"https://lekcusong.github.io/tcg/assets/wands_7.jpg",wands_8:"https://lekcusong.github.io/tcg/assets/wands_8.jpg",wands_9:"https://lekcusong.github.io/tcg/assets/wands_9.jpg",wands_10:"https://lekcusong.github.io/tcg/assets/wands_10.jpg",wands_11:"https://lekcusong.github.io/tcg/assets/wands_11.jpg",wands_12:"https://lekcusong.github.io/tcg/assets/wands_12.jpg",wands_13:"https://lekcusong.github.io/tcg/assets/wands_13.jpg",cups_0:"https://lekcusong.github.io/tcg/assets/cups_0.jpg",cups_1:"https://lekcusong.github.io/tcg/assets/cups_1.jpg",cups_2:"https://lekcusong.github.io/tcg/assets/cups_2.jpg",cups_3:"https://lekcusong.github.io/tcg/assets/cups_3.jpg",cups_4:"https://lekcusong.github.io/tcg/assets/cups_4.jpg",cups_5:"https://lekcusong.github.io/tcg/assets/cups_5.jpg",cups_6:"https://lekcusong.github.io/tcg/assets/cups_6.jpg",cups_7:"https://lekcusong.github.io/tcg/assets/cups_7.jpg",cups_8:"https://lekcusong.github.io/tcg/assets/cups_8.jpg",cups_9:"https://lekcusong.github.io/tcg/assets/cups_9.jpg",cups_10:"https://lekcusong.github.io/tcg/assets/cups_10.jpg",cups_11:"https://lekcusong.github.io/tcg/assets/cups_11.jpg",cups_12:"https://lekcusong.github.io/tcg/assets/cups_12.jpg",cups_13:"https://lekcusong.github.io/tcg/assets/cups_13.jpg",swords_0:"https://lekcusong.github.io/tcg/assets/swords_0.jpg",swords_1:"https://lekcusong.github.io/tcg/assets/swords_1.jpg",swords_2:"https://lekcusong.github.io/tcg/assets/swords_2.jpg",swords_3:"https://lekcusong.github.io/tcg/assets/swords_3.jpg",swords_4:"https://lekcusong.github.io/tcg/assets/swords_4.jpg",swords_5:"https://lekcusong.github.io/tcg/assets/swords_5.jpg",swords_6:"https://lekcusong.github.io/tcg/assets/swords_6.jpg",swords_7:"https://lekcusong.github.io/tcg/assets/swords_7.jpg",swords_8:"https://lekcusong.github.io/tcg/assets/swords_8.jpg",swords_9:"https://lekcusong.github.io/tcg/assets/swords_9.jpg",swords_10:"https://lekcusong.github.io/tcg/assets/swords_10.jpg",swords_11:"https://lekcusong.github.io/tcg/assets/swords_11.jpg",swords_12:"https://lekcusong.github.io/tcg/assets/swords_12.jpg",swords_13:"https://lekcusong.github.io/tcg/assets/swords_13.jpg",pentacles_0:"https://lekcusong.github.io/tcg/assets/pentacles_0.jpg",pentacles_1:"https://lekcusong.github.io/tcg/assets/pentacles_1.jpg",pentacles_2:"https://lekcusong.github.io/tcg/assets/pentacles_2.jpg",pentacles_3:"https://lekcusong.github.io/tcg/assets/pentacles_3.jpg",pentacles_4:"https://lekcusong.github.io/tcg/assets/pentacles_4.jpg",pentacles_5:"https://lekcusong.github.io/tcg/assets/pentacles_5.jpg",pentacles_6:"https://lekcusong.github.io/tcg/assets/pentacles_6.jpg",pentacles_7:"https://lekcusong.github.io/tcg/assets/pentacles_7.jpg",pentacles_8:"https://lekcusong.github.io/tcg/assets/pentacles_8.jpg",pentacles_9:"https://lekcusong.github.io/tcg/assets/pentacles_9.jpg",pentacles_10:"https://lekcusong.github.io/tcg/assets/pentacles_10.jpg",pentacles_11:"https://lekcusong.github.io/tcg/assets/pentacles_11.jpg",pentacles_12:"https://lekcusong.github.io/tcg/assets/pentacles_12.jpg",pentacles_13:"https://lekcusong.github.io/tcg/assets/pentacles_13.jpg"},p=[{name:"The Fool",icon:"🃏",rarity:"rare",image:"https://lekcusong.github.io/tcg/assets/major-the-fool.jpg"},{name:"The Magician",icon:"✨",rarity:"rare",image:"https://lekcusong.github.io/tcg/assets/major-the-magician.jpg"},{name:"The High Priestess",icon:"🔮",rarity:"rare",image:"https://lekcusong.github.io/tcg/assets/major-the-high-priestess.jpg"},{name:"The Empress",icon:"🌾",rarity:"rare",image:"https://lekcusong.github.io/tcg/assets/major-the-empress.jpg"},{name:"The Emperor",icon:"👑",rarity:"rare",image:"https://lekcusong.github.io/tcg/assets/major-the-emperor.jpg"},{name:"The Hierophant",icon:"🕊",rarity:"rare",image:"https://lekcusong.github.io/tcg/assets/major-the-hierophant.jpg"},{name:"The Lovers",icon:"💞",rarity:"rare",image:"https://lekcusong.github.io/tcg/assets/major-the-lovers.jpg"},{name:"The Chariot",icon:"🐎",rarity:"rare",image:"https://lekcusong.github.io/tcg/assets/major-the-chariot.jpg"},{name:"Strength",icon:"🦁",rarity:"rare",image:"https://lekcusong.github.io/tcg/assets/major-strength.jpg"},{name:"The Hermit",icon:"🏮",rarity:"rare",image:"https://lekcusong.github.io/tcg/assets/major-the-hermit.jpg"},{name:"Wheel of Fortune",icon:"🎡",rarity:"rare",image:"https://lekcusong.github.io/tcg/assets/major-wheel-of-fortune.jpg"},{name:"Justice",icon:"⚖",rarity:"rare",image:"https://lekcusong.github.io/tcg/assets/major-justice.jpg"},{name:"The Hanged Man",icon:"🔄",rarity:"rare",image:"https://lekcusong.github.io/tcg/assets/major-the-hanged-man.jpg"},{name:"Death",icon:"🥀",rarity:"epic",image:"https://lekcusong.github.io/tcg/assets/major-death.jpg"},{name:"Temperance",icon:"⚗",rarity:"epic",image:"https://lekcusong.github.io/tcg/assets/major-temperance.jpg"},{name:"The Devil",icon:"⛓",rarity:"epic",image:"https://lekcusong.github.io/tcg/assets/major-the-devil.jpg"},{name:"The Tower",icon:"🗼",rarity:"epic",image:"https://lekcusong.github.io/tcg/assets/major-the-tower.jpg"},{name:"The Star",icon:"⭐",rarity:"epic",image:"https://lekcusong.github.io/tcg/assets/major-the-star.jpg"},{name:"The Moon",icon:"🌙",rarity:"epic",image:"https://lekcusong.github.io/tcg/assets/major-the-moon.jpg"},{name:"The Sun",icon:"☀",rarity:"epic",image:"https://lekcusong.github.io/tcg/assets/major-the-sun.jpg"},{name:"Judgement",icon:"📯",rarity:"epic",image:"https://lekcusong.github.io/tcg/assets/major-judgement.jpg"},{name:"The World",icon:"🌍",rarity:"epic",image:"https://lekcusong.github.io/tcg/assets/major-the-world.jpg"}],g={wands:{zh:"行動與熱情",en:"action and passion"},cups:{zh:"情感與關係",en:"emotions and relationships"},swords:{zh:"思考與抉擇",en:"thought and decisions"},pentacles:{zh:"現實與努力",en:"reality and effort"}},h={Ace:{zh:"全新的開始正在展開，把握第一步的勇氣。",en:"A brand-new beginning is unfolding - find the courage to take the first step."},2:{zh:"選擇與平衡的時刻，仔細權衡兩個方向。",en:"A moment of choice and balance - weigh both directions carefully."},3:{zh:"初步的成果顯現，值得慶祝這一小步。",en:"Early results are showing - this small step is worth celebrating."},4:{zh:"穩固與休整，先把根基站穩再前進。",en:"Stability and rest - steady your foundation before moving forward."},5:{zh:"眼前有些波折，但這是成長的必經之路。",en:"There are some bumps ahead, but they are a necessary part of growth."},6:{zh:"情勢逐漸好轉，耐心會帶來回報。",en:"Things are gradually improving - patience will pay off."},7:{zh:"需要多一份堅持，不要在關鍵時刻放棄。",en:"A bit more persistence is needed - don't give up at the critical moment."},8:{zh:"行動力正旺，是時候加快腳步了。",en:"Your momentum is strong - it's time to pick up the pace."},9:{zh:"接近目標，但別忽略還剩下的最後一哩路。",en:"You're close to the goal, but don't overlook the last stretch."},10:{zh:"一個階段圓滿落幕，也是迎接下一章的時候。",en:"A chapter is coming to a fulfilling close - time to welcome the next one."},Page:{zh:"帶著初學者的好奇心，去探索新的可能。",en:"Explore new possibilities with a beginner's curiosity."},Knight:{zh:"全力以赴的時刻，勇敢地朝目標衝刺。",en:"A moment to give it your all - charge boldly toward your goal."},Queen:{zh:"用溫柔而堅定的態度，照顧好自己與身邊的人。",en:"With gentle firmness, take care of yourself and those around you."},King:{zh:"掌握主導權，為自己的決定負責。",en:"Take charge, and stand by your own decisions."}},y=[{zh:"帶著初心出發，未知的旅程正等著你。",en:"Set out with an open heart - an unknown journey awaits."},{zh:"你已經具備實現目標的所有工具，現在就去行動。",en:"You already have every tool you need - go act on it now."},{zh:"靜下心傾聽直覺，答案其實你早已知道。",en:"Quiet your mind and listen to your intuition - you already know the answer."},{zh:"滋養與創造力正旺盛，好好照顧正在成長的事物。",en:"Nurturing and creativity are flourishing - tend well to what is growing."},{zh:"建立秩序與穩定，用清晰的規劃掌握局面。",en:"Build order and stability - take control with a clear plan."},{zh:"傳統與經驗值得參考，不妨請教有智慧的人。",en:"Tradition and experience are worth heeding - consider seeking wise counsel."},{zh:"面臨一個重要的選擇，跟隨真心而非壓力。",en:"An important choice lies ahead - follow your heart, not the pressure."},{zh:"意志力驅動前進，專注一個方向就能突破。",en:"Willpower drives you forward - focus on one direction and break through."},{zh:"溫柔勝過蠻力，用耐心馴服眼前的難題。",en:"Gentleness beats brute force - tame the challenge ahead with patience."},{zh:"適合獨處沉澱，答案在安靜之中浮現。",en:"A good time for solitude and reflection - the answer emerges in quiet."},{zh:"命運的轉輪正在轉動，變化即將到來。",en:"The wheel of fate is turning - change is on its way."},{zh:"因果分明的時刻，誠實面對會得到公平的結果。",en:"A moment of clear cause and effect - honesty brings a fair outcome."},{zh:"換個角度看事情，暫時的停滯是為了看清全局。",en:"Look at things from another angle - this pause is for seeing the bigger picture."},{zh:"一個階段結束了，才能讓新的開始有空間。",en:"One chapter ending makes room for a new beginning."},{zh:"耐心調和各種力量，平衡會帶來意想不到的和諧。",en:"Patiently blend different forces - balance brings unexpected harmony."},{zh:"留意讓自己感到束縛的習慣，你比想像中更自由。",en:"Notice the habits that bind you - you are freer than you think."},{zh:"劇變來得突然，但舊有的框架本就該被打破。",en:"Sudden upheaval strikes, but the old framework needed to be broken anyway."},{zh:"希望正在閃耀，堅定地相信美好會到來。",en:"Hope is shining - trust firmly that good things are coming."},{zh:"事情還不明朗，先別急著下判斷。",en:"Things aren't clear yet - don't rush to judgment."},{zh:"喜悅與活力洋溢，盡情享受這份明亮的能量。",en:"Joy and vitality overflow - fully enjoy this bright energy."},{zh:"一次重新檢視自己的機會，勇敢回應內心的呼喚。",en:"A chance to re-examine yourself - answer your inner calling with courage."},{zh:"圓滿的完成，也是踏入更大舞台的開始。",en:"A fulfilling completion, and also the start of stepping onto a bigger stage."}],f=function(){const e=[];return d.forEach(t=>{u.forEach((n,a)=>{const i=a<10?"common":"uncommon";e.push({id:`${t.key}_${a}`,name:`${n} of ${t.label}`,icon:t.icon,rarity:i,arcana:"minor",image:m[`${t.key}_${a}`]||null,meaningZh:`${g[t.key].zh}方面，${h[n].zh}`,meaningEn:`On the theme of ${g[t.key].en}: ${h[n].en}`})})}),p.forEach((t,n)=>{e.push({id:`major_${n}`,name:t.name,icon:t.icon,rarity:t.rarity,arcana:"major",image:t.image,meaningZh:y[n].zh,meaningEn:y[n].en})}),e}(),v=Object.fromEntries(f.map(e=>[e.id,e]));function countEpicCards(e){let t=0;for(const n in e.cards){const a=v[n];a&&"epic"===a.rarity&&(t+=e.cards[n]||0)}return t}function consumeEpicCards(e,t){/* 自動扣「持有最多」的史詩卡；最多的那張不夠就接著扣次多的。數量相同時依卡片 id 排序（固定順序）。總數不足時完全不扣，避免扣了一半才說不夠。 */const list=[];for(const a of Object.keys(e.cards)){const c=v[a];if(!c||"epic"!==c.rarity)continue;const q=e.cards[a]||0;q>0&&list.push([a,q])}if(list.reduce((s,x)=>s+x[1],0)<t)return!1;list.sort((x,y)=>y[1]-x[1]||(x[0]<y[0]?-1:x[0]>y[0]?1:0));let n=t;for(const[a,q]of list){if(n<=0)break;const o=Math.min(q,n);e.cards[a]=q-o,n-=o}return!0}
+const o="1.6.9";function s(e){return String(e||"0").split(".").map(e=>parseInt(e,10)||0)}function r(e,t){const n=s(e),a=s(t),i=Math.max(n.length,a.length);for(let e=0;e<i;e++){const t=n[e]||0,i=a[e]||0;if(t!==i)return t<i?-1:1}return 0}async function l(){try{const e=await a.get("config:min_app_version");return e?JSON.parse(e.value):null}catch(e){return null}}let c=!1;const d=[{key:"wands",label:"Wands",icon:"🔥"},{key:"cups",label:"Cups",icon:"💧"},{key:"swords",label:"Swords",icon:"⚔"},{key:"pentacles",label:"Pentacles",icon:"✦"}],u=["Ace","2","3","4","5","6","7","8","9","10","Page","Knight","Queen","King"],m={wands_0:"https://lekcusong.github.io/tcg/assets/wands_0.jpg",wands_1:"https://lekcusong.github.io/tcg/assets/wands_1.jpg",wands_2:"https://lekcusong.github.io/tcg/assets/wands_2.jpg",wands_3:"https://lekcusong.github.io/tcg/assets/wands_3.jpg",wands_4:"https://lekcusong.github.io/tcg/assets/wands_4.jpg",wands_5:"https://lekcusong.github.io/tcg/assets/wands_5.jpg",wands_6:"https://lekcusong.github.io/tcg/assets/wands_6.jpg",wands_7:"https://lekcusong.github.io/tcg/assets/wands_7.jpg",wands_8:"https://lekcusong.github.io/tcg/assets/wands_8.jpg",wands_9:"https://lekcusong.github.io/tcg/assets/wands_9.jpg",wands_10:"https://lekcusong.github.io/tcg/assets/wands_10.jpg",wands_11:"https://lekcusong.github.io/tcg/assets/wands_11.jpg",wands_12:"https://lekcusong.github.io/tcg/assets/wands_12.jpg",wands_13:"https://lekcusong.github.io/tcg/assets/wands_13.jpg",cups_0:"https://lekcusong.github.io/tcg/assets/cups_0.jpg",cups_1:"https://lekcusong.github.io/tcg/assets/cups_1.jpg",cups_2:"https://lekcusong.github.io/tcg/assets/cups_2.jpg",cups_3:"https://lekcusong.github.io/tcg/assets/cups_3.jpg",cups_4:"https://lekcusong.github.io/tcg/assets/cups_4.jpg",cups_5:"https://lekcusong.github.io/tcg/assets/cups_5.jpg",cups_6:"https://lekcusong.github.io/tcg/assets/cups_6.jpg",cups_7:"https://lekcusong.github.io/tcg/assets/cups_7.jpg",cups_8:"https://lekcusong.github.io/tcg/assets/cups_8.jpg",cups_9:"https://lekcusong.github.io/tcg/assets/cups_9.jpg",cups_10:"https://lekcusong.github.io/tcg/assets/cups_10.jpg",cups_11:"https://lekcusong.github.io/tcg/assets/cups_11.jpg",cups_12:"https://lekcusong.github.io/tcg/assets/cups_12.jpg",cups_13:"https://lekcusong.github.io/tcg/assets/cups_13.jpg",swords_0:"https://lekcusong.github.io/tcg/assets/swords_0.jpg",swords_1:"https://lekcusong.github.io/tcg/assets/swords_1.jpg",swords_2:"https://lekcusong.github.io/tcg/assets/swords_2.jpg",swords_3:"https://lekcusong.github.io/tcg/assets/swords_3.jpg",swords_4:"https://lekcusong.github.io/tcg/assets/swords_4.jpg",swords_5:"https://lekcusong.github.io/tcg/assets/swords_5.jpg",swords_6:"https://lekcusong.github.io/tcg/assets/swords_6.jpg",swords_7:"https://lekcusong.github.io/tcg/assets/swords_7.jpg",swords_8:"https://lekcusong.github.io/tcg/assets/swords_8.jpg",swords_9:"https://lekcusong.github.io/tcg/assets/swords_9.jpg",swords_10:"https://lekcusong.github.io/tcg/assets/swords_10.jpg",swords_11:"https://lekcusong.github.io/tcg/assets/swords_11.jpg",swords_12:"https://lekcusong.github.io/tcg/assets/swords_12.jpg",swords_13:"https://lekcusong.github.io/tcg/assets/swords_13.jpg",pentacles_0:"https://lekcusong.github.io/tcg/assets/pentacles_0.jpg",pentacles_1:"https://lekcusong.github.io/tcg/assets/pentacles_1.jpg",pentacles_2:"https://lekcusong.github.io/tcg/assets/pentacles_2.jpg",pentacles_3:"https://lekcusong.github.io/tcg/assets/pentacles_3.jpg",pentacles_4:"https://lekcusong.github.io/tcg/assets/pentacles_4.jpg",pentacles_5:"https://lekcusong.github.io/tcg/assets/pentacles_5.jpg",pentacles_6:"https://lekcusong.github.io/tcg/assets/pentacles_6.jpg",pentacles_7:"https://lekcusong.github.io/tcg/assets/pentacles_7.jpg",pentacles_8:"https://lekcusong.github.io/tcg/assets/pentacles_8.jpg",pentacles_9:"https://lekcusong.github.io/tcg/assets/pentacles_9.jpg",pentacles_10:"https://lekcusong.github.io/tcg/assets/pentacles_10.jpg",pentacles_11:"https://lekcusong.github.io/tcg/assets/pentacles_11.jpg",pentacles_12:"https://lekcusong.github.io/tcg/assets/pentacles_12.jpg",pentacles_13:"https://lekcusong.github.io/tcg/assets/pentacles_13.jpg"},p=[{name:"The Fool",icon:"🃏",rarity:"rare",image:"https://lekcusong.github.io/tcg/assets/major-the-fool.jpg"},{name:"The Magician",icon:"✨",rarity:"rare",image:"https://lekcusong.github.io/tcg/assets/major-the-magician.jpg"},{name:"The High Priestess",icon:"🔮",rarity:"rare",image:"https://lekcusong.github.io/tcg/assets/major-the-high-priestess.jpg"},{name:"The Empress",icon:"🌾",rarity:"rare",image:"https://lekcusong.github.io/tcg/assets/major-the-empress.jpg"},{name:"The Emperor",icon:"👑",rarity:"rare",image:"https://lekcusong.github.io/tcg/assets/major-the-emperor.jpg"},{name:"The Hierophant",icon:"🕊",rarity:"rare",image:"https://lekcusong.github.io/tcg/assets/major-the-hierophant.jpg"},{name:"The Lovers",icon:"💞",rarity:"rare",image:"https://lekcusong.github.io/tcg/assets/major-the-lovers.jpg"},{name:"The Chariot",icon:"🐎",rarity:"rare",image:"https://lekcusong.github.io/tcg/assets/major-the-chariot.jpg"},{name:"Strength",icon:"🦁",rarity:"rare",image:"https://lekcusong.github.io/tcg/assets/major-strength.jpg"},{name:"The Hermit",icon:"🏮",rarity:"rare",image:"https://lekcusong.github.io/tcg/assets/major-the-hermit.jpg"},{name:"Wheel of Fortune",icon:"🎡",rarity:"rare",image:"https://lekcusong.github.io/tcg/assets/major-wheel-of-fortune.jpg"},{name:"Justice",icon:"⚖",rarity:"rare",image:"https://lekcusong.github.io/tcg/assets/major-justice.jpg"},{name:"The Hanged Man",icon:"🔄",rarity:"rare",image:"https://lekcusong.github.io/tcg/assets/major-the-hanged-man.jpg"},{name:"Death",icon:"🥀",rarity:"epic",image:"https://lekcusong.github.io/tcg/assets/major-death.jpg"},{name:"Temperance",icon:"⚗",rarity:"epic",image:"https://lekcusong.github.io/tcg/assets/major-temperance.jpg"},{name:"The Devil",icon:"⛓",rarity:"epic",image:"https://lekcusong.github.io/tcg/assets/major-the-devil.jpg"},{name:"The Tower",icon:"🗼",rarity:"epic",image:"https://lekcusong.github.io/tcg/assets/major-the-tower.jpg"},{name:"The Star",icon:"⭐",rarity:"epic",image:"https://lekcusong.github.io/tcg/assets/major-the-star.jpg"},{name:"The Moon",icon:"🌙",rarity:"epic",image:"https://lekcusong.github.io/tcg/assets/major-the-moon.jpg"},{name:"The Sun",icon:"☀",rarity:"epic",image:"https://lekcusong.github.io/tcg/assets/major-the-sun.jpg"},{name:"Judgement",icon:"📯",rarity:"epic",image:"https://lekcusong.github.io/tcg/assets/major-judgement.jpg"},{name:"The World",icon:"🌍",rarity:"epic",image:"https://lekcusong.github.io/tcg/assets/major-the-world.jpg"}],g={wands:{zh:"行動與熱情",en:"action and passion"},cups:{zh:"情感與關係",en:"emotions and relationships"},swords:{zh:"思考與抉擇",en:"thought and decisions"},pentacles:{zh:"現實與努力",en:"reality and effort"}},h={Ace:{zh:"全新的開始正在展開，把握第一步的勇氣。",en:"A brand-new beginning is unfolding - find the courage to take the first step."},2:{zh:"選擇與平衡的時刻，仔細權衡兩個方向。",en:"A moment of choice and balance - weigh both directions carefully."},3:{zh:"初步的成果顯現，值得慶祝這一小步。",en:"Early results are showing - this small step is worth celebrating."},4:{zh:"穩固與休整，先把根基站穩再前進。",en:"Stability and rest - steady your foundation before moving forward."},5:{zh:"眼前有些波折，但這是成長的必經之路。",en:"There are some bumps ahead, but they are a necessary part of growth."},6:{zh:"情勢逐漸好轉，耐心會帶來回報。",en:"Things are gradually improving - patience will pay off."},7:{zh:"需要多一份堅持，不要在關鍵時刻放棄。",en:"A bit more persistence is needed - don't give up at the critical moment."},8:{zh:"行動力正旺，是時候加快腳步了。",en:"Your momentum is strong - it's time to pick up the pace."},9:{zh:"接近目標，但別忽略還剩下的最後一哩路。",en:"You're close to the goal, but don't overlook the last stretch."},10:{zh:"一個階段圓滿落幕，也是迎接下一章的時候。",en:"A chapter is coming to a fulfilling close - time to welcome the next one."},Page:{zh:"帶著初學者的好奇心，去探索新的可能。",en:"Explore new possibilities with a beginner's curiosity."},Knight:{zh:"全力以赴的時刻，勇敢地朝目標衝刺。",en:"A moment to give it your all - charge boldly toward your goal."},Queen:{zh:"用溫柔而堅定的態度，照顧好自己與身邊的人。",en:"With gentle firmness, take care of yourself and those around you."},King:{zh:"掌握主導權，為自己的決定負責。",en:"Take charge, and stand by your own decisions."}},y=[{zh:"帶著初心出發，未知的旅程正等著你。",en:"Set out with an open heart - an unknown journey awaits."},{zh:"你已經具備實現目標的所有工具，現在就去行動。",en:"You already have every tool you need - go act on it now."},{zh:"靜下心傾聽直覺，答案其實你早已知道。",en:"Quiet your mind and listen to your intuition - you already know the answer."},{zh:"滋養與創造力正旺盛，好好照顧正在成長的事物。",en:"Nurturing and creativity are flourishing - tend well to what is growing."},{zh:"建立秩序與穩定，用清晰的規劃掌握局面。",en:"Build order and stability - take control with a clear plan."},{zh:"傳統與經驗值得參考，不妨請教有智慧的人。",en:"Tradition and experience are worth heeding - consider seeking wise counsel."},{zh:"面臨一個重要的選擇，跟隨真心而非壓力。",en:"An important choice lies ahead - follow your heart, not the pressure."},{zh:"意志力驅動前進，專注一個方向就能突破。",en:"Willpower drives you forward - focus on one direction and break through."},{zh:"溫柔勝過蠻力，用耐心馴服眼前的難題。",en:"Gentleness beats brute force - tame the challenge ahead with patience."},{zh:"適合獨處沉澱，答案在安靜之中浮現。",en:"A good time for solitude and reflection - the answer emerges in quiet."},{zh:"命運的轉輪正在轉動，變化即將到來。",en:"The wheel of fate is turning - change is on its way."},{zh:"因果分明的時刻，誠實面對會得到公平的結果。",en:"A moment of clear cause and effect - honesty brings a fair outcome."},{zh:"換個角度看事情，暫時的停滯是為了看清全局。",en:"Look at things from another angle - this pause is for seeing the bigger picture."},{zh:"一個階段結束了，才能讓新的開始有空間。",en:"One chapter ending makes room for a new beginning."},{zh:"耐心調和各種力量，平衡會帶來意想不到的和諧。",en:"Patiently blend different forces - balance brings unexpected harmony."},{zh:"留意讓自己感到束縛的習慣，你比想像中更自由。",en:"Notice the habits that bind you - you are freer than you think."},{zh:"劇變來得突然，但舊有的框架本就該被打破。",en:"Sudden upheaval strikes, but the old framework needed to be broken anyway."},{zh:"希望正在閃耀，堅定地相信美好會到來。",en:"Hope is shining - trust firmly that good things are coming."},{zh:"事情還不明朗，先別急著下判斷。",en:"Things aren't clear yet - don't rush to judgment."},{zh:"喜悅與活力洋溢，盡情享受這份明亮的能量。",en:"Joy and vitality overflow - fully enjoy this bright energy."},{zh:"一次重新檢視自己的機會，勇敢回應內心的呼喚。",en:"A chance to re-examine yourself - answer your inner calling with courage."},{zh:"圓滿的完成，也是踏入更大舞台的開始。",en:"A fulfilling completion, and also the start of stepping onto a bigger stage."}],f=function(){const e=[];return d.forEach(t=>{u.forEach((n,a)=>{const i=a<10?"common":"uncommon";e.push({id:`${t.key}_${a}`,name:`${n} of ${t.label}`,icon:t.icon,rarity:i,arcana:"minor",image:m[`${t.key}_${a}`]||null,meaningZh:`${g[t.key].zh}方面，${h[n].zh}`,meaningEn:`On the theme of ${g[t.key].en}: ${h[n].en}`})})}),p.forEach((t,n)=>{e.push({id:`major_${n}`,name:t.name,icon:t.icon,rarity:t.rarity,arcana:"major",image:t.image,meaningZh:y[n].zh,meaningEn:y[n].en})}),e}(),v=Object.fromEntries(f.map(e=>[e.id,e]));function countEpicCards(e){let t=0;for(const n in e.cards){const a=v[n];a&&"epic"===a.rarity&&(t+=e.cards[n]||0)}return t}function consumeEpicCards(e,t){/* 自動扣「持有最多」的史詩卡；最多的那張不夠就接著扣次多的。數量相同時依卡片 id 排序（固定順序）。總數不足時完全不扣，避免扣了一半才說不夠。 */const list=[];for(const a of Object.keys(e.cards)){const c=v[a];if(!c||"epic"!==c.rarity)continue;const q=e.cards[a]||0;q>0&&list.push([a,q])}if(list.reduce((s,x)=>s+x[1],0)<t)return!1;list.sort((x,y)=>y[1]-x[1]||(x[0]<y[0]?-1:x[0]>y[0]?1:0));let n=t;for(const[a,q]of list){if(n<=0)break;const o=Math.min(q,n);e.cards[a]=q-o,n-=o}return!0}
 /* ===== 全服數字炸彈 Bomb Map — begin ===== */
 const BOMB_URL = "https://hmkpwrefecwjxnyggcej.supabase.co";
 const BOMB_KEY = "sb_publishable_vs1K1Ao4Gjl2JK5xrK-GpQ_aXsHyty7";
@@ -2141,7 +2141,7 @@ async function loadSettings() {
 async function saveSettings() {
   await a.set(settingsKey(), JSON.stringify({ dailyPlays: DAILY_PLAYS, maxGoldPerSec: MAX_GOLD_PER_SEC, goldPerItemRoll: GOLD_PER_ITEM_ROLL, itemMediumChance: ITEM_MEDIUM_CHANCE, rankShards: RANK_SHARDS }));
 }
-// 已取消 VIP 加成：所有人每天固定 5 次（不受 GM 設定與 VIP 等級影響）。
+// 所有人每天固定 5 次（不受 GM 設定影響）。
 const FIXED_DAILY_PLAYS = 5;
 function playsCapFor(p) {
   return FIXED_DAILY_PLAYS;
@@ -2527,13 +2527,13 @@ function standingsHtml() {
 }
 
 function panelHtml() {
-  const p = zl.player, left = playsRemaining(p), cap = playsCapFor(p), vipBonus = 0, champion = Js.match3Champion;
+  const p = zl.player, left = playsRemaining(p), cap = playsCapFor(p), champion = Js.match3Champion;
   return `<div class="panel">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
       <h2 style="margin-bottom:0;">🔮 ${dc("塔羅三消", "Tarot Match-3")}</h2>
       <button class="btn small secondary" id="m3-sfx-toggle" title="${dc("音效開關", "Sound effects on/off")}" style="padding:6px 12px;">${sfxMuted ? "🔇" : "🔊"} ${dc("音效", "SFX")}</button>
     </div>
-    <p class="sub">${dc(`交換相鄰方塊湊 3 個以上同圖案消除；4 消清整行／整列，5 消或 L／T 型清整行＋整列；連鎖（一次交換引發的每一波消除）獎勵會往上加成。免費玩，每天 ${DAILY_PLAYS} 次（VIP 每級再 +1 次），獎勵金幣＋成品（藥水／武器／飾品／家具，小型為主偶爾中型）。`, `Swap adjacent tiles to match 3+; a 4-match clears its row/column, a 5-match or L/T-shape clears both. Each chain wave in one swap pays out more. Free to play, ${DAILY_PLAYS} times a day (+1 more per VIP level), rewards coins + crafted items (potions/weapons/accessories/furniture, mostly small tier with occasional medium).`)}</p>
+    <p class="sub">${dc(`交換相鄰方塊湊 3 個以上同圖案消除；4 消清整行／整列，5 消或 L／T 型清整行＋整列；連鎖（一次交換引發的每一波消除）獎勵會往上加成。免費玩，每天 5 次，獎勵金幣＋成品（藥水／武器／飾品／家具，小型為主偶爾中型）。`, `Swap adjacent tiles to match 3+; a 4-match clears its row/column, a 5-match or L/T-shape clears both. Each chain wave in one swap pays out more. Free to play, 5 times a day, rewards coins + crafted items (potions/weapons/accessories/furniture, mostly small tier with occasional medium).`)}</p>
     ${champion ? `<p class="who">${dc("今日封號", "Today's title")}: ${Ys("match3Champion", 13)} ${Iu(champion)}</p>` : ""}
     <div class="stats" style="display:flex;align-items:center;justify-content:space-between;margin:10px 2px 4px;font-size:14px;">
       <div>✦ <b id="m3-gold">${st.gold}</b> ${dc("金幣", "coins")}</div>
@@ -2542,7 +2542,7 @@ function panelHtml() {
     <div class="m3-timerbar" id="m3-timerbar"><i id="m3-timerfill" style="width:100%"></i></div>
     ${boardHtml()}
     ${legendHtml()}
-    <p class="sub" style="text-align:center;margin-top:6px;">${dc(`今天剩餘次數：${left} / ${cap}`, `Plays left today: ${left} / ${cap}`)}${vipBonus > 0 ? dc(`（含 👑VIP 加成 +${vipBonus}）`, ` (incl. 👑VIP bonus +${vipBonus})`) : ""}</p>
+    <p class="sub" style="text-align:center;margin-top:6px;">${dc(`今天剩餘次數：${left} / ${cap}`, `Plays left today: ${left} / ${cap}`)}</p>
   </div>
   <div class="panel">
     <h2>🏆 ${dc("今日排行榜", "Today's Leaderboard")}</h2>
@@ -2779,7 +2779,7 @@ async function mgSetAll(on) {
 window.mgToggle = mgToggle; window.mgSetAll = mgSetAll;
 /* ===== 🎮 小遊戲總開關 — end ===== */
 
-/* ===== ⚗️ 煉金藥水排序 — 每次開局隨機出題（每場不同）、比最快通關時間；速度階梯獎勵、每日次數（含 VIP）、排行榜與封號都比照 2048／塔羅三消 ===== */
+/* ===== ⚗️ 煉金藥水排序 — 每次開局隨機出題（每場不同）、比最快通關時間；速度階梯獎勵、每日次數、排行榜與封號都比照 2048／塔羅三消 ===== */
 const GPOT = (function () {
 const CAP = 4, NCOL = 7, NEMPTY = 2, MAX_MOVES = 300;
 // [名稱, 顏色, 色盲輔助符號]
@@ -2865,7 +2865,7 @@ function replayOk(ts0, mv) {
   return solved(ts);
 }
 
-/* ===== 玩法設定（GM 可調）與每日次數：跟 2048／三消同一套模式，VIP 每級 +1 次疊加在基礎次數上 ===== */
+/* ===== 玩法設定（GM 可調）與每日次數：跟 2048／三消同一套模式（目前固定每人每天 5 次）===== */
 let RANK_SHARDS = [2, 1, 1];   // 每日排行榜第 1／2／3 名的神秘碎片數（GM 可調）
 let DAILY_PLAYS = 3, BASE_GOLD = 500, MAX_RUN_SEC = 600, MIN_MS_PER_MOVE = 300, GOLD_PER_ITEM_ROLL = 300, ITEM_MEDIUM_CHANCE = 0.18;
 // 速度階梯：通關秒數 ≤ sec 就拿基礎金幣 +pct%（取最快的那一檔）；超過最後一檔只拿基礎金幣
@@ -2890,7 +2890,7 @@ async function loadSettings() {
 async function saveSettings() {
   await a.set(settingsKey(), JSON.stringify({ dailyPlays: DAILY_PLAYS, baseGold: BASE_GOLD, maxRunSec: MAX_RUN_SEC, minMsPerMove: MIN_MS_PER_MOVE, goldPerItemRoll: GOLD_PER_ITEM_ROLL, itemMediumChance: ITEM_MEDIUM_CHANCE, tiers: TIERS, rankShards: RANK_SHARDS }));
 }
-function playsCapFor(p) { return 5; }  // 已取消 VIP 加成：所有人每天固定 5 次
+function playsCapFor(p) { return 5; }  // 所有人每天固定 5 次
 function playsRemaining(p) {
   const cap = playsCapFor(p);
   if (!p) return cap;
@@ -3179,11 +3179,11 @@ function tiersText() {
   return TIERS.map(t => dc(`${t.sec} 秒內 +${t.pct}%`, `≤${t.sec}s +${t.pct}%`)).join(dc("、", ", "));
 }
 function panelHtml() {
-  const p = zl.player, left = playsRemaining(p), cap = playsCapFor(p), vipBonus = 0, champion = Js.potionChampion;
+  const p = zl.player, left = playsRemaining(p), cap = playsCapFor(p), champion = Js.potionChampion;
   const elapsed = st.running ? Date.now() - st.startedAt : 0;
   return `<div class="panel">
     <h2>⚗️ ${dc("煉金藥水排序", "Alchemy Sort")}</h2>
-    <p class="sub">${dc(`每天一道全服相同的題目（7 種藥水、2 個空瓶）：點一瓶取起最上層的藥水，再點要倒入的瓶子——目標瓶必須是空的或最上層同色，且還有空位；每瓶疊滿同一種顏色即完成。免費玩，每天 ${DAILY_PLAYS} 次（VIP 每級再 +1 次），按下開始就會扣 1 次並開始計時。通關給基礎金幣＋成品，越快越多：${tiersText()}。`, `One puzzle a day, the same for everyone (7 potions, 2 empty tubes): tap a tube to lift its top potion, then tap where to pour — the target must be empty or have the same color on top, with room left. Fill every tube with one color to finish. Free to play, ${DAILY_PLAYS} times a day (+1 per VIP level); starting uses 1 play and starts the clock. Clearing pays base coins + items, more the faster you are: ${tiersText()}.`)}</p>
+    <p class="sub">${dc(`每天一道全服相同的題目（7 種藥水、2 個空瓶）：點一瓶取起最上層的藥水，再點要倒入的瓶子——目標瓶必須是空的或最上層同色，且還有空位；每瓶疊滿同一種顏色即完成。免費玩，每天 5 次，按下開始就會扣 1 次並開始計時。通關給基礎金幣＋成品，越快越多：${tiersText()}。`, `One puzzle a day, the same for everyone (7 potions, 2 empty tubes): tap a tube to lift its top potion, then tap where to pour — the target must be empty or have the same color on top, with room left. Fill every tube with one color to finish. Free to play, 5 times a day; starting uses 1 play and starts the clock. Clearing pays base coins + items, more the faster you are: ${tiersText()}.`)}</p>
     ${champion ? `<p class="who">${dc("今日封號", "Today's title")}: ${Ys("potionChampion", 13)} ${Iu(champion)}</p>` : ""}
     <div class="stats" style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin:10px 2px 4px;font-size:14px;">
       <div>⏱ <b id="pot-timer">${fmtSec(elapsed)}</b> ${dc("秒", "s")}</div>
@@ -3195,7 +3195,7 @@ function panelHtml() {
       <button class="btn small secondary" id="pot-reset-btn">${dc("重來（計時不停）", "Restart (clock keeps running)")}</button>
       <button class="btn small secondary" id="pot-giveup-btn">${dc("放棄", "Give up")}</button>
     </div>
-    <p class="sub" style="text-align:center;margin-top:6px;">${dc(`今天剩餘次數：${left} / ${cap}`, `Plays left today: ${left} / ${cap}`)}${vipBonus > 0 ? dc(`（含 👑VIP 加成 +${vipBonus}）`, ` (incl. 👑VIP bonus +${vipBonus})`) : ""}</p>
+    <p class="sub" style="text-align:center;margin-top:6px;">${dc(`今天剩餘次數：${left} / ${cap}`, `Plays left today: ${left} / ${cap}`)}</p>
   </div>
   <div class="panel">
     <h2>🏆 ${dc("今日排行榜（最快時間）", "Today's Leaderboard (fastest)")}</h2>
@@ -3490,8 +3490,8 @@ async function saveSettings() {
   await a.set(settingsKey(), JSON.stringify({ dailyPlays: DAILY_PLAYS, maxGoldPerSec: MAX_GOLD_PER_SEC, goldPerItemRoll: GOLD_PER_ITEM_ROLL, itemMediumChance: ITEM_MEDIUM_CHANCE, maxRunSec: MAX_RUN_SEC, minSecPerFloor: MIN_SEC_PER_FLOOR, lbMinSecPerFloor: LB_MIN_SEC_PER_FLOOR, milestoneFloorCap: MILESTONE_FLOOR_CAP, outCoinPerFloor: OUT_COIN_PER_FLOOR, outFloorCap: OUT_FLOOR_CAP, outFloorsPerItem: OUT_FLOORS_PER_ITEM, startCoins: START_COINS, affixOn: AFFIX_ON, rankShards: RANK_SHARDS }));
 }
 
-/* ===== 每日次數（跟三消同一套：GMT+8 重置、VIP 每級 +1、GM 不受限）===== */
-function playsCapFor(p) { return 5; }  // 已取消 VIP 加成：所有人每天固定 5 次
+/* ===== 每日次數（跟三消同一套：GMT+8 重置、固定 5 次、GM 不受限）===== */
+function playsCapFor(p) { return 5; }  // 所有人每天固定 5 次
 function playsRemaining(p) {
   const cap = playsCapFor(p);
   if (!p) return cap;
@@ -3789,7 +3789,7 @@ const hpMul = f => Math.pow(1.07, Math.max(0, f - 4));
 /* ===== 階段怪物能力與 BOSS 招式 =====
    熔岩(第 11–20 層)：熔岩怪、自爆怪　深海(21–30)：治療怪、護盾怪、召喚怪　虛空(31+)：瞬移怪、分裂怪（也會混入前面各種）。
    BOSS 依「第幾隻」輪替招式：1 召喚 → 2 護盾階段 → 3 潮汐(推深坑線) → 4 正面護甲 → 之後循環。 */
-const BOSS_ARMOR = 0.6, BOSS_AB = ["bsummon", "bshield", "btide", "barmor"], AB_CAP = 34;
+const BOSS_ARMOR = 0.6, BOSS_AB = ["bsummon", "bshield", "btide", "barmor", "bcloud", "bice", "bstar"], AB_CAP = 34;
 const AB = {
   magma:    { ic: "🌋", zh: "熔岩怪", en: "Magma", dz: "死亡時點燃周圍 8 格的敵人，適合搭配連鎖", de: "Ignites adjacent enemies when it dies" },
   fuse:     { ic: "💥", zh: "自爆怪", en: "Bomber", dz: "徽章數字歸零就自爆傷害你，優先擊殺！", de: "Explodes and hurts you when the badge counts down to 0 — kill it first!" },
@@ -3798,6 +3798,15 @@ const AB = {
   summoner: { ic: "🔮", zh: "召喚怪", en: "Summoner", dz: "每 3 輪在附近召喚小怪，優先擊殺", de: "Summons minions every 3 volleys — kill it first" },
   blink:    { ic: "🌀", zh: "瞬移怪", en: "Blinker", dz: "每輪可能瞬移到同排的空位", de: "May teleport to a free spot in its row each volley" },
   splitter: { ic: "🧬", zh: "分裂怪", en: "Splitter", dz: "死亡時分裂成 2 隻小怪", de: "Splits into 2 minions when it dies" },
+  gust:     { ic: "💨", zh: "疾風怪", en: "Gale", dz: "每輪多前進 1 排，來得很快，先處理它", de: "Advances an extra row each volley — handle it early" },
+  aegis:    { ic: "☁️", zh: "庇護怪", en: "Aegis", dz: "周圍 8 格的敵人受到的傷害 -30%，先打掉它", de: "Adjacent enemies take 30% less damage — remove it first" },
+  icearmor: { ic: "🧊", zh: "冰甲怪", en: "Ice Armor", dz: "單次傷害最多只能扣它最大血量的 25%，要多段命中", de: "A single hit can't deal more than 25% of its max HP" },
+  chill:    { ic: "❄️", zh: "寒霜怪", en: "Frostling", dz: "活著時你的彈珠變慢（每隻 -10%，最多 -40%）", de: "While alive your balls fly slower (-10% each, max -40%)" },
+  prism:    { ic: "🔷", zh: "稜鏡怪", en: "Prism", dz: "被命中時有 30% 機率反傷你（無視護盾）", de: "30% chance to reflect damage to you when hit (ignores Ward)" },
+  phoenix:  { ic: "🔥", zh: "轉生怪", en: "Phoenix", dz: "死亡後下一輪以 50% 血量重生一次", de: "Is reborn once with 50% HP next volley" },
+  bcloud:   { ic: "☁️", zh: "BOSS 招式：雲幕", en: "BOSS: Cloud Veil", dz: "周圍每有 1 隻敵人，BOSS 受到的傷害 -10%（最多 -40%），先清掉護衛", de: "-10% damage per nearby enemy (max -40%) — clear its escorts" },
+  bice:     { ic: "🧊", zh: "BOSS 招式：永凍冰甲", en: "BOSS: Permafrost", dz: "單次傷害最多只能扣最大血量的 8%，並讓你的彈珠 -10% 速度", de: "A single hit deals at most 8% of its max HP; your balls fly 10% slower" },
+  bstar:    { ic: "🌟", zh: "BOSS 招式：星核重生", en: "BOSS: Star Core", dz: "被擊倒時以 40% 血量與護盾重生一次；被打時有 20% 機率反傷你", de: "Revives once at 40% HP with a shield; 20% chance to reflect damage when hit" },
   bsummon:  { ic: "🔮", zh: "BOSS 招式：召喚", en: "BOSS: Summon", dz: "每 3 輪在身旁召喚小怪", de: "Summons minions beside it every 3 volleys" },
   bshield:  { ic: "🛡", zh: "BOSS 招式：護盾階段", en: "BOSS: Shield Phases", dz: "血量降到 66%／33% 時展開護盾，必須先打破", de: "Raises a shield at 66% / 33% HP — break it first" },
   btide:    { ic: "🌊", zh: "BOSS 招式：潮汐", en: "BOSS: Tide", dz: "每 4 輪把深坑線往上推 1 排（維持 3 輪），小心被逼進深坑", de: "Every 4 volleys pushes the pit line up 1 row for 3 volleys" },
@@ -3813,9 +3822,17 @@ function tellAb(g, key, force) {
 function pickAb(g) {
   const zi = zoneIdx(g.floor);
   if (zi < 1) return null;
-  const p = zi === 1 ? 0.22 : zi === 2 ? 0.28 : zi === 3 ? 0.32 : 0.38;
+  const p = [0, 0.22, 0.28, 0.32, 0.34, 0.36, 0.38][zi] || 0.42;
   if (Math.random() >= p) return null;
-  const pool = zi === 1 ? ["magma", "magma", "fuse"] : zi === 2 ? ["healer", "shield", "summoner"] : ["blink", "blink", "splitter", "splitter", "summoner", "healer", "shield", "fuse", "magma"];
+  const pools = {
+    1: ["magma", "magma", "fuse"],
+    2: ["healer", "shield", "summoner"],
+    3: ["blink", "blink", "splitter", "splitter", "summoner", "healer", "shield", "fuse", "magma"],
+    4: ["gust", "gust", "aegis", "aegis", "healer", "blink", "fuse"],
+    5: ["icearmor", "icearmor", "chill", "chill", "shield", "splitter", "summoner"],
+    6: ["prism", "prism", "phoenix", "phoenix", "blink", "summoner", "splitter", "aegis"]
+  };
+  const pool = pools[zi] || ["blink", "splitter", "summoner", "healer", "shield", "fuse", "magma", "gust", "aegis", "icearmor", "chill", "prism", "phoenix"];
   return pool[Math.floor(Math.random() * pool.length)];
 }
 function setupAb(g, en, ab) {
@@ -3858,6 +3875,7 @@ function deathHook(g, en) {
     g.enemies.forEach(o => { if (!o.dead && o !== en && Math.abs(o.c - en.c) <= 1 && Math.abs(o.r - en.r) <= 1) o.burn = Math.max(o.burn || 0, 4); });
   }
   if (en.ab === "splitter" && !en.minion) splitSpawn(g, en);
+  if (en.ab === "phoenix" && !en.reborn) (g.rebirths = g.rebirths || []).push({ c: en.c, r: en.r, max: en.max });
   if (en.ab === "btide") restorePit(g);
 }
 function restorePit(g) {
@@ -3881,6 +3899,15 @@ function tide(g) {
   ring(g, W / 2, GRID_TOP + g.pit * RH, 200, "#4fd1c5", 4, 0.7); pop(g, W / 2, GRID_TOP + g.pit * RH - 14, dc("🌊 潮汐湧動！深坑線上移", "🌊 Tide! Pit line rises"), "#8fd3ff", true); sfx(120, 0.4, "sine", 0.08);
 }
 function abilityTick(g) {
+  if (g.rebirths && g.rebirths.length) {
+    g.rebirths.forEach(rb => {
+      const cs = [rb.c, rb.c - 1, rb.c + 1].filter(c => cellFree(g, c, rb.r, 1));
+      if (!cs.length) return;
+      const ne = spawnMinion(g, cs[0], rb.r, Math.max(1, rb.max * 0.5)); ne.ab = "phoenix"; ne.reborn = true;
+      const ct = enCenter(ne); pop(g, ct.x, ct.y - 12, dc("重生！", "Reborn!"), "#ffb35a", true); ring(g, ct.x, ct.y, 40, "#ffb35a", 2, 0.4);
+    });
+    g.rebirths = [];
+  }
   if (g.pitPush > 0) { g.pitT--; if (g.pitT <= 0) restorePit(g); }
   g.enemies.filter(e => !e.dead).forEach(e => {
     if (e.dead) return;
@@ -3915,7 +3942,8 @@ function advance(g, stp) {
   const all = g.floor % 10 === 0;
   g.enemies.filter(e => !e.dead).sort((a, b) => b.r - a.r).forEach(e => {
     if (e.frz > 0) { e.frz--; if (!all) return; }
-    for (let k = 0; k < stp; k++) { if (all || cellFree(g, e.c, e.r + 1, e.span || 1, e)) e.r++; else break; }
+    const steps = stp + (e.ab === "gust" && !all ? 1 : 0);
+    for (let k = 0; k < steps; k++) { if (all || cellFree(g, e.c, e.r + 1, e.span || 1, e)) e.r++; else break; }
   });
 }
 function magnetPull(g, en) {
@@ -3999,7 +4027,10 @@ const ZONES = [
   { zh: "月光", en: "Moonlit", bg: ["#1a1438", "#0a0720"], acc: "#b9c8ff", star: "#dfe8ff", pal: ["#2b3166", "#141a3c", "#9fb4ff"], glow: "rgba(130,150,255,.16)" },
   { zh: "熔岩", en: "Magma", bg: ["#2c1010", "#12060a"], acc: "#ff8a4a", star: "#ffd0a0", pal: ["#5f2616", "#2a0e0c", "#ff7a3a"], glow: "rgba(255,110,50,.16)" },
   { zh: "深海", en: "Abyssal Sea", bg: ["#08203a", "#040b18"], acc: "#4fd1c5", star: "#aef5ee", pal: ["#124560", "#081e30", "#4fd1c5"], glow: "rgba(60,200,190,.14)" },
-  { zh: "虛空", en: "The Void", bg: ["#190c2c", "#04020a"], acc: "#d08cff", star: "#f0d6ff", pal: ["#3c2160", "#1b0f33", "#c77dff"], glow: "rgba(190,100,255,.16)" }
+  { zh: "虛空", en: "The Void", bg: ["#190c2c", "#04020a"], acc: "#d08cff", star: "#f0d6ff", pal: ["#3c2160", "#1b0f33", "#c77dff"], glow: "rgba(190,100,255,.16)" },
+  { zh: "雲端", en: "Cloud Realm", bg: ["#2b2b5e", "#14123a"], acc: "#ffc9a0", star: "#fff1e0", pal: ["#4a4a8c", "#22204e", "#ffc9a0"], glow: "rgba(255,190,150,.16)" },
+  { zh: "冰原", en: "Frozen Plains", bg: ["#0c2a3a", "#04101a"], acc: "#bfefff", star: "#e6fbff", pal: ["#2a6a8a", "#0e2a3c", "#bfefff"], glow: "rgba(150,230,255,.16)" },
+  { zh: "星界", en: "Starfield", bg: ["#0b0b26", "#010109"], acc: "#ffe36b", star: "#fff6c0", pal: ["#2a2a6a", "#10103a", "#ffe36b"], glow: "rgba(255,230,120,.14)" }
 ];
 const zoneIdx = f => Math.floor((Math.max(1, f) - 1) / 10);
 const zoneOf = f => ZONES[zoneIdx(f) % ZONES.length];
@@ -4085,7 +4116,16 @@ const Music = (function () {
     { bpm: 68, pad: { type: "sine", det: 5, lp: 800, g: 0.07 }, bell: "bell", perc: 0.45, saw: false,
       prog: [Ch(52, [0, 3, 7, 10, 14]), Ch(48, [0, 4, 7, 11]), Ch(50, [0, 4, 7, 9]), Ch(47, [0, 3, 7, 10]), Ch(52, [0, 3, 7, 10, 14]), Ch(45, [0, 4, 7, 10]), Ch(47, [0, 3, 7, 10]), Ch(52, [0, 3, 7, 10, 14])] },
     { bpm: 86, pad: { type: "sawtooth", det: 16, lp: 1000, g: 0.028 }, bell: "bell", perc: 0.9, saw: true,
-      prog: [Ch(49, [0, 3, 7]), Ch(57, [0, 4, 7, 11]), Ch(54, [0, 3, 7, 10]), Ch(56, [0, 4, 7, 10]), Ch(49, [0, 3, 7]), Ch(53, [0, 3, 6, 9]), Ch(57, [0, 4, 7, 11]), Ch(56, [0, 4, 7, 10])] }
+      prog: [Ch(49, [0, 3, 7]), Ch(57, [0, 4, 7, 11]), Ch(54, [0, 3, 7, 10]), Ch(56, [0, 4, 7, 10]), Ch(49, [0, 3, 7]), Ch(53, [0, 3, 6, 9]), Ch(57, [0, 4, 7, 11]), Ch(56, [0, 4, 7, 10])] },
+    // 雲端：明亮、飄浮的大調
+    { bpm: 84, pad: { type: "sine", det: 7, lp: 1500, g: 0.055 }, bell: "bell", perc: 0.5, saw: false,
+      prog: [Ch(53, [0, 4, 7, 11]), Ch(55, [0, 4, 7, 14]), Ch(60, [0, 4, 7, 11]), Ch(57, [0, 3, 7, 10]), Ch(53, [0, 4, 7, 11]), Ch(55, [0, 4, 7, 14]), Ch(62, [0, 4, 7, 9]), Ch(60, [0, 4, 7, 11])] },
+    // 冰原：緩慢、稀疏、冷冽
+    { bpm: 62, pad: { type: "triangle", det: 4, lp: 700, g: 0.06 }, bell: "bell", perc: 0.35, saw: false,
+      prog: [Ch(50, [0, 3, 7, 10, 14]), Ch(46, [0, 4, 7, 11]), Ch(53, [0, 4, 7, 11]), Ch(48, [0, 3, 7, 10]), Ch(50, [0, 3, 7, 10, 14]), Ch(45, [0, 3, 7, 10]), Ch(46, [0, 4, 7, 11]), Ch(48, [0, 3, 7, 10])] },
+    // 星界：神祕、不穩定的和弦
+    { bpm: 92, pad: { type: "sawtooth", det: 12, lp: 1300, g: 0.026 }, bell: "pluck", perc: 0.8, saw: true,
+      prog: [Ch(52, [0, 3, 7, 14]), Ch(51, [0, 3, 6, 9]), Ch(56, [0, 4, 8, 11]), Ch(54, [0, 3, 6, 10]), Ch(52, [0, 3, 7, 14]), Ch(48, [0, 4, 7, 11]), Ch(55, [0, 4, 8, 10]), Ch(54, [0, 3, 6, 10])] }
   ];
   function fit(n, lo) { while (n < lo) n += 12; while (n >= lo + 24) n -= 12; return n; }
   function prep(c) {
@@ -4254,6 +4294,12 @@ function stepFx(g, dt) {
 }
 function damage(g, en, d, crit) {
   if (en.dead) return;
+  if (d < 9999) {
+    if (en.ab !== "aegis" && g.enemies.some(o => !o.dead && o.ab === "aegis" && o !== en && Math.abs(o.c - en.c) <= 1 && Math.abs(o.r - en.r) <= 1)) d = Math.max(1, Math.ceil(d * 0.7));
+    if (en.ab === "bcloud") { const n = Math.min(4, g.enemies.filter(o => !o.dead && !o.boss && Math.abs(o.c - en.c - 0.5) <= 2.5 && Math.abs(o.r - en.r) <= 1).length); if (n) d = Math.max(1, Math.ceil(d * (1 - 0.1 * n))); }
+    const cap = en.ab === "icearmor" ? 0.25 : en.ab === "bice" ? 0.08 : 0;
+    if (cap) d = Math.min(d, Math.max(1, Math.ceil(en.max * cap)));
+  }
   if (en.sh > 0) {
     const ab = Math.min(en.sh, d), c0 = enCenter(en); en.sh -= ab; d -= ab; en.flash = 0.08; en.kick = 1;
     if (d <= 0) { pop(g, c0.x, c0.y - 8, "🛡" + fmtN(ab), "#8fd3ff", false); burst(g, c0.x, c0.y, "#8fd3ff", 3, 110); sfx(520, 0.05, "triangle", 0.03); return; }
@@ -4266,6 +4312,11 @@ function damage(g, en, d, crit) {
   if (crit) ring(g, c.x, c.y, 24, "#ffd36b", 2, 0.3);
   if (crit) { g.shake = Math.max(g.shake, 5); g.hitstop = 0.04; }
   if (en.hp > 0) { bossPhase(g, en); if (en.boss && !en.enraged && en.hp <= en.max * 0.5) { en.enraged = true; en.atk = Math.round(en.atk * 1.4); g.shake = Math.max(g.shake, 14); ring(g, c.x, c.y, 120, "#ff4a3a", 4, 0.8); pop(g, c.x, c.y - 16, dc("狂暴！", "ENRAGED!"), "#ff6b5a", true); sfx(90, 0.5, "sawtooth", 0.09); } return; }
+  if (en.ab === "bstar" && !en.reborn) {
+    en.reborn = true; en.hp = Math.ceil(en.max * 0.4); en.sh = Math.ceil(en.max * 0.1); en.shMax = en.sh; en.enraged = true;
+    ring(g, c.x, c.y, 180, "#ffe36b", 4, 0.9); burst(g, c.x, c.y, "#ffe36b", 40, 320); pop(g, c.x, c.y - 16, dc("星核重生！", "REBORN!"), "#ffe36b", true); g.shake = Math.max(g.shake, 16); g.flashW = 0.8; sfx(330, 0.5, "triangle", 0.09);
+    return;
+  }
   en.dead = true; g.kills++; deathHook(g, en);
   (g.ghosts = g.ghosts || []).push({ ...eRect(en), col: kcol(en), boss: !!en.boss, t: en.boss ? 0.6 : 0.3, m: en.boss ? 0.6 : 0.3 });
   g.orbs = g.orbs || [];
@@ -4291,6 +4342,11 @@ function damage(g, en, d, crit) {
     g.enemies.forEach(o => { if (!o.dead && Math.abs(o.c - en.c) <= 1 && Math.abs(o.r - en.r) <= 1) damage(g, o, bd); });
   }
 }
+function thorn(g) {
+  const d = Math.max(1, 1 + Math.floor(g.floor / 15));
+  g.hp = Math.max(0, g.hp - d); g.hurt = Math.max(g.hurt || 0, 0.3);
+  pop(g, W / 2, SHOOT_Y - 26, "-" + d + "↯", "#ff9ad5", false); sfx(160, 0.1, "square", 0.04);
+}
 function heal(g, n, c) { if (g.hp >= g.maxHp) return; g.hp = Math.min(g.maxHp, g.hp + n); pop(g, c.x, c.y - 18, "+" + n, "#6fcf8a", false); }
 function onHit(g, b, en) {
   g.combo++; g.maxCombo = Math.max(g.maxCombo, g.combo); g.comboT = 1.2;
@@ -4312,6 +4368,7 @@ function onHit(g, b, en) {
     g.cp = 1;
     if (crit || exe) { g.zoom = Math.max(g.zoom || 0, 0.012); hitSnd(g.combo + 10, true); } }
   const ec0 = enCenter(en);
+  if ((en.ab === "prism" && Math.random() < 0.3) || (en.ab === "bstar" && Math.random() < 0.2)) thorn(g);
   if (sp.includes("frost") && !en.dead) en.brittle = true;
   if (sp.includes("mark") && !en.dead) en.mark = 2;
   if (sp.includes("ice") && !en.dead && !en.boss && en.r >= 2 && !(en.frz > 0)) { en.frz = 1; pop(g, ec0.x, ec0.y - 18, "❄", "#bfeaff", false); }
@@ -4340,8 +4397,12 @@ function onHit(g, b, en) {
       .filter(t => t.d <= range).sort((a, b2) => a.d - b2.d).slice(0, 2 * fx.chain).forEach(t => { damage(g, t.o, cd); g.bolts.push({ x1: ex, y1: ey, x2: t.x, y2: t.y, t: 0.15 }); sfx(900, 0.05, "sawtooth", 0.03); });
   }
 }
+function chillMul(g) {
+  let n = 0; g.enemies.forEach(o => { if (!o.dead) { if (o.ab === "chill") n++; else if (o.ab === "bice") n++; } });
+  return Math.max(0.6, 1 - 0.1 * n);
+}
 function spawnBall(g, def) {
-  const fx = { ...def.fx }, sp = def.sp || [], sw = sp.includes("swift") ? 1.25 : 1;
+  const fx = { ...def.fx }, sp = def.sp || [], sw = (sp.includes("swift") ? 1.25 : 1) * chillMul(g);
   if (g.pierceB) fx.pierce = Math.min(FX_CAP, (fx.pierce || 0) + g.pierceB);
   if (g.splashB) fx.splash = Math.min(FX_CAP, (fx.splash || 0) + g.splashB);
   if (g.chainB) fx.chain = Math.min(FX_CAP, (fx.chain || 0) + g.chainB);
@@ -4594,17 +4655,20 @@ const SIL_EYES = [[[-3.5, -2.5], [3.5, -2.5], 1.8], [[-3.5, -2.5], [3.5, -2.5], 
 function drawEye(c, x, y, r, col) { c.globalAlpha = 0.3; c.fillStyle = col; c.beginPath(); c.arc(x, y, r * 2.2, 0, 6.283); c.fill(); c.globalAlpha = 1; c.fillStyle = "#fffbe8"; c.beginPath(); c.arc(x, y, r, 0, 6.283); c.fill(); }
 function monFx(c, en, ax, ay, s, T, acc, hit) {
   if (hit) return;
-  const z = (en.z || 0) % 4;
+  const z = (en.z || 0) % ZONES.length;
   c.save(); c.strokeStyle = acc; c.fillStyle = acc; c.lineWidth = 1;
   if (z === 0) { c.globalAlpha = 0.6; c.beginPath(); c.arc(ax + 7 * s, ay - 9 * s, 3.4 * s, 1.2, 5.1); c.stroke(); c.globalAlpha = 0.22; c.beginPath(); c.arc(ax, ay, 13 * s, 0, 6.283); c.stroke(); }
   else if (z === 1) { for (let i = 0; i < 3; i++) { const p = (T * 1.4 + i / 3) % 1; c.globalAlpha = 1 - p; c.beginPath(); c.arc(ax + (i - 1) * 5 * s + Math.sin(T * 3 + i) * 2, ay - 6 * s - p * 12 * s, 1.1 * s, 0, 6.283); c.fill(); } c.globalAlpha = 0.75; c.beginPath(); c.moveTo(ax - 4 * s, ay + s); c.lineTo(ax - s, ay + 4 * s); c.lineTo(ax - 3 * s, ay + 7 * s); c.moveTo(ax + 4 * s, ay); c.lineTo(ax + 2 * s, ay + 3 * s); c.stroke(); }
   else if (z === 2) { for (let i = 0; i < 3; i++) { const p = (T * 0.8 + i / 3) % 1; c.globalAlpha = 0.7 * (1 - p); c.beginPath(); c.arc(ax + (i - 1) * 6 * s, ay + 8 * s - p * 20 * s, 1.3 * s, 0, 6.283); c.stroke(); } c.globalAlpha = 0.5; const w = Math.sin(T * 4) * 2; c.beginPath(); c.moveTo(ax - 9 * s, ay); c.lineTo(ax - 14 * s, ay - 4 * s + w); c.lineTo(ax - 10 * s, ay + 4 * s); c.moveTo(ax + 9 * s, ay); c.lineTo(ax + 14 * s, ay - 4 * s - w); c.lineTo(ax + 10 * s, ay + 4 * s); c.stroke(); }
-  else { for (let i = 0; i < 3; i++) { const a = T * 1.5 + i * 2.094; c.globalAlpha = 0.85; c.save(); c.translate(ax + Math.cos(a) * 13 * s, ay + Math.sin(a) * 8 * s); c.rotate(a * 2); c.fillRect(-1.6 * s, -1.6 * s, 3.2 * s, 3.2 * s); c.restore(); } c.globalAlpha = 0.9; c.beginPath(); c.arc(ax, ay - 6 * s, 1.2 * s, 0, 6.283); c.fill(); }
+  else if (z === 3) { for (let i = 0; i < 3; i++) { const a = T * 1.5 + i * 2.094; c.globalAlpha = 0.85; c.save(); c.translate(ax + Math.cos(a) * 13 * s, ay + Math.sin(a) * 8 * s); c.rotate(a * 2); c.fillRect(-1.6 * s, -1.6 * s, 3.2 * s, 3.2 * s); c.restore(); } c.globalAlpha = 0.9; c.beginPath(); c.arc(ax, ay - 6 * s, 1.2 * s, 0, 6.283); c.fill(); }
+  else if (z === 4) { c.globalAlpha = 0.55; for (let i = 0; i < 3; i++) { const p = (T * 0.5 + i / 3) % 1; c.beginPath(); c.arc(ax - 12 * s + p * 24 * s, ay + 9 * s + Math.sin(T * 2 + i) * 1.5, (2 + i) * 0.9 * s, 0, 6.283); c.fill(); } c.globalAlpha = 0.9; c.beginPath(); c.moveTo(ax + 2 * s, ay - 12 * s); c.lineTo(ax - s, ay - 7 * s); c.lineTo(ax + s, ay - 7 * s); c.lineTo(ax - 2 * s, ay - 2 * s); c.stroke(); }
+  else if (z === 5) { for (let i = 0; i < 4; i++) { const p = (T * 0.7 + i / 4) % 1; c.globalAlpha = 0.8 * (1 - p); c.fillRect(ax - 11 * s + i * 7 * s + Math.sin(T * 2 + i) * 2, ay - 12 * s + p * 24 * s, 1.5 * s, 1.5 * s); } c.globalAlpha = 0.7; c.beginPath(); c.moveTo(ax - 8 * s, ay + 8 * s); c.lineTo(ax - 5 * s, ay + 4 * s); c.lineTo(ax - 2 * s, ay + 8 * s); c.moveTo(ax + 3 * s, ay + 8 * s); c.lineTo(ax + 6 * s, ay + 3 * s); c.lineTo(ax + 9 * s, ay + 8 * s); c.stroke(); }
+  else { for (let i = 0; i < 4; i++) { const a = T * 0.9 + i * 1.571, rx = Math.cos(a) * 14 * s, ry = Math.sin(a) * 9 * s; c.globalAlpha = 0.5 + 0.5 * Math.sin(T * 4 + i); c.beginPath(); c.moveTo(ax + rx - 2 * s, ay + ry); c.lineTo(ax + rx + 2 * s, ay + ry); c.moveTo(ax + rx, ay + ry - 2 * s); c.lineTo(ax + rx, ay + ry + 2 * s); c.stroke(); } }
   if (en.elite) { c.globalAlpha = 1; c.fillStyle = "#e8c468"; c.beginPath(); c.moveTo(ax - 6 * s, ay - 9 * s); c.lineTo(ax - 5 * s, ay - 14 * s); c.lineTo(ax - 2 * s, ay - 10 * s); c.lineTo(ax, ay - 15 * s); c.lineTo(ax + 2 * s, ay - 10 * s); c.lineTo(ax + 5 * s, ay - 14 * s); c.lineTo(ax + 6 * s, ay - 9 * s); c.closePath(); c.fill(); }
   c.restore();
 }
 function drawBoss(c, en, ax, ay, T, hit) {
-  const z = (en.z || 0) % 4, Z = ZONES[z], P = Z.pal, A = Z.acc, ra = !!en.enraged, AC = ra ? "#ff5a4a" : A;
+  const z = (en.z || 0) % ZONES.length, Z = ZONES[z], P = Z.pal, A = Z.acc, ra = !!en.enraged, AC = ra ? "#ff5a4a" : A;
   const fl = (p, q) => { if (hit) return "#fff"; const g = c.createLinearGradient(0, -14, 0, 14); g.addColorStop(0, p); g.addColorStop(1, q); return g; };
   const eye = (x, y, r, col) => drawEye(c, x, y, r, hit ? "#fff" : (ra ? "#ff4a3a" : col));
   c.save(); c.translate(ax + 8, ay + 1);
@@ -4629,6 +4693,21 @@ function drawBoss(c, en, ax, ay, T, hit) {
     c.lineWidth = 1.1; c.strokeStyle = AC; c.fillStyle = fl(P[0], P[1]); c.beginPath(); c.arc(0, 0, 11, Math.PI, 0); c.quadraticCurveTo(11, 6, 0, 6); c.quadraticCurveTo(-11, 6, -11, 0); c.fill(); c.stroke();
     c.fillStyle = hit ? "#fff" : "#fffbe8"; c.beginPath(); c.ellipse(0, -1, 5.5, 4.2, 0, 0, 6.283); c.fill();
     c.fillStyle = hit ? "#ddd" : (ra ? "#c4202c" : "#07030f"); c.beginPath(); c.ellipse(0, -1, 1.3, 3.8, 0, 0, 6.283); c.fill();
+  } else if (z === 4) {
+    c.beginPath(); c.arc(-7, 3, 6.5, 0, 6.283); c.arc(-1, -3, 8.5, 0, 6.283); c.arc(7, 3, 6.5, 0, 6.283); c.rect(-12, 3, 24, 6.5); c.fill(); c.stroke();
+    c.fillStyle = hit ? "#fff" : "#ffe36b"; c.beginPath(); c.moveTo(2, -8); c.lineTo(-3, 1); c.lineTo(0, 1); c.lineTo(-2, 9); c.lineTo(4, -1); c.lineTo(1, -1); c.closePath(); c.fill();
+    eye(-6, -2, 1.5, A); eye(6, -2, 1.5, A);
+    for (let i = 0; i < 3; i++) { const a = T * 1.6 + i * 2.094; c.fillStyle = hit ? "#fff" : A; c.beginPath(); c.arc(Math.cos(a) * 16, Math.sin(a) * 6 + 6, 1.5, 0, 6.283); c.fill(); }
+  } else if (z === 5) {
+    c.beginPath(); c.moveTo(0, -13); c.lineTo(9, -6); c.lineTo(9, 7); c.lineTo(0, 13); c.lineTo(-9, 7); c.lineTo(-9, -6); c.closePath(); c.fill(); c.stroke();
+    c.globalAlpha = 0.5; c.lineWidth = 0.8; c.beginPath(); c.moveTo(0, -13); c.lineTo(0, 13); c.moveTo(-9, -6); c.lineTo(9, 7); c.moveTo(9, -6); c.lineTo(-9, 7); c.stroke(); c.globalAlpha = 1; c.lineWidth = 1.1;
+    c.fillStyle = hit ? "#fff" : P[2]; [-6, 0, 6].forEach((x, i) => { c.beginPath(); c.moveTo(x - 2.5, -12 + Math.abs(x) * 0.3); c.lineTo(x, -19 + (i === 1 ? -3 : 0)); c.lineTo(x + 2.5, -12 + Math.abs(x) * 0.3); c.closePath(); c.fill(); });
+    eye(-3.5, -1, 1.7, A); eye(3.5, -1, 1.7, A);
+  } else if (z === 6) {
+    c.save(); c.rotate(T * 0.4); c.fillStyle = hit ? "#fff" : A; for (let i = 0; i < 8; i++) { c.rotate(0.7854); c.beginPath(); c.moveTo(-1.6, -11); c.lineTo(0, i % 2 ? -16 : -19); c.lineTo(1.6, -11); c.closePath(); c.fill(); } c.restore();
+    c.fillStyle = fl(P[0], P[1]); c.beginPath(); c.arc(0, 0, 11, 0, 6.283); c.fill(); c.stroke();
+    c.fillStyle = hit ? "#ddd" : "#05030f"; c.beginPath(); c.ellipse(0, 0, 6, 4, 0, 0, 6.283); c.fill(); c.fillStyle = hit ? "#fff" : (ra ? "#ff4a3a" : A); c.beginPath(); c.arc(0, 0, 2.4, 0, 6.283); c.fill();
+    for (let i = 0; i < 5; i++) { const a = T * 1.1 + i * 1.2566; c.fillStyle = hit ? "#fff" : A; c.fillRect(Math.cos(a) * 15 - 1.2, Math.sin(a) * 15 - 1.2, 2.4, 2.4); }
   } else {
     c.beginPath(); c.moveTo(0, -14); c.lineTo(9, 0); c.lineTo(0, 14); c.lineTo(-9, 0); c.closePath(); c.fill(); c.stroke();
     c.lineWidth = 1.8; [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(([x, y]) => { c.beginPath(); c.moveTo(x * 6, y * 6); c.lineTo(x * 14, y * 11); c.stroke(); });
@@ -4651,6 +4730,7 @@ function drawEnemy(c, en, T) {
   if (en.frz > 0) { c.save(); c.fillStyle = "rgba(160,225,255,.28)"; rr(c, r.x, r.y, r.w, r.h, 6); c.fill(); c.lineWidth = 2; c.strokeStyle = "#bfeaff"; c.stroke(); c.restore(); }
   if (en.mark > 0) { c.save(); c.setLineDash([3, 3]); c.lineWidth = 2; c.strokeStyle = "#ffd36b"; rr(c, r.x - 1, r.y - 1, r.w + 2, r.h + 2, 7); c.stroke(); c.restore(); }
   if (en.sh > 0) { c.save(); c.lineWidth = 2; c.globalAlpha = 0.6 + 0.3 * Math.sin(T * 5); c.strokeStyle = "#8fd3ff"; rr(c, r.x - 1.5, r.y - 1.5, r.w + 3, r.h + 3, 8); c.stroke(); c.restore(); }
+  if (en.ab === "aegis") { c.save(); c.globalAlpha = 0.18 + 0.08 * Math.sin(T * 3); c.fillStyle = "#ffc9a0"; c.beginPath(); c.arc(cx, cy, 52, 0, 6.283); c.fill(); c.restore(); }
   if (en.ab === "barmor") { c.save(); c.lineCap = "round"; c.lineWidth = 3.5; c.strokeStyle = "#9fd0ff"; c.shadowColor = "#9fd0ff"; c.shadowBlur = 6; c.beginPath(); c.moveTo(r.x + 5, r.y + r.h - 0.5); c.lineTo(r.x + r.w - 5, r.y + r.h - 0.5); c.stroke(); c.restore(); }
   if (!hit) { const gl = c.createLinearGradient(0, r.y, 0, r.y + r.h * 0.55); gl.addColorStop(0, "rgba(255,255,255,.22)"); gl.addColorStop(1, "rgba(255,255,255,0)"); c.fillStyle = gl; rr(c, r.x + 1, r.y + 1, r.w - 2, r.h * 0.55, 5); c.fill(); }
   if (!hit) { c.globalAlpha = 0.28; c.lineWidth = 0.8; c.strokeStyle = acc; rr(c, r.x + 2.5, r.y + 2.5, r.w - 5, r.h - 5, 4); c.stroke(); c.globalAlpha = 1; }
@@ -4730,7 +4810,10 @@ const AMB = Array.from({ length: 38 }, () => ({ x: Math.random() * W, y: Math.ra
 function drawAmb(c, T, zi, col) {
   c.save(); c.globalCompositeOperation = "lighter"; c.fillStyle = col; c.strokeStyle = col;
   AMB.forEach(a => {
-    if (zi === 1) { const y = (((a.y - T * (18 + a.s * 24)) % H) + H) % H; c.globalAlpha = 0.22 + 0.3 * Math.abs(Math.sin(T * 3 + a.p)); c.fillRect(a.x + Math.sin(T * 1.5 + a.p) * 10, y, a.r * 0.9, a.r * 0.9); }
+    if (zi === 4) { const x = ((((a.x + T * (6 + a.s * 10)) % (W + 80)) + W + 80) % (W + 80)) - 40; c.globalAlpha = 0.08 + 0.06 * Math.sin(T * 0.6 + a.p); c.beginPath(); c.ellipse(x, a.y, 16 + a.r * 8, 4 + a.r * 2, 0, 0, 6.283); c.fill(); }
+    else if (zi === 5) { const y = (a.y + T * (14 + a.s * 18)) % H, x = (a.x + Math.sin(T * 0.9 + a.p) * 14 + W) % W; c.globalAlpha = 0.35; c.fillRect(x, y, a.r * 0.9, a.r * 0.9); }
+    else if (zi === 6) { const y = (((a.y - T * (2 + a.s * 3)) % H) + H) % H; c.globalAlpha = 0.15 + 0.5 * Math.abs(Math.sin(T * 1.8 + a.p)); c.lineWidth = 0.8; c.beginPath(); c.moveTo(a.x - a.r * 2, y); c.lineTo(a.x + a.r * 2, y); c.moveTo(a.x, y - a.r * 2); c.lineTo(a.x, y + a.r * 2); c.stroke(); }
+    else if (zi === 1) { const y = (((a.y - T * (18 + a.s * 24)) % H) + H) % H; c.globalAlpha = 0.22 + 0.3 * Math.abs(Math.sin(T * 3 + a.p)); c.fillRect(a.x + Math.sin(T * 1.5 + a.p) * 10, y, a.r * 0.9, a.r * 0.9); }
     else if (zi === 2) { const y = (((a.y - T * (8 + a.s * 12)) % H) + H) % H; c.globalAlpha = 0.28; c.lineWidth = 0.8; c.beginPath(); c.arc(a.x + Math.sin(T * 0.9 + a.p) * 8, y, a.r * 1.7, 0, 6.283); c.stroke(); }
     else if (zi === 3) { const y = (a.y + T * (5 + a.s * 6)) % H; c.globalAlpha = 0.2 + 0.25 * Math.abs(Math.sin(T * 1.4 + a.p)); c.save(); c.translate(a.x + Math.cos(T * 0.4 + a.p) * 20, y); c.rotate(T * 0.6 + a.p); c.fillRect(-a.r, -a.r, a.r * 2, a.r * 2); c.restore(); }
     else { const y = (((a.y - T * (3 + a.s * 4)) % H) + H) % H; c.globalAlpha = 0.18 + 0.22 * Math.abs(Math.sin(T * 1.1 + a.p)); c.beginPath(); c.arc(a.x + Math.sin(T * 0.5 + a.p) * 12, y, a.r * 0.8, 0, 6.283); c.fill(); }
@@ -4785,6 +4868,7 @@ function draw() {
   c.fillStyle = g.xpPulse > 0 ? "#c9a8ff" : "#8b6bd1"; rr(c, W - 110, CEIL / 2 - 3, Math.max(6, 100 * Math.min(1, g.xp / needXp(g.level))), 6, 3); c.fill();
   if (g.xpPulse > 0) c.restore();
   if (g.ff > 1.05 && g.firing) { c.textAlign = "right"; c.font = "bold 12px sans-serif"; c.fillStyle = "rgba(255,230,150,.9)"; c.fillText("⏩ ×" + g.ff.toFixed(1), W - 8, CEIL + 14); }
+  { const cm = chillMul(g); if (cm < 1) { c.textAlign = "left"; c.font = "bold 11px sans-serif"; c.fillStyle = "#bfefff"; c.fillText(dc(`❄ 彈珠減速 ${Math.round((1 - cm) * 100)}%`, `❄ Balls slowed ${Math.round((1 - cm) * 100)}%`), 10, CEIL + 38); } }
   if (g.pitPush > 0) { c.textAlign = "left"; c.font = "bold 11px sans-serif"; c.fillStyle = "#8fd3ff"; c.fillText(dc(`🌊 潮汐 ×${g.pitPush}（${g.pitT} 輪）`, `🌊 Tide ×${g.pitPush} (${g.pitT})`), 10, CEIL + 26); }
   if (g.floor % 10 === 9) { c.textAlign = "center"; c.font = "bold 12px sans-serif"; c.fillStyle = `rgba(255,120,100,${0.6 + 0.4 * Math.sin(T * 6)})`; c.fillText(dc("⚠ 下一層 BOSS 出現", "⚠ BOSS next floor"), W / 2, CEIL + 14); }
   // 深坑線
@@ -5212,7 +5296,7 @@ function panelHtmlCore() {
   const picks = own.map(id => { const c = v[id], t = TYPE_INFO[ballType(c.rarity)]; return `<div class="bp-pick${sel.has(id) ? " sel" : ""}" ${cardOpen(p, id) ? `data-bp-pick="${id}"` : ""} style="border-color:${RC[c.rarity] || RC.common};${cardOpen(p, id) ? "" : "opacity:.4;"}"><b style="color:${RC[c.rarity] || RC.common};">${c.icon || "🃏"} ${c.name} Lv${cardLv(p, id)}</b><span style="opacity:.75;">${dc(t.zh, t.en)} · ×${p.bpCards[id]}</span>${cardOpen(p, id) ? "" : `<span style="color:var(--gold-bright);font-size:11px;">🔒 ${dc(`階段 ${RAR_TIER[c.rarity] + 1} 解鎖`, `Stage ${RAR_TIER[c.rarity] + 1}`)}</span>`}<span style="color:var(--gold-bright);font-size:11px;">✧${dc(SP[spOf(id)][0], SP[spOf(id)][1])}</span><span style="opacity:.65;font-size:10.5px;line-height:1.4;white-space:normal;">${dc(SP[spOf(id)][2], SP[spOf(id)][3])}</span></div>`; }).join("");
   return `<div class="panel" id="bp-root">
     ${tabsHtml()}
-    <p class="sub">${dc(`把塔羅牌當彈珠：瞄準後一次射出整輪，彈珠在牆壁間反彈打怪，怪物每輪逼近一排，碰到深坑線就結束。擊殺升級可三選一強化，還能把兩顆彈珠「融合」成更強的一顆。免費玩，每天 ${DAILY_PLAYS} 次（VIP 每級再 +1 次，開局就扣次數）。賺到的彈珠幣和材料只能用在彈珠裡；另外每天依新達成的最高層數發少量正式版金幣。卡牌只當彈珠，不會被消耗。`, `Use tarot cards as balls: aim and fire a whole volley, balls bounce around smashing monsters that creep closer each volley; touch the pit line and it's over. Level up for 3-choice upgrades, including Fusion to merge two balls into a stronger one. Free to play, ${DAILY_PLAYS} runs a day (+1 per VIP level), a run is spent when it starts. Pit coins and mats only work inside Ball Pit; you also get a small daily main-game coin reward for new best floors. Cards are never consumed.`)}</p>
+    <p class="sub">${dc(`把塔羅牌當彈珠：瞄準後一次射出整輪，彈珠在牆壁間反彈打怪，怪物每輪逼近一排，碰到深坑線就結束。擊殺升級可三選一強化，還能把兩顆彈珠「融合」成更強的一顆。免費玩，每天 5 次（開局就扣次數）。賺到的彈珠幣和材料只能用在彈珠裡；另外每天依新達成的最高層數發少量正式版金幣。卡牌只當彈珠，不會被消耗。`, `Use tarot cards as balls: aim and fire a whole volley, balls bounce around smashing monsters that creep closer each volley; touch the pit line and it's over. Level up for 3-choice upgrades, including Fusion to merge two balls into a stronger one. Free to play, 5 runs a day, a run is spent when it starts. Pit coins and mats only work inside Ball Pit; you also get a small daily main-game coin reward for new best floors. Cards are never consumed.`)}</p>
     ${Js.ballpitChampion ? `<p class="who">${dc("今日封號", "Today's title")}: ${Ys("ballpitChampion", 13)} ${Iu(Js.ballpitChampion)}</p>` : ""}
     ${resultHtml()}
     <div style="font-size:13px;margin-top:8px;"><b>${dc("選擇出戰卡牌", "Choose your cards")}</b> <span id="bp-sel-count" style="color:var(--gold-bright);">${sel.size}/${LM()}</span> <span class="sub">${dc("（不足 3 張會補學徒彈珠）", "(padded with Apprentice balls)")}</span></div>
