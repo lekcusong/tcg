@@ -3402,7 +3402,9 @@ const CARD_DEFS = [
 const v = Object.fromEntries(CARD_DEFS.map(([id, rarity, icon, name]) => [id, { id, rarity, icon, name }]));
 const W = 360, H = 540, CEIL = 34, COLS = 6, CW = W / COLS, RH = 34, GRID_TOP = CEIL + 4, PIT_ROW = 11, PIT_MAX = 13, SHOOT_Y = H - 26, BALL_R = 7;
 const LOADOUT_BASE = 3, DRAW_COST = 400, CARD_MAX = 15, BASE_SPEED = 520, FIRE_GAP = 0.085;
-const MAX_FLOOR = 1e9, GOLD_PER_KILL = 5, GOLD_PER_FLOOR = 20, WIN_BONUS = 250;
+// 難度：前 HARD_FROM 層維持原本的 1.07 成長；之後每層血量再乘 HARD_RATE（GM 可調）。60 層上限內要拉到原本約 100+ 層的強度
+let HARD_FROM = 20, HARD_RATE = 1.16;
+const MAX_FLOOR = 60, GOLD_PER_KILL = 5, GOLD_PER_FLOOR = 20, WIN_BONUS = 250;
 // 下面這些 GM 可在面板調整（config:ballpit_settings）
 let RANK_SHARDS = [3, 2, 1];   // 每日排行榜第 1／2／3 名的神秘碎片數（GM 可調）
 let DAILY_PLAYS = 3, MAX_GOLD_PER_SEC = 40, GOLD_PER_ITEM_ROLL = 400, ITEM_MEDIUM_CHANCE = 0.18, MAX_RUN_SEC = 3600, MIN_SEC_PER_FLOOR = 1.0, LB_MIN_SEC_PER_FLOOR = 2.0, MILESTONE_FLOOR_CAP = 100, OUT_COIN_PER_FLOOR = 20, OUT_FLOOR_CAP = 40, OUT_FLOORS_PER_ITEM = 10, START_COINS = 600, AFFIX_ON = true;
@@ -3532,13 +3534,15 @@ async function loadSettings() {
       if (num("outFloorCap", 0)) OUT_FLOOR_CAP = Math.round(t.outFloorCap);
       if (num("outFloorsPerItem", 1)) OUT_FLOORS_PER_ITEM = Math.round(t.outFloorsPerItem);
       if (num("startCoins", 0)) START_COINS = Math.round(t.startCoins);
+      if (num("hardRate", 1)) HARD_RATE = Math.min(1.5, t.hardRate);
+      if (num("hardFrom", 1)) HARD_FROM = Math.round(t.hardFrom);
       if (typeof t.affixOn === "boolean") AFFIX_ON = t.affixOn;
       if (t.rankShards) RANK_SHARDS = rankShardParse(t.rankShards, RANK_SHARDS);
     }
   } catch (e) {}
 }
 async function saveSettings() {
-  await a.set(settingsKey(), JSON.stringify({ dailyPlays: DAILY_PLAYS, maxGoldPerSec: MAX_GOLD_PER_SEC, goldPerItemRoll: GOLD_PER_ITEM_ROLL, itemMediumChance: ITEM_MEDIUM_CHANCE, maxRunSec: MAX_RUN_SEC, minSecPerFloor: MIN_SEC_PER_FLOOR, lbMinSecPerFloor: LB_MIN_SEC_PER_FLOOR, milestoneFloorCap: MILESTONE_FLOOR_CAP, outCoinPerFloor: OUT_COIN_PER_FLOOR, outFloorCap: OUT_FLOOR_CAP, outFloorsPerItem: OUT_FLOORS_PER_ITEM, startCoins: START_COINS, affixOn: AFFIX_ON, rankShards: RANK_SHARDS }));
+  await a.set(settingsKey(), JSON.stringify({ dailyPlays: DAILY_PLAYS, maxGoldPerSec: MAX_GOLD_PER_SEC, goldPerItemRoll: GOLD_PER_ITEM_ROLL, itemMediumChance: ITEM_MEDIUM_CHANCE, maxRunSec: MAX_RUN_SEC, minSecPerFloor: MIN_SEC_PER_FLOOR, lbMinSecPerFloor: LB_MIN_SEC_PER_FLOOR, milestoneFloorCap: MILESTONE_FLOOR_CAP, outCoinPerFloor: OUT_COIN_PER_FLOOR, outFloorCap: OUT_FLOOR_CAP, outFloorsPerItem: OUT_FLOORS_PER_ITEM, startCoins: START_COINS, hardRate: HARD_RATE, hardFrom: HARD_FROM, affixOn: AFFIX_ON, rankShards: RANK_SHARDS }));
 }
 
 /* ===== 每日次數（跟三消同一套：GMT+8 重置、固定 5 次、GM 不受限）===== */
@@ -3587,14 +3591,15 @@ function itemLabel(itemId) {
   return def ? { icon: def.icon, name: dc(def.labelZh, def.labelEn) } : { icon: "📦", name: itemId };
 }
 
-/* ===== 每日排行榜（每人每天一筆：比「最高層數」，同層比用時短，再比誰先達成）===== */
+/* ===== 每日排行榜（每人每天一筆：比「分數」，同分比用時短，再比誰先達成；每天地圖固定，上限 60 層）===== */
 function scoreKey(dateKey, nick) { return `ballpit_daily_score:${dateKey}:${(nick || "").toLowerCase()}`; }
-async function submitDailyScore(nick, fl, ms) {
-  if (!nick || !(fl > 0)) return null;
-  const empty = JSON.stringify({ floor: 0, ms: 0, lastAt: 0, nick: "" });
+async function submitDailyScore(nick, score, fl, ms) {
+  if (!nick || !(score > 0)) return null;
+  const empty = JSON.stringify({ score: 0, floor: 0, ms: 0, lastAt: 0, nick: "" });
   const raw = await Vl(scoreKey(ys(), nick), t => {
-    const s0 = t ? JSON.parse(t) : { floor: 0, ms: 0, lastAt: 0, nick: "" };
-    if (fl > (s0.floor || 0) || (fl === s0.floor && ms < (s0.ms || 1e12))) { s0.floor = fl; s0.ms = ms; s0.lastAt = Date.now(); s0.nick = nick; }
+    const s0 = t ? JSON.parse(t) : { score: 0, floor: 0, ms: 0, lastAt: 0, nick: "" };
+    const old = s0.score != null ? s0.score : (s0.floor || 0) * 100;   // 舊格式只有層數
+    if (score > old || (score === old && ms < (s0.ms || 1e12))) { s0.score = score; s0.floor = fl; s0.ms = ms; s0.lastAt = Date.now(); s0.nick = nick; }
     return JSON.stringify(s0);
   }, empty);
   return raw ? JSON.parse(raw) : null;
@@ -3606,8 +3611,8 @@ async function getStandings(dateKey) {
   return entries.map(e => {
     let d = null; try { d = JSON.parse(e.value); } catch (err) {}
     if (!d) return null;
-    return { nick: d.nick || e.key.slice(prefix.length), floor: d.floor || 0, ms: d.ms || 0, lastAt: d.lastAt || 0 };
-  }).filter(Boolean).filter(x => x.floor > 0).sort((x, y) => y.floor - x.floor || x.ms - y.ms || x.lastAt - y.lastAt);
+    return { nick: d.nick || e.key.slice(prefix.length), floor: d.floor || 0, score: d.score != null ? d.score : (d.floor || 0) * 100, ms: d.ms || 0, lastAt: d.lastAt || 0 };
+  }).filter(Boolean).filter(x => x.score > 0).sort((x, y) => y.score - x.score || x.ms - y.ms || x.lastAt - y.lastAt);
 }
 async function refreshStandings() {
   const key = ys();
@@ -3644,7 +3649,7 @@ function standingsHtml() {
   if (list === null || list === undefined) return `<p class="sub">${dc("讀取排行榜中…", "Loading leaderboard…")}</p>`;
   if (!list.length) return `<p class="sub">${dc("今天還沒有人上榜，快來搶頭香！", "No one on today's board yet — be the first!")}</p>`;
   const me = (zl.nickname || "").toLowerCase();
-  return list.slice(0, 10).map((x, i) => `<div class="listing"><div class="left"><div class="icon-box">${i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : "#" + (i + 1)}</div><div class="meta"><div>${Iu(x.nick)}${x.nick.toLowerCase() === me ? ` <span style="color:var(--gold-bright);">(${dc("你", "you")})</span>` : ""}</div><div class="sub">⏱ ${fmtTime(x.ms)}</div></div></div><div class="right"><span class="price">${dc(`第 ${x.floor} 層`, `Floor ${x.floor}`)}</span></div></div>`).join("");
+  return list.slice(0, 10).map((x, i) => `<div class="listing"><div class="left"><div class="icon-box">${i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : "#" + (i + 1)}</div><div class="meta"><div>${Iu(x.nick)}${x.nick.toLowerCase() === me ? ` <span style="color:var(--gold-bright);">(${dc("你", "you")})</span>` : ""}</div><div class="sub">${x.floor > MAX_FLOOR ? dc("🏆 通關", "🏆 Cleared") : dc(`第 ${x.floor} 層`, `Floor ${x.floor}`)} · ⏱ ${fmtTime(x.ms)}</div></div></div><div class="right"><span class="price">${dc(`${x.score.toLocaleString()} 分`, `${x.score.toLocaleString()} pts`)}</span></div></div>`).join("");
 }
 
 /* ===== 開局：CAS 寫 bpRun（伺服器記下開局時間）並「開局就扣次數」，避免開了又放棄、只挑好的一局結算 ===== */
@@ -3674,6 +3679,7 @@ async function claimReward(raw) {
   await loadSettings();
   const goldIn = Math.max(0, Math.floor(Number(raw && raw.gold) || 0));
   const floorIn = Math.max(0, Math.floor(Number(raw && raw.floor) || 0));
+  const hpIn = Math.max(0, Math.min(100, Math.floor(Number(raw && raw.hpPct) || 0)));
   let err = null, granted = null;
   const fresh = await Wl(zl.nickname, p => {
     err = null; granted = null;
@@ -3725,13 +3731,16 @@ async function claimReward(raw) {
       for (const k of Object.keys(outBag)) p.professionItems[k] = (p.professionItems[k] || 0) + outBag[k];
     }
     const lbFloor = Math.min(fl, Math.floor(elapsed / LB_MIN_SEC_PER_FLOOR) + 1);
-    granted = { bossFirst, gold, milestone: ms, mats, floorCapped, goldCapped, outCoins, outBag, floor: fl, lbFloor, elapsedMs: Math.round(elapsed * 1000), playsLeft: playsRemaining(p) };
+    // 排行榜分數：每清 1 層 100 分；60 層全清再加 1000 通關分＋剩餘血量（最多 500）＋速度分（900 秒內每快 1 秒 +1）
+    const lbWin = lbFloor > MAX_FLOOR, lbCleared = Math.min(Math.max(0, lbFloor - 1), MAX_FLOOR);
+    const score = lbCleared * 100 + (lbWin ? 1000 + hpIn * 5 + Math.max(0, 900 - Math.round(elapsed)) : 0);
+    granted = { bossFirst, gold, milestone: ms, mats, floorCapped, goldCapped, outCoins, outBag, floor: fl, lbFloor, score, lbWin, hpPct: hpIn, elapsedMs: Math.round(elapsed * 1000), playsLeft: playsRemaining(p) };
   });
   if (!fresh) return null;
   if (err) return { ok: false, reason: err };
   zl.player = fresh;
   { const c = document.getElementById("player-coin"); if (c) c.textContent = "✦ " + fmtCoin(fresh.coins); } // 只更新金幣顯示，不整頁重畫（整頁重畫會洗掉結算畫面與事件）
-  try { await submitDailyScore(zl.nickname, granted.lbFloor, granted.elapsedMs); st.standingsFor = null; } catch (e) {}
+  try { await submitDailyScore(zl.nickname, granted.score, granted.lbFloor, granted.elapsedMs); st.standingsFor = null; } catch (e) {}
   return { ok: true, ...granted };
 }
 
@@ -3843,10 +3852,14 @@ const META = [
 const metaCost = (m, lv) => Math.round(m.base * Math.pow(m.gr || 1.8, lv));
 
 /* ===== 遊戲核心 ===== */
-function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+// 每日種子：同一天、同一層、同一排，所有玩家抽到的怪物排列一致（用日期＋層數當種子，與玩家的操作順序無關）
+function hashSeed(str) { let h = 1779033703 ^ str.length; for (let i = 0; i < str.length; i++) { h = Math.imul(h ^ str.charCodeAt(i), 3432918353); h = (h << 13) | (h >>> 19); } h = Math.imul(h ^ (h >>> 16), 2246822507); h = Math.imul(h ^ (h >>> 13), 3266489909); return (h ^ (h >>> 16)) >>> 0; }
+function mulberry32(seed) { let s0 = seed | 0; return function () { s0 = (s0 + 1831565813) | 0; let t = Math.imul(s0 ^ (s0 >>> 15), 1 | s0); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+function seedRng(g, tag) { return mulberry32(hashSeed("bp|" + ((g && g.seedKey) || "") + "|" + tag)); }
+function shuffle(a, rnd) { const R = rnd || Math.random; for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(R() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
 /* BOSS 難度曲線：hp/atk 為倍率、cd 為幾輪出手一次。第 4 隻起回到 1 倍並沿用原本隨層數成長的公式 */
 const BOSS_TIER = [{ hp: 0.5, atk: 0.5, cd: 2 }, { hp: 0.8, atk: 0.75, cd: 1 }, { hp: 1, atk: 0.9, cd: 1 }, { hp: 1, atk: 1, cd: 1 }];
-const hpMul = f => Math.pow(1.07, Math.max(0, f - 4));
+const hpMul = f => Math.pow(1.07, Math.max(0, Math.min(f, HARD_FROM) - 4)) * Math.pow(HARD_RATE, Math.max(0, f - HARD_FROM));
 
 /* ===== 階段怪物能力與 BOSS 招式 =====
    熔岩(第 11–20 層)：熔岩怪、自爆怪　深海(21–30)：治療怪、護盾怪、召喚怪　虛空(31+)：瞬移怪、分裂怪（也會混入前面各種）。
@@ -3885,7 +3898,8 @@ function pickAb(g) {
   const zi = zoneIdx(g.floor);
   if (zi < 1) return null;
   const p = [0, 0.22, 0.28, 0.32, 0.34, 0.36, 0.38][zi] || 0.42;
-  if (Math.random() >= p) return null;
+  const R = g.rnd || Math.random;
+  if (R() >= p) return null;
   const pools = {
     1: ["magma", "magma", "fuse"],
     2: ["healer", "shield", "summoner"],
@@ -3895,7 +3909,7 @@ function pickAb(g) {
     6: ["prism", "prism", "phoenix", "phoenix", "blink", "summoner", "splitter", "aegis"]
   };
   const pool = pools[zi] || ["blink", "splitter", "summoner", "healer", "shield", "fuse", "magma", "gust", "aegis", "icearmor", "chill", "prism", "phoenix"];
-  return pool[Math.floor(Math.random() * pool.length)];
+  return pool[Math.floor(R() * pool.length)];
 }
 function setupAb(g, en, ab) {
   en.ab = ab;
@@ -4014,7 +4028,8 @@ function magnetPull(g, en) {
   row.forEach(o => { const dir = Math.sign(en.c - o.c); if (Math.abs(en.c - o.c) > 1 && cellFree(g, o.c + dir, o.r, 1, o)) { o.c += dir; moved++; } });
   if (moved) { const c = enCenter(en); ring(g, c.x, c.y, 60, "#9fb4ff", 2, 0.3); sfx(260, 0.08, "sine", 0.04); }
 }
-function spawnRow(g, row) {
+function spawnRowInner(g, row) {
+  const R = g.rnd || Math.random;
   if (g.floor % 10 === 0 && row === 0) {
     // 第 1 隻 BOSS 簡單、之後逐隻變難：k = 第幾隻 BOSS（第10層=1、第20層=2…）
     const bk = Math.floor(g.floor / 10), bt = BOSS_TIER[Math.min(bk, BOSS_TIER.length) - 1], bab = BOSS_AB[(bk - 1) % BOSS_AB.length];
@@ -4023,11 +4038,11 @@ function spawnRow(g, row) {
     tellAb(g, bab, true);
     return;
   }
-  const n = Math.min(6, (g.extraEnemy || 0) + 4 + (Math.random() < 0.5 ? 1 : 0) + (g.floor > 8 && Math.random() < 0.4 ? 1 : 0) + (g.floor > 25 && Math.random() < 0.5 ? 1 : 0));
-  shuffle([0, 1, 2, 3, 4, 5]).filter(c => cellFree(g, c, row, 1)).slice(0, n).forEach(c => {
-    const rd = Math.random(), kind = g.floor >= 3 && rd < 0.1 ? "bomb" : rd > 0.93 ? "gold" : "n";
-    const elite = kind === "n" && g.floor >= 4 && Math.random() < 0.16 + Math.min(0.3, g.floor * 0.006);
-    let hp = Math.round((2 + Math.floor(g.floor * 1.3) + Math.floor(Math.random() * (2 + Math.floor(g.floor / 5)))) * hpMul(g.floor));
+  const n = Math.min(6, (g.extraEnemy || 0) + 4 + (R() < 0.5 ? 1 : 0) + (g.floor > 8 && R() < 0.4 ? 1 : 0) + (g.floor > 25 && R() < 0.5 ? 1 : 0));
+  shuffle([0, 1, 2, 3, 4, 5], R).filter(c => cellFree(g, c, row, 1)).slice(0, n).forEach(c => {
+    const rd = R(), kind = g.floor >= 3 && rd < 0.1 ? "bomb" : rd > 0.93 ? "gold" : "n";
+    const elite = kind === "n" && g.floor >= 4 && R() < 0.16 + Math.min(0.3, g.floor * 0.006);
+    let hp = Math.round((2 + Math.floor(g.floor * 1.3) + Math.floor(R() * (2 + Math.floor(g.floor / 5)))) * hpMul(g.floor));
     if (elite) hp *= 2;
     hp = Math.max(1, Math.round(hp * (g.enemyHpMul || 1)));
     if (kind === "gold") hp = Math.max(2, Math.ceil(hp * 0.6));
@@ -4037,6 +4052,11 @@ function spawnRow(g, row) {
     armEnemy(g, en);
   });
 }
+function spawnRow(g, row) {
+  const prev = g.rnd;
+  g.rnd = seedRng(g, "s" + g.floor + ":" + row);
+  try { spawnRowInner(g, row); } finally { g.rnd = prev || Math.random; }
+}
 function newGame(p) {
   const base = buildBase(p);
   const g = { base, loadout: base.slice(), balls: [], queue: [], enemies: [], bolts: [], floor: 1, kills: 0, goldW: 0, xp: 0, level: 1, pending: 0, dmgBonus: 0, spd: BASE_SPEED, skip: 0, pit: PIT_ROW, aim: Math.PI / 2, aiming: false, firing: false, fireAngle: Math.PI / 2, fireT: 0, volleyT: 0, over: false, upgrading: false, nextId: 1, startedAt: Date.now(), parts: [], pops: [], shake: 0, combo: 0, maxCombo: 0, comboT: 0, crit: 0, goldMul: 1, storm: 0, hitstop: 0, zone: 0, zPrev: 0, zF: 1, rings: [], banner: null, bossT: 0, lvT: 0, hp: HP_BASE, maxHp: HP_BASE, hpShow: HP_BASE, hurt: 0, shots: [] };
@@ -4045,6 +4065,7 @@ function newGame(p) {
   g.dmgBonus = M.dmg || 0; g.crit = 0.04 * (M.crit || 0); g.goldMul = 1 + 0.1 * (M.gold || 0); g.spd = Math.min(900, BASE_SPEED * (1 + 0.06 * (M.spd || 0))); g.pit = Math.min(PIT_MAX, PIT_ROW + (M.pit || 0));
   for (let i = 0; i < (M.balls || 0); i++) g.loadout.push(base[Math.floor(Math.random() * base.length)]);
   g.maxHp += 15 * (M.hp || 0); g.hp = g.maxHp; g.hpShow = g.hp; g.regen = M.regen || 0; g.xp = M.head || 0; g.shield = M.ward || 0; g.pierceB = M.pen || 0;
+  g.seedKey = ys(); g.rnd = Math.random; g.upN = 0;   // 每日種子：以「開局當天」的日期為準
   for (let r = 0; r < 4; r++) spawnRow(g, r);
   return g;
 }
@@ -4062,9 +4083,9 @@ const HP_BASE = 100, HP_PER_LV = 10, LV_HEAL = 0.3, BOSS_HEAL = 0.25;
 function armEnemy(g, en) {
   if (en.kind !== "n" || g.floor < 4) return;
   if (en.elite) { en.atk = Math.round((3 + g.floor * 0.8) * 1.5); en.cd = 2; }
-  else if (Math.random() < Math.min(0.45, 0.14 + g.floor * 0.006)) { en.atk = Math.round(3 + g.floor * 0.65); en.cd = 3; }
+  else if ((g.rnd || Math.random)() < Math.min(0.45, 0.14 + g.floor * 0.006)) { en.atk = Math.round(3 + g.floor * 0.65); en.cd = 3; }
   else return;
-  en.t = Math.floor(Math.random() * en.cd) - 1; en.cnt = 0;
+  en.t = Math.floor((g.rnd || Math.random)() * en.cd) - 1; en.cnt = 0;
 }
 function hurtPlayer(g, d, heavy) {
   if (g.shield > 0) { g.shield--; pop(g, W / 2, SHOOT_Y - 26, dc("擋下", "Blocked"), "#8fd3ff", true); ring(g, W / 2, SHOOT_Y, 50, "#8fd3ff", 3, 0.4); sfx(600, 0.12, "sine", 0.05); return; }
@@ -4340,10 +4361,10 @@ function stepFx(g, dt) {
   if (g.zF < 1) g.zF = Math.min(1, g.zF + dt / 1.5);
   g.bolts.forEach(b => { b.t -= dt; }); g.bolts = g.bolts.filter(b => b.t > 0);
   g.parts.forEach(p => { p.t -= dt; p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 380 * dt; }); g.parts = g.parts.filter(p => p.t > 0);
-  if (g.parts.length > 400) g.parts.splice(0, g.parts.length - 400);
+  const pcap = PERF_LITE ? 160 : 400; if (g.parts.length > pcap) g.parts.splice(0, g.parts.length - pcap);
   g.pops.forEach(p => { p.t -= dt; p.y -= (22 + 70 * Math.max(0, p.t / p.m - 0.4)) * dt; p.x += (p.vx || 0) * dt; }); g.pops = g.pops.filter(p => p.t > 0);
   if (g.comboT > 0) g.comboT -= dt;
-  g.zoom = (g.zoom || 0) * Math.exp(-dt * 9); g.cp = Math.max(0, (g.cp || 0) - dt * 5); g.flashW = Math.max(0, (g.flashW || 0) - dt * 2.2); g.xpPulse = Math.max(0, (g.xpPulse || 0) - dt * 3); g.hsCd = (g.hsCd || 0) - dt;
+  g.zoom = (g.zoom || 0) * Math.exp(-dt * 9); g.cp = Math.max(0, (g.cp || 0) - dt * 5);  g.xpPulse = Math.max(0, (g.xpPulse || 0) - dt * 3); g.hsCd = (g.hsCd || 0) - dt;
   g.ghosts = (g.ghosts || []).filter(o => (o.t -= dt) > 0); g.stars = (g.stars || []).filter(o => (o.t -= dt) > 0);
   g.orbs = g.orbs || [];
   g.orbs.forEach(o => { o.age += dt; if (o.age < o.dl) return; const k = o.age - o.dl; if (k < 0.22) { o.x += o.vx * dt; o.y += o.vy * dt; o.vx *= 0.9; o.vy *= 0.9; } else { const dx = o.tx - o.x, dy = o.ty - o.y, d = Math.hypot(dx, dy) || 1, sp = 200 + 1400 * (k - 0.22), mv = Math.min(d, sp * dt); o.x += dx / d * mv; o.y += dy / d * mv; if (d < 9) { o.done = true; g.xpPulse = 1; } } });
@@ -4587,7 +4608,7 @@ function pickAffix(a) {
 function showAffixPicker() {
   const g = st.g;
   if (!AFFIX_ON || !g || !st.ov) return;
-  const pool = shuffle(AFFIXES.filter(a => !a.ok || a.ok(g))).slice(0, 3);
+  const pool = shuffle(AFFIXES.filter(a => !a.ok || a.ok(g)), seedRng(g, "affix")).slice(0, 3);
   if (!pool.length) return;
   g.upgrading = true;
   st.ov.style.display = "flex";
@@ -4649,12 +4670,13 @@ function showUpgrade() {
   if (!g || !st.ov) return;
   g.upgrading = true;
   const avail = UPGRADES.filter(u => upOpen(u, zl.player) && (!u.ok || u.ok(g))), fuse = avail.find(u => u.id === "fuse");
-  let pool = shuffle(avail.filter(u => u !== fuse)).slice(0, 3);
-  if (fuse && (g.level % 2 === 0 || Math.random() < 0.35)) pool = [fuse].concat(pool.slice(0, 2));
+  g.upN = (g.upN || 0) + 1; const UR = seedRng(g, "u" + g.upN);
+  let pool = shuffle(avail.filter(u => u !== fuse), UR).slice(0, 3);
+  if (fuse && (g.level % 2 === 0 || UR() < 0.35)) pool = [fuse].concat(pool.slice(0, 2));
   else if (fuse && pool.length < 3) pool.push(fuse);
   const heal = avail.find(u => u.id === "heal"), k = pool.findIndex(u => u !== fuse);
   if (heal && g.hp < g.maxHp * 0.4 && !pool.includes(heal) && k >= 0) pool[k] = heal;
-  renderUpgradeChoices(shuffle(pool));
+  renderUpgradeChoices(shuffle(pool, UR));
 }
 
 /* ===== 結束與結算 ===== */
@@ -4668,7 +4690,7 @@ async function finish(win) {
   g.over = true;
   stopLoop(); Music.stop(); if (!win) Music.stinger("over");
   const floorsCleared = Math.max(0, g.floor - 1);
-  const raw = { gold: Math.round(g.goldW * GOLD_PER_KILL * g.goldMul) + floorsCleared * GOLD_PER_FLOOR + (win ? WIN_BONUS : 0), elapsedSeconds: Math.max(1, Math.round((Date.now() - g.startedAt) / 1000)), floor: Math.min(g.floor, MAX_FLOOR) };
+  const raw = { gold: Math.round(g.goldW * GOLD_PER_KILL * g.goldMul) + floorsCleared * GOLD_PER_FLOOR + (win ? WIN_BONUS : 0), elapsedSeconds: Math.max(1, Math.round((Date.now() - g.startedAt) / 1000)), floor: Math.min(g.floor, MAX_FLOOR + 1), hpPct: Math.max(0, Math.min(100, Math.round(100 * (g.hp || 0) / (g.maxHp || 1)))) };
   const summary = { floor: Math.min(g.floor, MAX_FLOOR), kills: g.kills, win, combo: g.maxCombo, slain: !win && g.hp <= 0 };
   st.running = false; st.settling = true; st.canvas = null; st.wrap = null; st.ov = null;
   const h0 = liveHost(); if (h0) renderTab(h0);
@@ -4855,7 +4877,7 @@ function drawTrail(c, b, col) {
   const tr = b.tr, n = tr.length, f = b.fx || {}; if (n < 2) return;
   c.save(); c.lineCap = "round"; c.lineJoin = "round"; c.globalCompositeOperation = "lighter";
   const tc = f.splash ? "#ff9a40" : col;
-  for (let i = 1; i < n; i++) { const k = i / n; c.globalAlpha = k * (f.splash ? 0.6 : 0.42); c.strokeStyle = tc; c.lineWidth = (f.pierce ? 0.8 : 1) + (f.pierce ? 1.5 : 4.5) * k; c.beginPath(); c.moveTo(tr[i - 1].x, tr[i - 1].y); c.lineTo(tr[i].x, tr[i].y); c.stroke(); }
+  for (let i = PERF_LITE ? Math.max(1, n - 5) : 1; i < n; i++) { const k = i / n; c.globalAlpha = k * (f.splash ? 0.6 : 0.42); c.strokeStyle = tc; c.lineWidth = (f.pierce ? 0.8 : 1) + (f.pierce ? 1.5 : 4.5) * k; c.beginPath(); c.moveTo(tr[i - 1].x, tr[i - 1].y); c.lineTo(tr[i].x, tr[i].y); c.stroke(); }
   if (f.pierce) {
     const sp = Math.hypot(b.vx, b.vy) || 1, ex = b.x - b.vx / sp * 52, ey = b.y - b.vy / sp * 52, gr = c.createLinearGradient(b.x, b.y, ex, ey);
     gr.addColorStop(0, "rgba(200,255,230,.95)"); gr.addColorStop(1, "rgba(200,255,230,0)");
@@ -4896,9 +4918,10 @@ function drawArena(c, T, col) {
 function drawBall(c, b, T) {
   const col = RC[b.rarity] || RC.common, ang = Math.atan2(b.vy, b.vx) + Math.PI / 2, k = 1 + 0.1 * Math.min(2, b.tier || 0);
   drawTrail(c, b, col);
-  c.save(); c.globalCompositeOperation = "lighter"; const hg = c.createRadialGradient(b.x, b.y, 1, b.x, b.y, 24); hg.addColorStop(0, col + "bb"); hg.addColorStop(0.5, col + "33"); hg.addColorStop(1, col + "00"); c.fillStyle = hg; c.beginPath(); c.arc(b.x, b.y, 24, 0, 6.283); c.fill(); c.restore();
+  if (PERF_LITE) { c.save(); c.globalAlpha = 0.22; c.fillStyle = col; c.beginPath(); c.arc(b.x, b.y, 11, 0, 6.283); c.fill(); c.restore(); }
+  else { c.save(); c.globalCompositeOperation = "lighter"; const hg = c.createRadialGradient(b.x, b.y, 1, b.x, b.y, 24); hg.addColorStop(0, col + "bb"); hg.addColorStop(0.5, col + "33"); hg.addColorStop(1, col + "00"); c.fillStyle = hg; c.beginPath(); c.arc(b.x, b.y, 24, 0, 6.283); c.fill(); c.restore(); }
   c.save(); c.translate(b.x, b.y); c.rotate(ang + Math.sin(T * 14 + b.x * 0.05) * 0.12); c.scale(k, k);
-  c.shadowColor = col; c.shadowBlur = 10; rr(c, -4.5, -6.5, 9, 13, 2);
+  if (!PERF_LITE) { c.shadowColor = col; c.shadowBlur = 10; } rr(c, -4.5, -6.5, 9, 13, 2);
   const cg = c.createLinearGradient(0, -6.5, 0, 6.5); cg.addColorStop(0, "#2a1646"); cg.addColorStop(1, "#150a26"); c.fillStyle = cg; c.fill();
   c.shadowBlur = 0; c.lineWidth = b.tier ? 2 : 1.4; c.strokeStyle = b.tier ? "#e8c468" : col; c.stroke();
   c.globalAlpha = 0.3; c.fillStyle = col; rr(c, -3, -5, 6, 10, 1.2); c.fill(); c.globalAlpha = 1;
@@ -4923,7 +4946,7 @@ function draw() {
   // HUD
   { const hb = c.createLinearGradient(0, 0, 0, CEIL); hb.addColorStop(0, "rgba(18,8,32,.9)"); hb.addColorStop(1, "rgba(44,22,76,.6)"); c.fillStyle = hb; c.fillRect(0, 0, W, CEIL); c.fillStyle = "rgba(232,196,104,.4)"; c.fillRect(0, CEIL - 1, W, 1); }
   c.textBaseline = "middle"; c.textAlign = "left"; c.font = "bold 13px sans-serif"; c.fillStyle = "#e8c468";
-  c.fillText(`${dc("第", "Floor ")}${g.floor}${dc(" 層", "")}  ·  ⚔ ${g.kills}  ·  Lv${g.level}`, 10, CEIL / 2);
+  c.fillText(`${dc("第", "Floor ")}${Math.min(g.floor, MAX_FLOOR)}/${MAX_FLOOR}${dc(" 層", "")}  ·  ⚔ ${g.kills}  ·  Lv${g.level}`, 10, CEIL / 2);
   if (g.affix && AFFIX_BY[g.affix]) { const af = AFFIX_BY[g.affix]; c.font = "bold 11px sans-serif"; c.fillStyle = "rgba(255,255,255,.75)"; c.fillText(`${af.ic} ${dc(af.zh, af.en)}`, 10, CEIL + 12); c.font = "bold 13px sans-serif"; }
   c.fillStyle = "rgba(255,255,255,.14)"; rr(c, W - 110, CEIL / 2 - 3, 100, 6, 3); c.fill();
   if (g.xpPulse > 0) { c.save(); c.shadowColor = "#b98cf0"; c.shadowBlur = 12 * g.xpPulse; }
@@ -4997,7 +5020,7 @@ function draw() {
     c.restore();
   }
   if (g.hurt > 0) { const k = g.hurt / 0.45, vg = c.createRadialGradient(W / 2, H / 2, H * 0.3, W / 2, H / 2, H * 0.75); vg.addColorStop(0, "rgba(220,30,40,0)"); vg.addColorStop(1, `rgba(220,30,40,${Math.min(0.55, 0.4 * k)})`); c.fillStyle = vg; c.fillRect(-20, -20, W + 40, H + 40); }
-  if (g.flashW > 0) { c.fillStyle = `rgba(255,248,220,${Math.min(0.85, g.flashW)})`; c.fillRect(-20, -20, W + 40, H + 40); }
+  if (g.flashW > 0) { c.fillStyle = `rgba(255,248,220,${Math.min(0.5, g.flashW * 0.6)})`; c.fillRect(-20, -20, W + 40, H + 40); }
   // BOSS 暗角、升級光效、過場橫幅
   if (g.bossT > 0) { const k = Math.min(1, g.bossT / 1.8), vg = c.createRadialGradient(W / 2, H / 2, H * 0.25, W / 2, H / 2, H * 0.75); vg.addColorStop(0, "rgba(120,10,20,0)"); vg.addColorStop(1, `rgba(150,20,30,${0.5 * k * (0.7 + 0.3 * Math.sin(T * 10))})`); c.fillStyle = vg; c.fillRect(-20, -20, W + 40, H + 40); }
   if (g.lvT > 0) {
@@ -5026,13 +5049,18 @@ function draw() {
 }
 
 /* ===== 主迴圈與輸入 ===== */
+let PERF_LITE = false;
 function loop(ts) {
   const g = st.g;
   if (!st.running || !g || g.over) { st.raf = 0; return; }
   if (!st.canvas || !st.canvas.isConnected) { st.raf = 0; return; }
   if (g.paused) { st.raf = 0; return; }   // 暫停：停止迴圈（繼續時 setPaused(false) 會重新 startLoop）
-  const dt = Math.min(0.033, (ts - st.last) / 1000 || 0.016);
+  const raw = Math.min(0.25, (ts - st.last) / 1000 || 0.016), dt = Math.min(0.033, raw);
   st.last = ts;
+  // 閃光用真實時間消退（不受 dt 上限與慢動作影響），掉幀時也不會把畫面蓋住好幾秒
+  if (g.flashW > 0) g.flashW = Math.max(0, g.flashW - raw * 2.2);
+  // 效能偵測：連續偏慢就切換省效能繪製，恢復順暢後再切回來
+  st.fpsEma = (st.fpsEma || 0.016) * 0.92 + raw * 0.08; PERF_LITE = st.fpsEma > 0.026 || (g.balls && g.balls.length > 24);
   update(dt); draw(); Music.sync(g);
   st.raf = requestAnimationFrame(loop);
 }
@@ -5138,7 +5166,7 @@ function togglePause() {
   setPaused(!g.paused);
 }
 function buildStage() {
-  const dpr = Math.min(3, Math.max(2, window.devicePixelRatio || 1));
+  const dpr = Math.min(2, Math.max(1.5, window.devicePixelRatio || 1)); // 手機 DPR=3 時像素量是 2 倍的 2.25 倍，填充率會爆；上限壓在 2
   const wrap = document.createElement("div");
   wrap.style.cssText = "position:relative;width:100%;max-width:420px;margin:0 auto;";
   const cv = document.createElement("canvas");
@@ -5200,7 +5228,7 @@ function resultHtml() {
   if (r.ok === false) return `<div class="panel" style="margin:8px 0;"><b>${head}</b><p class="sub">${r.reason === "noplays" ? dc("今天次數已用完，這局沒有獎勵。", "No plays left today, no reward for this run.") : (r.reason === "expired" || r.reason === "norun" || r.reason === "toofast") ? dc("這局無法結算（超時或紀錄遺失），沒有獎勵。", "This run could not be settled (timed out or record lost), no reward.") : dc("結算失敗，請稍後再試。", "Settlement failed, please try again.")}</p></div>`;
   const chips = Object.keys(r.outBag || {}).map(k => { const l = itemLabel(k); return `<span class="bp-chip">${l.icon} ${l.name} ×${r.outBag[k]}</span>`; }).join("");
   const capNote = (r.floorCapped || r.goldCapped) ? `<div class="sub">${dc("（已套用防作弊上限）", "(anti-cheat cap applied)")}</div>` : "";
-  const lbNote = r.lbFloor ? `<div class="sub" style="margin-top:4px;">🏆 ${dc(`排行榜成績：第 ${r.lbFloor} 層 · ${fmtTime(r.elapsedMs)}`, `Leaderboard entry: floor ${r.lbFloor} · ${fmtTime(r.elapsedMs)}`)}${r.lbFloor < r.floor ? dc("（受排行榜速度上限限制）", " (limited by the leaderboard speed cap)") : ""}</div>` : "";
+  const lbNote = r.lbFloor ? `<div class="sub" style="margin-top:4px;">🏆 ${dc(`排行榜成績：${(r.score || 0).toLocaleString()} 分（${r.lbWin ? "通關" : "第 " + r.lbFloor + " 層"}）· ${fmtTime(r.elapsedMs)}`, `Leaderboard entry: ${(r.score || 0).toLocaleString()} pts (${r.lbWin ? "cleared" : "floor " + r.lbFloor}) · ${fmtTime(r.elapsedMs)}`)}${r.lbFloor < r.floor ? dc("（受排行榜速度上限限制）", " (limited by the leaderboard speed cap)") : ""}</div>` : "";
   return `<div class="panel" style="margin:8px 0;"><b>${head}</b>
     <div style="margin:6px 0;">💠 <b style="color:var(--gold-bright);">+${(r.gold + (r.milestone || 0)).toLocaleString()}</b> ${dc("彈珠幣", "pit coins")}${r.milestone ? dc(`（含里程碑 ${r.milestone.toLocaleString()}）`, ` (incl. milestone ${r.milestone.toLocaleString()})`) : ""} · 📦 <b>+${r.mats}</b> ${dc("材料", "mats")}</div>
     <div style="margin:6px 0;">✦ ${r.outCoins ? `<b style="color:var(--gold-bright);">+${r.outCoins.toLocaleString()}</b> ${dc("正式版金幣（今日新達成層數）", "main-game coins (new floors today)")}` : `<span class="sub">${dc("今天沒有再創新高層數，沒有正式版獎勵", "No new best floor today, no main-game reward")}</span>`}</div>
@@ -5231,7 +5259,7 @@ function forgeHtml() {
   return `<div id="bp-root" class="panel">${tabsHtml()}<p class="sub">${dc("永久強化：每局開始都會生效。", "Permanent upgrades applied at the start of every run.")}</p>${rows}</div>`;
 }
 function boardPanelHtml() {
-  return `<div class="panel"><h2>🏆 ${dc("今日排行榜", "Today's Leaderboard")}</h2><p class="sub">${dc("每人取當天單局最高層數，同層比用時短；明天結算出「彈珠大師」封號。", "Each player's deepest floor today (ties: faster time); the \"Ball Pit Master\" title is settled tomorrow.")}</p><p class="sub">${rankShardHint(RANK_SHARDS)}</p><div id="bp-standings-body">${standingsHtml()}</div></div>`;
+  return `<div class="panel"><h2>🏆 ${dc("今日排行榜", "Today's Leaderboard")}</h2><p class="sub">${dc("每天地圖固定（全服同一張，上限 60 層）。每人取當天最高分：每清 1 層 100 分，60 層全清再加通關 1000 分、剩餘血量（最多 500）與速度分。同分比用時短；明天結算出「彈珠大師」封號。", "Same map for everyone today (60-floor cap). Best score of the day: 100 per floor cleared; clearing all 60 adds 1000 + remaining HP (up to 500) + a speed bonus. Ties: faster time. The \"Ball Pit Master\" title is settled tomorrow.")}</p><p class="sub">${rankShardHint(RANK_SHARDS)}</p><div id="bp-standings-body">${standingsHtml()}</div></div>`;
 }
 function panelHtml() {
   const showBoard = !st.running && st.tab === "play";
@@ -5264,6 +5292,8 @@ function gmPanelHtml() {
       ${f("bp-gm-lbfloor", dc("排行榜每層最短秒數", "Leaderboard min sec / floor"), LB_MIN_SEC_PER_FLOOR, 'min="0.5" step="0.1"')}
       ${f("bp-gm-cap", dc("每秒彈珠幣上限", "Max pit coins / sec"), MAX_GOLD_PER_SEC, 'min="1"')}
       ${f("bp-gm-ms", dc("里程碑最高層數", "Milestone floor cap"), MILESTONE_FLOOR_CAP, 'min="0"')}
+      ${f("bp-gm-hrate", dc("後段血量成長率（1.16＝每層 +16%）", "Late HP growth / floor"), HARD_RATE, 'min="1" max="1.5" step="0.01"')}
+      ${f("bp-gm-hfrom", dc("從第幾層開始加速成長", "Hard ramp starts at floor"), HARD_FROM, 'min="1"')}
       ${f("bp-gm-itemroll", dc("每 N 彈珠幣 +1 材料", "Pit coins per mat"), GOLD_PER_ITEM_ROLL, 'min="20"')}
       ${f("bp-gm-startcoins", dc("起始彈珠幣", "Starting pit coins"), START_COINS, 'min="0"')}
       <div><label>${dc("每局詞綴", "Run affixes")}</label><select id="bp-gm-affix" style="width:100px;"><option value="1"${AFFIX_ON ? " selected" : ""}>${dc("開", "On")}</option><option value="0"${AFFIX_ON ? "" : " selected"}>${dc("關", "Off")}</option></select></div>
@@ -5304,6 +5334,8 @@ function wireGmPanel(e) {
     set(n("#bp-gm-lbfloor", 0.5), x => { LB_MIN_SEC_PER_FLOOR = x; });
     set(n("#bp-gm-cap", 1), x => { MAX_GOLD_PER_SEC = x; });
     set(n("#bp-gm-ms", 0), x => { MILESTONE_FLOOR_CAP = Math.round(x); });
+    set(n("#bp-gm-hrate", 1), x => { HARD_RATE = Math.min(1.5, x); });
+    set(n("#bp-gm-hfrom", 1), x => { HARD_FROM = Math.round(x); });
     set(n("#bp-gm-itemroll", 20), x => { GOLD_PER_ITEM_ROLL = x; });
     set(n("#bp-gm-startcoins", 0), x => { START_COINS = Math.round(x); });
     if (q("#bp-gm-affix")) AFFIX_ON = q("#bp-gm-affix").value !== "0";
@@ -5358,7 +5390,7 @@ function panelHtmlCore() {
   const picks = own.map(id => { const c = v[id], t = TYPE_INFO[ballType(c.rarity)]; return `<div class="bp-pick${sel.has(id) ? " sel" : ""}" ${cardOpen(p, id) ? `data-bp-pick="${id}"` : ""} style="border-color:${RC[c.rarity] || RC.common};${cardOpen(p, id) ? "" : "opacity:.4;"}"><b style="color:${RC[c.rarity] || RC.common};">${c.icon || "🃏"} ${c.name} Lv${cardLv(p, id)}</b><span style="opacity:.75;">${dc(t.zh, t.en)} · ×${p.bpCards[id]}</span>${cardOpen(p, id) ? "" : `<span style="color:var(--gold-bright);font-size:11px;">🔒 ${dc(`階段 ${RAR_TIER[c.rarity] + 1} 解鎖`, `Stage ${RAR_TIER[c.rarity] + 1}`)}</span>`}<span style="color:var(--gold-bright);font-size:11px;">✧${dc(SP[spOf(id)][0], SP[spOf(id)][1])}</span><span style="opacity:.65;font-size:10.5px;line-height:1.4;white-space:normal;">${dc(SP[spOf(id)][2], SP[spOf(id)][3])}</span></div>`; }).join("");
   return `<div class="panel" id="bp-root">
     ${tabsHtml()}
-    <p class="sub">${dc(`把塔羅牌當彈珠：瞄準後一次射出整輪，彈珠在牆壁間反彈打怪，怪物每輪逼近一排，碰到深坑線就結束。擊殺升級可三選一強化，還能把兩顆彈珠「融合」成更強的一顆。免費玩，每天 5 次（開局就扣次數）。賺到的彈珠幣和材料只能用在彈珠裡；另外每天依新達成的最高層數發少量正式版金幣。卡牌只當彈珠，不會被消耗。`, `Use tarot cards as balls: aim and fire a whole volley, balls bounce around smashing monsters that creep closer each volley; touch the pit line and it's over. Level up for 3-choice upgrades, including Fusion to merge two balls into a stronger one. Free to play, 5 runs a day, a run is spent when it starts. Pit coins and mats only work inside Ball Pit; you also get a small daily main-game coin reward for new best floors. Cards are never consumed.`)}</p>
+    <p class="sub">${dc(`把塔羅牌當彈珠：瞄準後一次射出整輪，彈珠在牆壁間反彈打怪，怪物每輪逼近一排，碰到深坑線就結束。擊殺升級可三選一強化，還能把兩顆彈珠「融合」成更強的一顆。每天的地圖固定（全服同一張、共 60 層），排行榜比分數。免費玩，每天 5 次（開局就扣次數）。賺到的彈珠幣和材料只能用在彈珠裡；另外每天依新達成的最高層數發少量正式版金幣。卡牌只當彈珠，不會被消耗。`, `Use tarot cards as balls: aim and fire a whole volley, balls bounce around smashing monsters that creep closer each volley; touch the pit line and it's over. Level up for 3-choice upgrades, including Fusion to merge two balls into a stronger one. The map is the same for everyone each day (60 floors) and the leaderboard ranks by score. Free to play, 5 runs a day, a run is spent when it starts. Pit coins and mats only work inside Ball Pit; you also get a small daily main-game coin reward for new best floors. Cards are never consumed.`)}</p>
     ${Js.ballpitChampion ? `<p class="who">${dc("今日封號", "Today's title")}: ${Ys("ballpitChampion", 13)} ${Iu(Js.ballpitChampion)}</p>` : ""}
     ${resultHtml()}
     <div style="font-size:13px;margin-top:8px;"><b>${dc("選擇出戰卡牌", "Choose your cards")}</b> <span id="bp-sel-count" style="color:var(--gold-bright);">${sel.size}/${LM()}</span> <span class="sub">${dc("（不足 3 張會補學徒彈珠）", "(padded with Apprentice balls)")}</span></div>
@@ -6388,7 +6420,7 @@ async function mgSettleDay(g,date){
   return true;
 }
 const mgDone=new Set();let mgSweepAt=0,mgSweepBusy=false,mgTimer=null;
-function mgStartTimer(){if(mgTimer)return;mgTimer=setInterval(()=>{if(zl.nickname)mgDailySweep().catch(()=>{})},30000)}
+function mgStartTimer(){if(mgTimer)return;mgTimer=setInterval(()=>{if(zl.nickname)mgDailySweep().catch(()=>{})},60000+Math.floor(Math.random()*8000))}
 async function mgDailySweep(force){
   if(mgSweepBusy)return;if(!force&&Date.now()-mgSweepAt<20000)return;
   mgSweepAt=Date.now();mgSweepBusy=true;
@@ -9947,7 +9979,7 @@ async function sessionGuard(nick){
   if (SESSION_KICKED_NICK && n === SESSION_KICKED_NICK) throw new Error("session kicked");
   if (SESSION_MY_TOKEN && zl.nickname && n === sessionNick(zl.nickname) && !(await sessionCheck())) throw new Error("session kicked");
 }
-setInterval(() => { document.visibilityState === "visible" && sessionCheck(true); }, 20000);
+setInterval(() => { document.visibilityState === "visible" && sessionCheck(true); }, 30000 + Math.floor(Math.random() * 5000));
 document.addEventListener("visibilitychange", () => { document.visibilityState === "visible" && sessionCheck(true); });
 window.addEventListener("focus", () => { sessionCheck(true); });
 window.addEventListener("pageshow", () => { sessionCheck(true); });
@@ -10717,12 +10749,12 @@ function relicHallOpen(){
   try{const du=document.getElementById("rh-dust");let s="";for(let k=0;k<18;k++)s+=`<i style="left:${Math.round(Math.random()*100)}%;animation-delay:${(Math.random()*9).toFixed(1)}s;animation-duration:${(7+Math.random()*7).toFixed(1)}s;width:${1+Math.round(Math.random()*2)}px;height:${1+Math.round(Math.random()*2)}px"></i>`;du.innerHTML=s}catch(_){}
   document.getElementById("rh-mute").onclick=()=>{H.muted=!H.muted;try{localStorage.setItem("relic-hall-mute",H.muted?"1":"0")}catch(_){}relicHallUpdate()};
   relicEnsureConfig(!0).catch(()=>{}).then(()=>{relicHallPoll()});
-  H.pollT=setInterval(relicHallPoll,1e3);
-  H.uiT=setInterval(relicHallUpdate,150);
+  {const gen=H.pollGen=(H.pollGen||0)+1;const sched=()=>{if(!H.open||H.pollGen!==gen)return;const nw=relicSrvNow(),hot=(H.lots||[]).some(r=>"active"===r.status&&r.endsAt-nw<9e3&&r.endsAt-nw>-3e3&&nw>=r.opensAt-2e3);H.pollT=setTimeout(()=>{Promise.resolve(relicHallPoll()).catch(()=>{}).then(sched)},(hot?1e3:2200)+Math.random()*500)};sched()}
+  H.uiT=setInterval(relicHallUpdate,250);
   relicHallFabTick()
 }
 function relicHallClose(){
-  const H=RELIC_HALL;H.open=!1;clearInterval(H.pollT);clearInterval(H.uiT);
+  const H=RELIC_HALL;H.open=!1;clearTimeout(H.pollT);clearInterval(H.pollT);clearInterval(H.uiT);
   const el=document.getElementById("relic-hall");el&&el.remove();
   Bu&&"auction"===zl.tab&&Bu();relicHallFabTick()
 }
@@ -10999,7 +11031,7 @@ function antWirePanel(root){
   root.querySelectorAll("[data-ant-board]").forEach(el=>{el.onclick=()=>{ANT.board=el.dataset.antBoard;Bu()}});
   relicPricePresetAttach();root.querySelectorAll("[data-ant-gm-save]").forEach(el=>{el.onclick=()=>antGmSave()});
   const gd=root.querySelector("#ant-gm-details");gd&&(gd.ontoggle=()=>{ANT.gmOpen=gd.open})}
-;(function(){try{setInterval(()=>{antFeedPoll().catch(()=>{})},25e3)}catch(_){}})();
+;(function(){try{setInterval(()=>{antFeedPoll().catch(()=>{})},45e3+Math.floor(Math.random()*8e3))}catch(_){}})();
 
 const AUCTION_HISTORY_CAP=500;
 function auctionHistoryIndexKey(){return"config:auction_history_index"}
