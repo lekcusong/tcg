@@ -1,0 +1,118 @@
+
+/* ===== 全服數字炸彈 UI v2 ===== */
+.bomb-panel{position:relative;overflow:hidden;background:linear-gradient(160deg,rgba(70,32,115,.55),var(--bg-panel) 55%);border:1px solid rgba(201,162,74,.38);box-shadow:0 10px 30px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.07)}
+.bomb-panel::before{content:"";position:absolute;top:-120px;right:-80px;width:320px;height:320px;background:radial-gradient(circle,rgba(232,196,104,.15),transparent 65%);pointer-events:none}
+.bomb-panel>h2{background:linear-gradient(90deg,var(--gold-bright),#ff9a6a);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:.5px}
+.bomb-stats-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin:12px 0}
+.bomb-stat{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:12px;min-width:0;background:linear-gradient(180deg,rgba(255,255,255,.07),rgba(255,255,255,.02));border:1px solid rgba(201,162,74,.24);box-shadow:0 2px 8px rgba(0,0,0,.25)}
+.bomb-stat.wide{grid-column:1/-1;flex-wrap:wrap}
+.bs-ico{font-size:20px;line-height:1;filter:drop-shadow(0 2px 4px rgba(0,0,0,.55))}
+.bs-txt{display:flex;flex-direction:column;min-width:0}
+.bs-lbl{font-family:inherit;font-size:10px;letter-spacing:.5px;color:var(--muted)}
+.bs-val{font-family:'Space Mono',monospace;font-size:15px;color:var(--gold-bright)}
+.bomb-progress{flex:1 1 100%;height:8px;border-radius:99px;overflow:hidden;background:rgba(0,0,0,.45);box-shadow:inset 0 1px 3px rgba(0,0,0,.65)}
+.bomb-progress i{display:block;height:100%;width:0;border-radius:inherit;background:linear-gradient(90deg,#5a3fd0,#c9a24a,#ffe28a,#c9a24a,#5a3fd0);background-size:200% 100%;animation:bomb-bar-shine 3s linear infinite;transition:width .5s ease}
+@keyframes bomb-bar-shine{to{background-position:-200% 0}}
+.bomb-help{margin:8px 0;border:1px solid var(--line);border-radius:10px;background:rgba(0,0,0,.18)}
+.bomb-help>summary{cursor:pointer;padding:8px 12px;font-size:12px;color:var(--gold-bright);list-style:none;user-select:none}
+.bomb-help>summary::-webkit-details-marker{display:none}
+.bomb-help>summary::after{content:"▾";float:right;transition:transform .2s}
+.bomb-help[open]>summary::after{transform:rotate(180deg)}
+.bomb-help>p{margin:0;padding:4px 12px 8px}
+.bomb-legend{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+.bl-chip{display:inline-flex;align-items:center;gap:5px;padding:3px 9px 3px 5px;border-radius:99px;font-size:11px;color:var(--cream);background:rgba(0,0,0,.28);border:1px solid var(--line)}
+.bl-dot{width:16px;height:16px;border-radius:5px;display:inline-flex;align-items:center;justify-content:center;font-size:10px;line-height:1}
+.bl-dot.u{background:#2c1b4c;box-shadow:inset 1px 1px 0 rgba(255,255,255,.14),inset -1px -1px 0 rgba(0,0,0,.45)}
+.bl-dot.t{background:radial-gradient(circle at 30% 25%,#b08a1a,#4a3a0a)}
+.bl-dot.s{background:radial-gradient(circle at 30% 25%,#2a76b8,#123a5b)}
+.bl-dot.c{background:radial-gradient(circle at 30% 25%,#b3a21c,#5b5210)}
+.bl-dot.b{background:radial-gradient(circle,#e0524a,#8f1f2b)}
+.bl-nums{display:inline-flex;gap:3px;font-family:'Space Mono',monospace;font-weight:800;font-size:11px}
+.bomb-toolbar{padding:6px 8px;border-radius:12px;background:rgba(0,0,0,.22);border:1px solid var(--line)}
+.bomb-action-bar{border-radius:12px;border:1px solid rgba(201,162,74,.35);border-left:3px solid var(--gold-bright);background:linear-gradient(90deg,rgba(201,162,74,.12),rgba(0,0,0,.2));padding:10px 12px}
+.bomb-grid-wrap{border-radius:12px;border:1px solid rgba(201,162,74,.42);background:#0a0613;box-shadow:inset 0 0 24px rgba(0,0,0,.7),0 4px 18px rgba(0,0,0,.4)}
+.bomb-grid{background:#0a0613}
+.bomb-cell{background:#2c1b4c;border-radius:2px}
+.bomb-cell:not(.revealed){box-shadow:inset 1px 1px 0 rgba(255,255,255,.13),inset -1px -1px 0 rgba(0,0,0,.45)}
+@media (hover:hover) and (pointer:fine){.bomb-cell:not(.revealed):hover{background:#5b3fa0}}
+.bomb-cell.revealed.safe.num{background:linear-gradient(180deg,#2a2146,#20193a);font-weight:800;text-shadow:0 0 6px currentColor}
+.bomb-cell.revealed.safe.zero{background:#151026}
+.bomb-cell.revealed.safe.bn1{color:#7db4ff}.bomb-cell.revealed.safe.bn2{color:#63d99a}.bomb-cell.revealed.safe.bn3{color:#ff8080}.bomb-cell.revealed.safe.bn4{color:#b99cff}
+.bomb-cell.revealed.safe.bn5{color:#ffab7a}.bomb-cell.revealed.safe.bn6{color:#5fd8d8}.bomb-cell.revealed.safe.bn7{color:#f2f2f2}.bomb-cell.revealed.safe.bn8{color:#b0b0b0}
+.bomb-cell.revealed.safe.t-treasure{background:radial-gradient(circle at 30% 25%,#9b7a12,#4a3a0a);animation:bomb-glow 2.4s ease-in-out infinite}
+.bomb-cell.revealed.safe.t-shield{background:radial-gradient(circle at 30% 25%,#1f6aa8,#123a5b);animation:bomb-glow 2.8s ease-in-out infinite}
+.bomb-cell.revealed.safe.t-chain{background:radial-gradient(circle at 30% 25%,#a8981a,#5b5210);animation:bomb-glow 2s ease-in-out infinite}
+@keyframes bomb-glow{50%{filter:brightness(1.35)}}
+.bomb-grid:not(.z-big) .bomb-cell.t-treasure::before,.bomb-grid:not(.z-big) .bomb-cell.t-shield::before,.bomb-grid:not(.z-big) .bomb-cell.t-chain::before{content:"";position:absolute;top:1px;right:1px;width:3px;height:3px;border-radius:50%}
+.bomb-grid:not(.z-big) .bomb-cell.t-treasure::before{background:#ffd76a}.bomb-grid:not(.z-big) .bomb-cell.t-shield::before{background:#6cc4ff}.bomb-grid:not(.z-big) .bomb-cell.t-chain::before{background:#fff27a}
+.bomb-cell.revealed.bomb{background:radial-gradient(circle,#e0524a 0%,#8f1f2b 72%)}
+.bomb-cell.shd1::after,.bomb-cell.shd2::after,.bomb-cell.shd3::after{content:"";position:absolute;left:8%;bottom:8%;width:26%;height:26%;min-width:3px;min-height:3px;border-radius:2px;pointer-events:none}
+.bomb-cell.shd1::after{background:#ff5a5a}.bomb-cell.shd2::after{background:#ffb347}.bomb-cell.shd3::after{background:#6cc4ff}
+.bomb-cell.shard-found{background:radial-gradient(circle at 30% 25%,#b48cff,#5a3fd0)!important;animation:bomb-glow 1.6s ease-in-out infinite}
+.bomb-cell.shard-found::after{content:"🧩";position:absolute;right:-1px;bottom:-2px;font-size:.62em;line-height:1}
+.bomb-shard-leg{display:inline-block;width:14px;border-bottom:3px solid;vertical-align:middle;margin-right:4px}
+.bomb-cell.fth1::before,.bomb-cell.fth2::before,.bomb-cell.fth3::before{content:""!important;position:absolute!important;right:8%!important;top:8%!important;left:auto!important;width:26%!important;height:26%!important;min-width:3px;min-height:3px;border-radius:50%!important;pointer-events:none}
+.bomb-cell.fth1::before{background:#ff2fd0!important}.bomb-cell.fth2::before{background:#3dff9a!important}.bomb-cell.fth3::before{background:#e8e8ff!important}
+.bomb-cell.feather-found{background:radial-gradient(circle at 30% 25%,#ffc4f0,#c42aa8)!important;animation:bomb-glow 1.6s ease-in-out infinite}
+.bomb-cell.feather-found::after{content:"🕊️";position:absolute;left:-1px;bottom:-2px;font-size:.62em;line-height:1}
+.bomb-cell.mine{outline:2px solid var(--who,#ffd76a);outline-offset:-2px}
+.bomb-sdot{display:inline-block;width:9px;height:9px;border-radius:2px;vertical-align:-1px;margin-right:3px}
+.bomb-fdot{display:inline-block;width:9px;height:9px;border-radius:50%;vertical-align:-1px;margin-right:3px}
+.bomb-mine-leg{display:inline-block;width:12px;height:12px;border:2px solid #ffd76a;border-radius:2px;vertical-align:-2px;margin-right:4px}
+.bomb-feather-leg{display:inline-block;width:14px;border-top:3px solid;vertical-align:middle;margin-right:4px}
+.bomb-cell.sel{animation:bomb-sel 1s ease-in-out infinite}
+@keyframes bomb-sel{50%{outline-color:#fff;filter:brightness(1.35)}}
+.bomb-cell.flag::after{display:inline-block;animation:bomb-flag .25s ease-out}
+@keyframes bomb-flag{from{transform:translateY(-6px) scale(1.4);opacity:0}to{transform:none;opacity:1}}
+.bomb-cell.just-safe{animation:bomb-pop .45s ease-out;z-index:1}
+.bomb-cell.just-bomb{animation:bomb-boom .7s ease-out;z-index:3}
+@keyframes bomb-pop{0%{transform:scale(.4);filter:brightness(2.2)}60%{transform:scale(1.25)}100%{transform:scale(1);filter:none}}
+@keyframes bomb-boom{0%{transform:scale(.3) rotate(-20deg);filter:brightness(3) saturate(2)}30%{transform:scale(1.9)}60%{transform:scale(.9) rotate(8deg)}100%{transform:scale(1);filter:none}}
+.bomb-lb-row{border:1px solid transparent;padding:8px 10px;border-radius:10px;background:linear-gradient(90deg,rgba(255,255,255,.06),rgba(255,255,255,.015));transition:transform .15s}
+.bomb-lb-row:hover{transform:translateX(2px)}
+.bomb-lb-row.r1{border-color:rgba(232,196,104,.65);background:linear-gradient(90deg,rgba(232,196,104,.24),rgba(232,196,104,.04))}
+.bomb-lb-row.r2{border-color:rgba(192,200,216,.55);background:linear-gradient(90deg,rgba(192,200,216,.18),rgba(192,200,216,.03))}
+.bomb-lb-row.r3{border-color:rgba(205,138,90,.55);background:linear-gradient(90deg,rgba(205,138,90,.2),rgba(205,138,90,.03))}
+.bomb-lb-rank{width:30px;text-align:center;font-size:15px}
+@media (pointer:coarse) and (min-width:700px){.bomb-cell.revealed.safe.t-treasure,.bomb-cell.revealed.safe.t-shield,.bomb-cell.revealed.safe.t-chain{animation:none}.bomb-progress i{animation:none}}
+@media (prefers-reduced-motion:reduce){.bomb-cell,.bomb-progress i{animation:none!important}}
+
+/* ===== iPad 效能模式（html.bomb-lite）：5625 格的數字炸彈在 iPad 上太重，拿掉模糊陰影、濾鏡動畫、斜面陰影 ===== */
+html.bomb-lite .bomb-cell{contain:layout style}
+html.bomb-lite .bomb-cell.revealed.safe.num{text-shadow:none;background:#2a2146}
+html.bomb-lite .bomb-cell:not(.revealed){box-shadow:none}
+html.bomb-lite .bomb-cell.revealed.safe.t-treasure,html.bomb-lite .bomb-cell.revealed.safe.t-shield,html.bomb-lite .bomb-cell.revealed.safe.t-chain,html.bomb-lite .bomb-cell.shard-found,html.bomb-lite .bomb-cell.feather-found,html.bomb-lite .bomb-cell.sel,html.bomb-lite .bomb-cell.just-safe,html.bomb-lite .bomb-cell.just-bomb,html.bomb-lite .bomb-progress i{animation:none}
+html.bomb-lite .bomb-cell.sel{outline-color:#fff}
+html.bomb-lite .bomb-grid.spot-on .bomb-cell.dim{filter:none;opacity:.2}
+html.bomb-lite .bomb-grid.zones-on .bomb-cell.z-out:not(.revealed){background-image:none;background-color:#322c60}
+html.bomb-lite .bomb-grid.zones-on .bomb-cell.z-mid:not(.revealed){background-image:none;background-color:#553f4d}
+html.bomb-lite .bomb-grid.zones-on .bomb-cell.z-core:not(.revealed){background-image:none;background-color:#642e50}
+html.bomb-lite .bomb-grid.zones-on.zr .bomb-cell.z-out:not(.revealed){background-image:none;background-color:#2c1b4c}
+html.bomb-lite .bomb-grid.zones-on.zr .bomb-cell.z-mid:not(.revealed){background-image:none;background-color:#46324d}
+html.bomb-lite .bomb-grid.zones-on.zr .bomb-cell.z-core:not(.revealed){background-image:none;background-color:#644c4d}
+html.bomb-lite .bomb-panel::before{display:none}
+html.bomb-lite .bomb-grid-wrap{box-shadow:none;overscroll-behavior:contain}
+html.bomb-lite .bomb-cell{display:block;text-align:center;line-height:var(--bc);border-radius:0}
+html.bomb-lite .bomb-grid .bomb-cell.revealed.hasw.tint.num:not(.t-treasure):not(.t-shield):not(.t-chain){background-image:linear-gradient(var(--wt),var(--wt));background-color:#2a2146}
+html.bomb-lite .bomb-cell.revealed.safe.t-treasure{background:#6e560e}
+html.bomb-lite .bomb-cell.revealed.safe.t-shield{background:#194f7e}
+html.bomb-lite .bomb-cell.revealed.safe.t-chain{background:#7d7016}
+/* ===== 簡化畫面：實色格子、無表情符號、無陰影／漸層／外框 ===== */
+html.bomb-lite .bomb-grid{gap:0;background:#0a0613}
+html.bomb-lite .bomb-cell{border-radius:0;box-shadow:none!important;outline:none;border:.5px solid rgba(0,0,0,.35);background:#2c1b4c}
+html.bomb-lite .bomb-cell.revealed.safe.num,html.bomb-lite .bomb-cell.revealed.safe.zero{background:#2a2146;text-shadow:none}
+html.bomb-lite .bomb-grid .bomb-cell.revealed.hasw.tint:not(.t-treasure):not(.t-shield):not(.t-chain){background-image:none;background-color:var(--wt)}
+html.bomb-lite .bomb-cell.revealed.bomb{background:#8f1f2b;color:#fff}
+html.bomb-lite .bomb-cell.mine{outline:none}
+html.bomb-lite .bomb-cell.sel{outline:2px solid #fff;outline-offset:-2px;z-index:2}
+html.bomb-lite .bomb-cell.flag::after{content:"⚑";color:#ff5a5a;font-size:.9em;animation:none}
+html.bomb-lite .bomb-grid.z-big .bomb-cell.t-treasure::before,html.bomb-lite .bomb-grid.z-big .bomb-cell.t-shield::before,html.bomb-lite .bomb-grid.z-big .bomb-cell.t-chain::before{content:""}
+html.bomb-lite .bomb-cell.shard-found::after,html.bomb-lite .bomb-cell.feather-found::after{content:"★";font-size:.7em;color:#fff;right:1px;bottom:0}
+html.bomb-lite .bomb-cell.shard-found{background:#5a3fd0!important}
+html.bomb-lite .bomb-cell.feather-found{background:#c42aa8!important}
+html.bomb-lite .bomb-grid-wrap{will-change:scroll-position}
+/* 未翻開 vs 已翻開要一眼分得出來：未翻開＝亮邊框的「凸起磚塊」，已翻開＝無邊框的平面實色 */
+html.bomb-lite .bomb-cell:not(.revealed){border:1px solid rgba(255,255,255,.34)!important;background-image:none!important}
+html.bomb-lite .bomb-cell.revealed{border:0!important}
+html.bomb-lite .bomb-grid .bomb-cell:not(.revealed){filter:none}
+html.bomb-lite .bomb-cell.revealed.safe.zero:not(.tint){background:#0d0818}

@@ -1,0 +1,52 @@
+
+/* ===== UI 美化層：只改外觀（字體、間距、質感、按鈕、輸入框、分頁、手機操作），不動任何遊戲邏輯。要還原就整段刪掉。 ===== */
+:root{--muted:#b0a2bf;--line:rgba(201,162,74,.24);--radius:14px;--shadow:0 10px 28px rgba(0,0,0,.32)}
+html{-webkit-text-size-adjust:100%}
+body{font-family:'EB Garamond','Noto Sans TC','PingFang TC','Microsoft JhengHei',serif;line-height:1.6;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+::selection{background:rgba(201,162,74,.35);color:#fff}
+*{scrollbar-width:thin;scrollbar-color:rgba(201,162,74,.4) transparent}
+::-webkit-scrollbar{width:8px;height:8px}::-webkit-scrollbar-thumb{background:rgba(201,162,74,.35);border-radius:8px}::-webkit-scrollbar-track{background:transparent}
+#app{padding-top:18px}
+/* 面板：多一點層次與呼吸感 */
+.panel{background:linear-gradient(180deg,rgba(255,255,255,.04),rgba(255,255,255,0) 72px),var(--bg-panel);border-radius:var(--radius);padding:22px;margin-bottom:18px;box-shadow:var(--shadow),inset 0 1px 0 rgba(255,255,255,.05)}
+.panel h2{font-size:17px;margin:0 0 8px;line-height:1.35;color:var(--gold-bright)}
+.sub{font-size:14px;line-height:1.7;margin:0 0 16px}
+.form-row{gap:12px 14px;margin-bottom:16px}
+.form-row label{display:block;font-size:13px;color:var(--muted);margin-bottom:5px}
+.empty-note{padding:26px 0}
+/* 分頁：單行可橫向滑動，選中的有底色，手機好點 */
+.tabs{flex-wrap:wrap;overflow-x:visible;gap:4px;margin:16px 0 20px;padding-bottom:2px}
+.tabs::-webkit-scrollbar{display:none}
+.tab{flex:0 0 auto;white-space:nowrap;padding:11px 16px;border-radius:10px 10px 0 0;transition:color .15s,background .15s}
+.tab:hover{color:var(--cream);background:rgba(201,162,74,.06)}
+.tab.active{background:linear-gradient(180deg,rgba(201,162,74,.16),rgba(201,162,74,0))}
+.nb-grps .nb-grp{padding:8px 16px;font-size:14px;transition:background .15s,color .15s,border-color .15s}
+.nb-grps .nb-grp.active{background:rgba(201,162,74,.14)}
+/* 按鈕：有按壓感、有清楚的鍵盤焦點 */
+.btn{border-radius:10px;min-height:40px;box-shadow:0 2px 8px rgba(0,0,0,.28),inset 0 1px 0 rgba(255,255,255,.1)}
+.btn:hover{filter:brightness(1.12)}
+.btn:active{transform:translateY(1px);filter:brightness(.96)}
+.btn.small{min-height:32px;border-radius:8px}
+.btn.secondary{box-shadow:none}
+.btn:focus-visible,.tab:focus-visible,.nb-grp:focus-visible,summary:focus-visible{outline:2px solid var(--gold-bright);outline-offset:2px}
+/* 輸入框 */
+input[type=number],input[type=text],input[type=password],select,textarea{min-height:38px;border-radius:9px;transition:border-color .15s,box-shadow .15s}
+input[type=number]:focus,input[type=text]:focus,input[type=password]:focus,select:focus,textarea:focus{outline:0;border-color:var(--gold);box-shadow:0 0 0 3px rgba(201,162,74,.18)}
+/* 玩家資訊、登入、彈窗 */
+.player-chip{box-shadow:0 4px 14px rgba(0,0,0,.28)}
+.login-screen{border-radius:18px;box-shadow:var(--shadow)}
+.card-modal-overlay{backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+.card-modal-box{border-radius:18px;box-shadow:0 24px 70px rgba(0,0,0,.6)}
+.listing{border-radius:12px;transition:background .15s,border-color .15s}
+.listing:hover{border-color:rgba(255,214,120,.34)}
+.farm-upgrade-box{border-radius:12px}
+/* 手機：邊距收小、字不縮到會被 iOS 自動放大、按鈕好點 */
+@media(max-width:700px){
+ #app{padding:14px 12px 48px}
+ .panel{padding:16px;margin-bottom:14px}
+ .panel h2{font-size:16px}
+ .tab{padding:11px 14px}
+ input[type=number],input[type=text],input[type=password],select,textarea{font-size:16px}
+ .btn{min-height:44px}.btn.small{min-height:38px}
+}
+@media(prefers-reduced-motion:reduce){.btn,.tab,.listing,.nb-grp{transition:none}}

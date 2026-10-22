@@ -1,0 +1,5 @@
+
+/* 炸彈地圖改用 Canvas：容器只負責捲動，畫布固定貼在可視範圍，捲動／縮放時只重畫看得到的格子 */
+.bomb-cvgrid{position:relative;display:block;background:#0a0613}
+#bomb-cv{position:sticky;top:0;left:0;display:block;background:#0a0613;cursor:pointer;touch-action:pan-x pan-y;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+.bomb-grid-wrap{background:#0a0613;overscroll-behavior:contain}
