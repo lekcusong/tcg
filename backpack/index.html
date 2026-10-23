@@ -1,0 +1,39 @@
+<!DOCTYPE html><html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no"><title>塔羅背包亂鬥</title><link rel="stylesheet" href="css/base.css?v=14cfcfe5"><link rel="stylesheet" href="css/ui.css?v=172960f2"><link rel="stylesheet" href="css/battle.css?v=89aaf21a"></head><body>
+<div id="stageBg"></div><div id="app">
+<header><span class="chip rd" id="hRound"></span><span class="chip" id="hLives"></span><span class="chip" id="hGold"></span><span class="chip" id="hWins"></span><button class="btn" id="btnMute" style="padding:5px 8px"></button></header><div class="pips" id="pips"></div><div id="relicBar" hidden></div>
+<section id="vBuild">
+ <div class="enemybar" id="enemyBar"></div>
+ <div class="hpline"><span id="hpLbl"></span><span id="incLine"></span></div>
+ <div id="board"><div id="boardItems"></div><div id="boardPrev"></div></div>
+ <div id="setBar"></div>
+ <div id="trayWrap"><div class="th"><span>收納區（可拖進背包）</span><span id="trayCnt"></span></div><div id="tray"></div><div id="sellZone"></div></div>
+ <div id="info"></div>
+ <div id="overview"></div>
+ <div class="shopbanner"><img src="img/shop-banner.webp" alt="" draggable="false"><div class="shopbar"><span id="shopTitle"></span><button class="btn" id="btnReroll"></button></div></div>
+ <div id="shop"></div>
+ <div class="actions"><button class="btn" id="btnAuto"></button><button class="btn primary" id="btnFight"></button></div>
+</section>
+<section id="mapv" hidden></section>
+<section id="vBattle" hidden>
+ <div class="side"><div class="sn"><span class="av" id="eAv"></span><b id="eName"></b></div><div class="hpw" id="eHpW"><div class="gh" id="eGh"></div><div class="hp" id="eHp"></div><div class="sh" id="eSh"></div><div class="x" hidden></div><div class="t" id="eHpT"></div></div><div class="stl" id="eSt"></div><div class="bd" id="eBoard"></div></div>
+ <div id="duel"><div id="pChar" data-pose="idle"><img data-p="idle" class="on" src="img/player-idle.webp" alt="" draggable="false"><img data-p="hurt" class="" src="img/player-hurt.webp" alt="" draggable="false"><img data-p="cast" class="" src="img/player-cast.webp" alt="" draggable="false"><img data-p="win" class="" src="img/player-win.webp" alt="" draggable="false"></div><div class="bctl"><span class="tm" id="bTime">0s</span><button class="btn" id="btnSpd">×1</button><button class="btn" id="btnSkip"></button></div><div id="eChar"></div></div>
+ <div class="side"><div class="bd" id="pBoard"></div><div class="stl" id="pSt"></div><div class="hpw" id="pHpW"><div class="gh" id="pGh"></div><div class="hp" id="pHp"></div><div class="sh" id="pSh"></div><div class="x" hidden></div><div class="t" id="pHpT"></div></div><div class="sn"><span class="av" id="pAv"></span><b id="pName"></b></div></div>
+ <div id="bResult" hidden></div>
+</section>
+</div>
+<canvas id="fx"></canvas><div class="flash" id="flash"></div><div class="vig" id="vig"></div><div id="sheet" hidden></div><div id="intro" hidden></div><div id="banner" hidden></div><div id="ov" hidden></div><div id="toast"></div>
+<script src="js/00-embed.js?v=8f14e2cf"></script>
+<script src="js/01-core-data.js?v=4861972b"></script>
+<script src="js/02-relics-boss.js?v=2f702707"></script>
+<script src="js/03-battle-engine.js?v=91857c98"></script>
+<script src="js/04-shop-route-events.js?v=5a8cc42b"></script>
+<script src="js/05-icons.js?v=dff8cdae"></script>
+<script src="js/06-fx-audio.js?v=892e5932"></script>
+<script src="js/07-ui.js?v=e70cd780"></script>
+<script src="js/08-progress-save.js?v=7d381add"></script>
+<script src="js/09-leaderboard.js?v=6f3b893e"></script>
+<script src="js/10-map-nodes.js?v=752e6c97"></script>
+<script src="js/11-pose-bgm.js?v=d367be78"></script>
+<script src="js/12-art-maps.js?v=d60c0578"></script>
+<script src="js/99-bootstrap.js?v=ce8b06e1"></script>
+<script src="js/auto-update.js?v=7cb8cf41"></script></body></html>

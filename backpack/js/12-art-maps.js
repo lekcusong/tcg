@@ -1,0 +1,4 @@
+'use strict';
+const RELIC_IMG = {"hearth": "img/relic-hearth.webp", "mirror": "img/relic-mirror.webp", "fang": "img/relic-fang.webp", "ember": "img/relic-ember.webp", "scale": "img/relic-scale.webp", "clover": "img/relic-clover.webp", "coupon": "img/relic-coupon.webp", "phoenix": "img/relic-phoenix.webp", "tide": "img/relic-tide.webp", "hourglass": "img/relic-hourglass.webp", "whet": "img/relic-whet.webp", "chain": "img/relic-chain.webp", "buckler": "img/relic-buckler.webp", "herb": "img/relic-herb.webp"};
+const EVENT_ART = {"contract": "img/event-contract.webp", "gamble": "img/event-gamble.webp", "spring": "img/event-spring.webp", "merchant": "img/event-merchant.webp", "bag": "img/event-bag.webp", "smith": "img/event-smith.webp", "altar": "img/event-altar.webp", "rest": "img/event-rest.webp"};
+function evArt(id, fallbackSvg) { return EVENT_ART[id] ? `<img class="evb" src="${EVENT_ART[id]}" alt="" draggable="false">` : `<div class="big">${fallbackSvg}</div>`; }

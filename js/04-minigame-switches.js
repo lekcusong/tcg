@@ -136,3 +136,78 @@ async function mgSetAll(on) {
 }
 // 整支遊戲包在 !function(){...}() 裡，面板按鈕的 inline onclick 要靠 window 才找得到函式
 window.mgToggle = mgToggle; window.mgSetAll = mgSetAll; window.mgLinkClick = mgLinkClick;
+
+/* ===== 🎒 塔羅背包亂鬥：在小遊戲分頁內以全螢幕 iframe 開啟（backpack/index.html，獨立頁面、獨立程式，互不污染全域）=====
+   - 開啟前先重新讀一次 GM 開關（mgFresh）；GM 本人帶 gm=1 不受影響，一般玩家被關閉時只顯示提示。
+   - 開啟時暫停主遊戲背景音樂，關閉後（原本在播的話）恢復。語言用 app-lang 傳進去。
+   - 關閉方式：上方 ✕、Esc、或 iframe 內 postMessage({src:"backpack",type:"close"})。 */
+function bpOpenOverlay(ev) { if (ev && ev.preventDefault) ev.preventDefault(); bpOpenAsync(); return false; }
+async function bpOpenAsync() {
+  if (document.getElementById("bp-overlay")) return;
+  let ok = true; try { ok = await mgFresh("backpack"); } catch (e) { }
+  if (!ok) { mgLinkClick("backpack"); return; }
+  if (document.getElementById("bp-overlay")) return;
+  const lang = (() => { try { return localStorage.getItem("app-lang") === "en" ? "en" : "zh"; } catch (e) { return "zh"; } })();
+  const bgm = document.getElementById("bgm-audio"); const bgmWas = !!(bgm && !bgm.paused);
+  if (bgmWas) { try { bgm.pause(); } catch (e) { } }
+  if (!document.getElementById("bp-overlay-css")) {
+    const st = document.createElement("style"); st.id = "bp-overlay-css";
+    st.textContent = "#bp-overlay{position:fixed;inset:0;z-index:3000;background:#0a0614;display:flex;flex-direction:column}" +
+      "#bp-overlay .bp-bar{flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 10px;background:#120a1e;border-bottom:1px solid #4a3a20;color:#e8c468;font:600 13px/1.2 Cinzel,'Noto Sans TC',serif}" +
+      "#bp-overlay .bp-x{cursor:pointer;border:1px solid #c9a24a;background:transparent;color:#e8c468;border-radius:8px;padding:4px 12px;font:inherit}" +
+      "#bp-overlay iframe{flex:1 1 auto;width:100%;border:0;background:#0a0614}" +
+      "body.bp-open{overflow:hidden}";
+    document.head.appendChild(st);
+  }
+  const box = document.createElement("div"); box.id = "bp-overlay";
+  const bar = document.createElement("div"); bar.className = "bp-bar";
+  const ttl = document.createElement("span"); ttl.textContent = "🎒 " + dc("塔羅背包亂鬥", "Backpack Brawl");
+  const x = document.createElement("button"); x.className = "bp-x"; x.textContent = "✕ " + dc("返回", "Back");
+  bar.appendChild(ttl); bar.appendChild(x);
+  const fr = document.createElement("iframe"); fr.title = "Backpack Brawl"; fr.allow = "autoplay";
+  fr.src = "backpack/index.html?embed=1&lang=" + lang + (ku() ? "&gm=1" : "") + "&t=" + Date.now();
+  box.appendChild(bar); box.appendChild(fr); document.body.appendChild(box); document.body.classList.add("bp-open");
+  const close = () => {
+    window.removeEventListener("message", onMsg); document.removeEventListener("keydown", onKey);
+    box.remove(); document.body.classList.remove("bp-open");
+    if (bgmWas && bgm) { try { bgm.play().catch(() => { }); } catch (e) { } }
+  };
+  const onMsg = e => { if (e.origin === location.origin && e.source === fr.contentWindow && e.data && e.data.src === "backpack" && e.data.type === "close") close(); };
+  const onKey = e => { if (e.key === "Escape") close(); };
+  x.onclick = close; window.addEventListener("message", onMsg); document.addEventListener("keydown", onKey);
+}
+window.bpOpenOverlay = bpOpenOverlay;
+
+/* ===== 延後載入 Lazy-load：塔羅三消 / 煉金藥水 / 塔羅彈珠（三個檔合計約 270KB）=====
+   玩家第一次點進該小遊戲才下載。index.html 裡用「type=text/plain 且帶 data-lazy=m3|pot|bp 的 script 標記」
+   登記檔名與版本碼（瀏覽器不會下載也不會執行；auto-update 也靠它偵測新版）。
+   檔案載入後，裡面同名的 xxxRenderTab 會覆蓋這裡的 stub，之後 09-roulette.js 的呼叫就直接走正式版。
+   ※ 新增延後載入的檔：index.html 加 data-lazy 標記、這裡加一個 stub，並確保其他檔案只透過這個 stub 進入。 */
+const __lazyP = {}, __lazyDone = {};
+function lazyLoadJs(key) {
+  if (__lazyDone[key]) return Promise.resolve();
+  if (__lazyP[key]) return __lazyP[key];
+  const tag = document.querySelector('script[data-lazy="' + key + '"]');
+  if (!tag) return Promise.reject(new Error("lazy script tag missing: " + key));
+  return (__lazyP[key] = new Promise((res, rej) => {
+    const s = document.createElement("script");
+    s.src = tag.getAttribute("src");
+    s.onload = () => { __lazyDone[key] = 1; res(); };
+    s.onerror = () => { delete __lazyP[key]; s.remove(); rej(new Error("lazy load failed: " + key)); };
+    document.head.appendChild(s);
+  }));
+}
+function lazyRenderTab(key, e, run) {
+  if (__lazyDone[key]) return run();
+  if (e && e.isConnected) e.innerHTML = '<div class="loading-line">' + dc("載入中…", "Loading…") + "</div>";
+  return lazyLoadJs(key).then(() => {
+    if (e && !e.isConnected) return; // 載入期間玩家已經切到別頁，不用再畫
+    return run();
+  }).catch(err => {
+    console.error(err);
+    if (e && e.isConnected) e.innerHTML = '<div class="empty-note">' + dc("載入失敗，請檢查網路後再點一次", "Load failed - check your connection and tap again") + "</div>";
+  });
+}
+function match3RenderTab(e) { return lazyRenderTab("m3", e, () => M3.renderTab(e)); }
+function potionRenderTab(e) { return lazyRenderTab("pot", e, () => GPOT.renderTab(e)); }
+function ballpitRenderTab(e) { return lazyRenderTab("bp", e, () => BP.renderTab(e)); }

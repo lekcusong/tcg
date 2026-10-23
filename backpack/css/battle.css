@@ -1,0 +1,70 @@
+/* ===== v6: 敵人／BOSS 立繪 ===== */
+.av.eart{width:54px;height:54px;padding:0;overflow:hidden;border-radius:12px}
+.av.eart img{width:100%;height:100%;object-fit:cover;display:block;pointer-events:none}
+.av.eart.boss{border-color:#c0504a;box-shadow:0 0 14px rgba(255,80,80,.55)}
+.av.eart.elite{border-color:#ff5a4a;box-shadow:0 0 12px rgba(255,90,74,.45)}
+.erw{display:flex;gap:10px;align-items:flex-start}.ebody{flex:1;min-width:0}
+.ebp{flex:none;width:60px;height:60px;border-radius:12px;border:2px solid var(--gold2);object-fit:cover;box-shadow:0 0 10px rgba(232,196,104,.3);background:#150b25}
+.ebp.boss{border-color:#c0504a;box-shadow:0 0 14px rgba(255,80,80,.5)}.ebp.elite{border-color:#ff5a4a;box-shadow:0 0 10px rgba(255,90,74,.4)}
+.ivp{width:150px;height:150px;border-radius:18px;border:2px solid var(--gold);object-fit:cover;margin:8px 0 4px;box-shadow:0 0 30px rgba(232,196,104,.45),0 8px 24px rgba(0,0,0,.6);animation:fromR .5s ease-out}
+.ivp.elite{border-color:#ff5a4a;box-shadow:0 0 30px rgba(255,90,74,.5),0 8px 24px rgba(0,0,0,.6)}
+.ivp.bs{width:230px;height:230px;border-color:#c0504a;box-shadow:0 0 44px rgba(255,80,80,.65),0 10px 30px rgba(0,0,0,.7);margin:8px 0 10px;animation:fromL .45s ease-out}
+.nimg{display:inline-block;vertical-align:middle;border-radius:50%;object-fit:cover}
+.mapsvg .ni.nm{width:100%;height:100%}.mapsvg .ni.nm .nimg{width:100%;height:100%}
+.mapsvg .nd.done .ni .nimg{filter:grayscale(.65)}
+.mapsvg .nd.boss .ni .nimg{filter:drop-shadow(0 0 5px rgba(255,216,74,.8))}
+.mleg .nimg{margin-right:1px}
+.mapsvg .ni.np{width:100%;height:100%}.mapsvg .ni.np img{width:100%;height:100%;object-fit:cover;border-radius:50%;display:block}
+.mbp{width:40px;height:40px;border-radius:50%;object-fit:cover;border:2px solid #e8c468;flex:none}
+.rpt{display:block;width:100px;height:100px;border-radius:16px;border:2px solid var(--gold);object-fit:cover;margin:0 auto 8px;box-shadow:0 0 22px rgba(232,196,104,.4)}
+.rpt.boss{border-color:#c0504a;box-shadow:0 0 26px rgba(255,80,80,.55)}.rpt.elite{border-color:#ff5a4a;box-shadow:0 0 20px rgba(255,90,74,.45)}.rpt.def{filter:grayscale(.8) brightness(.75)}
+.rwrap{position:relative;width:124px;height:124px;margin:2px auto 12px}.rwrap .rpt{width:100%;height:100%;margin:0}
+.rbadge{position:absolute;right:-12px;bottom:-12px;width:46px;height:46px;border-radius:50%;background:radial-gradient(circle at 30% 25%,#3a2468,#150b25);border:2px solid var(--gold);display:flex;align-items:center;justify-content:center;box-shadow:0 4px 12px rgba(0,0,0,.6)}
+#bResult .card{max-height:92vh;overflow:auto}
+.rpt~.big .sv{width:36px;height:36px}
+
+/* ===== battle stage & duel strip ===== */
+#stageBg{position:fixed;inset:0;z-index:0;pointer-events:none;display:none;background:linear-gradient(rgba(10,6,24,.28),rgba(10,6,24,.5)),url(../img/bg-03.webp) center bottom/cover no-repeat}
+body.inBattle #stageBg{display:block}
+#duel{display:flex;align-items:flex-end;justify-content:space-between;gap:4px;height:128px;margin:0 0 2px;position:relative}
+#duel .bctl{flex:1;flex-direction:column;margin:0 0 10px;gap:5px}
+#pChar{position:relative;width:96px;height:128px;flex:none;animation:pbreathe 3.2s ease-in-out infinite;transition:filter .6s}
+#pChar::after{content:"";position:absolute;left:2%;right:2%;bottom:-3px;height:14px;background:radial-gradient(ellipse,rgba(232,196,104,.5),transparent 70%);z-index:0}
+#pChar img{position:absolute;left:50%;bottom:0;height:128px;width:auto;transform:translateX(-50%);opacity:0;pointer-events:none;filter:drop-shadow(0 6px 8px rgba(0,0,0,.65));z-index:1}
+#pChar img.on{opacity:1}
+#pChar[data-pose=hurt]{animation:phurt .42s ease-out}
+#pChar[data-pose=cast]{animation:pcast .42s ease-out}
+#pChar[data-pose=win]{animation:pbreathe 1.5s ease-in-out infinite}
+#pChar.down{filter:grayscale(.85) brightness(.6)}
+@keyframes pbreathe{50%{transform:translateY(-3px)}}
+@keyframes phurt{0%{transform:translateX(0)}20%{transform:translateX(-9px) rotate(-2deg);filter:brightness(1.7) saturate(1.4)}60%{transform:translateX(-3px)}100%{transform:translateX(0)}}
+@keyframes pcast{0%{transform:translateX(0)}35%{transform:translateX(10px) scale(1.05)}100%{transform:translateX(0)}}
+#eChar{width:96px;height:96px;flex:none;margin-bottom:4px;transition:filter .6s}
+#eChar img.ec{display:block;width:100%;height:100%;border-radius:14px;border:2px solid var(--gold);object-fit:cover;box-shadow:0 0 18px rgba(232,196,104,.35),0 6px 14px rgba(0,0,0,.6);pointer-events:none}
+#eChar img.ec.boss{border-color:#c0504a;box-shadow:0 0 22px rgba(255,80,80,.55),0 6px 14px rgba(0,0,0,.6)}
+#eChar img.ec.elite{border-color:#ff5a4a;box-shadow:0 0 16px rgba(255,90,74,.45),0 6px 14px rgba(0,0,0,.6)}
+#eChar.hit img.ec{animation:ehit .26s ease-out}
+#eChar.down{filter:grayscale(.9) brightness(.55)}
+@keyframes ehit{0%{transform:translateX(0)}30%{transform:translateX(6px) scale(.97);filter:brightness(1.9) saturate(1.3)}100%{transform:translateX(0)}}
+#intro .pl{height:130px;width:auto;display:block;filter:drop-shadow(0 6px 10px rgba(0,0,0,.7));animation:fromL .5s ease-out}
+
+/* ===== boards (texture) ===== */
+#board{background-image:linear-gradient(rgba(232,196,104,.13) 1px,transparent 1px),linear-gradient(90deg,rgba(232,196,104,.13) 1px,transparent 1px),linear-gradient(rgba(10,5,22,.22),rgba(10,5,22,.22)),url(../img/bg-04.webp);background-size:var(--cs) var(--cs),var(--cs) var(--cs),100% 100%,100% 100%;background-position:0 0,0 0,0 0,center;background-repeat:repeat,repeat,no-repeat,no-repeat}
+.bd{--cs:46px;background-size:var(--cs) var(--cs),var(--cs) var(--cs),100% 100%,100% 100%;background-repeat:repeat,repeat,no-repeat,no-repeat;background-position:0 0,0 0,0 0,center}
+#pBoard{background-image:linear-gradient(rgba(232,196,104,.11) 1px,transparent 1px),linear-gradient(90deg,rgba(232,196,104,.11) 1px,transparent 1px),linear-gradient(rgba(10,5,22,.22),rgba(10,5,22,.22)),url(../img/bg-04.webp)}
+#eBoard{background-image:linear-gradient(rgba(220,120,110,.12) 1px,transparent 1px),linear-gradient(90deg,rgba(220,120,110,.12) 1px,transparent 1px),linear-gradient(rgba(10,2,8,.2),rgba(10,2,8,.2)),url(../img/bg-06.webp)}
+/* ===== card frames ===== */
+.ic::before{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;z-index:1;background:linear-gradient(165deg,rgba(255,255,255,.22) 0%,rgba(255,255,255,.05) 36%,transparent 50%),linear-gradient(0deg,rgba(0,0,0,.2),transparent 32%)}
+.s-wands .ic{box-shadow:inset 0 1.5px 0 rgba(255,255,255,.28),inset 0 -8px 12px rgba(0,0,0,.35),inset 0 0 0 1px rgba(255,170,110,.22)}
+.s-cups .ic{box-shadow:inset 0 1.5px 0 rgba(255,255,255,.28),inset 0 -8px 12px rgba(0,0,0,.35),inset 0 0 0 1px rgba(170,215,255,.24)}
+.s-swords .ic{box-shadow:inset 0 1.5px 0 rgba(255,255,255,.34),inset 0 -8px 12px rgba(0,0,0,.35),inset 0 0 0 1px rgba(235,245,255,.26)}
+.s-pents .ic{box-shadow:inset 0 1.5px 0 rgba(255,255,255,.3),inset 0 -8px 12px rgba(0,0,0,.35),inset 0 0 0 1px rgba(255,226,150,.28)}
+.s-major .ic{box-shadow:inset 0 1.5px 0 rgba(255,255,255,.3),inset 0 -8px 12px rgba(0,0,0,.35),inset 0 0 0 1px rgba(255,226,150,.3)}
+.it.t3{filter:drop-shadow(0 0 2px var(--col))}
+.it.t4{filter:drop-shadow(0 0 4px var(--col))}
+.it.t5{filter:drop-shadow(0 0 6px var(--col)) drop-shadow(0 0 2px #fff2b8)}
+
+img.ric{display:block;object-fit:contain;pointer-events:none;filter:drop-shadow(0 1px 2px rgba(0,0,0,.55))}
+
+.evb{display:block;width:100%;aspect-ratio:2/1;object-fit:cover;border-radius:12px;border:1.5px solid var(--gold2);box-shadow:0 4px 14px rgba(0,0,0,.5),0 0 0 1px rgba(0,0,0,.6);margin:0 0 8px;pointer-events:none}
+#ov .card{max-height:94vh;overflow:auto}
