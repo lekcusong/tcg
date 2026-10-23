@@ -1,14 +1,14 @@
 <!DOCTYPE html><html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="format-detection" content="telephone=no"><meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"><meta http-equiv="Pragma" content="no-cache"><meta http-equiv="Expires" content="0"><title>Mystic Tarot Collection</title><link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=Cinzel+Decorative:wght@700&family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=Space+Mono:wght@400;700&family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet"><link rel="stylesheet" href="css/base.css?v=e7a574d0"><link rel="stylesheet" href="css/bomb-ui.css?v=d0553349"><link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#120a1e"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Mystic Tarot"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png"><link rel="apple-touch-icon" href="icons/apple-touch-icon.png"><script src="js/pwa-install.js?v=2274a900"></script><link rel="stylesheet" href="css/world-boss-tower.css?v=4258ed02">
 <link rel="stylesheet" href="css/bomb-canvas.css?v=5fd9678c"><link rel="stylesheet" href="css/ui-polish.css?v=22c820fd">
-</head><body><div id="app"><div class="loading-line" id="initial-loading-line">Opening the mystic gate 🔮</div></div><audio id="bgm-audio" loop preload="none">  <source src="bgm.mp3" type="audio/mpeg"></audio><button id="bgm-toggle" class="bgm-toggle" title="播放背景音樂">🔇</button><button id="lang-toggle" class="lang-toggle" title="Switch language / 切換語言">EN</button><div class="bgm-credit">🎵 Background Music</div><div id="card-modal" class="card-modal-overlay" style="display:none;">  <div class="card-modal-box">    <button class="card-modal-close" id="card-modal-close">✕</button>    <div id="card-modal-nav-slot"></div>    <div id="card-modal-content"></div>  </div></div><div id="announce-modal" class="card-modal-overlay" style="display:none;">  <div class="announce-frame-wrap">    <div class="announce-frame-box">      <div class="announce-frame-text" id="announce-frame-text"></div>    </div>    <div class="announce-frame-btn-row" id="announce-frame-btn-row"></div>  </div></div><div id="daily-popup-modal" class="card-modal-overlay" style="display:none;">  <div class="daily-popup-box">    <img src="daily-popup.png" alt="" id="daily-popup-img" class="daily-popup-img">    <button class="btn full" id="daily-popup-ok-btn">確定</button>  </div></div><div id="achievement-modal" class="card-modal-overlay" style="display:none;">  <div class="card-modal-box achievement-modal-box">    <button class="card-modal-close" id="achievement-modal-close">✕</button>    <div id="achievement-modal-content"></div>  </div></div><div id="profile-modal" class="card-modal-overlay" style="display:none;">  <div class="card-modal-box achievement-modal-box">    <button class="card-modal-close" id="profile-modal-close">✕</button>    <div id="profile-modal-content"></div>  </div></div><script src="js/01-core-storage.js?v=cfda398f"></script>
-<script src="js/02-bomb-map.js?v=171ee2a6"></script>
-<script src="js/03-minigame-match3.js?v=e256420b"></script>
-<script src="js/04-minigame-switches.js?v=82f9c5f0"></script>
-<script src="js/05-minigame-alchemy.js?v=d048f72a"></script>
-<script src="js/06-minigame-ballpit.js?v=1787ba92"></script>
+</head><body><div id="app"><div class="loading-line" id="initial-loading-line">Opening the mystic gate 🔮</div></div><audio id="bgm-audio" loop preload="none">  <source src="bgm.mp3" type="audio/mpeg"></audio><button id="bgm-toggle" class="bgm-toggle" title="播放背景音樂">🔇</button><button id="lang-toggle" class="lang-toggle" title="Switch language / 切換語言">EN</button><div class="bgm-credit">🎵 Background Music</div><div id="card-modal" class="card-modal-overlay" style="display:none;">  <div class="card-modal-box">    <button class="card-modal-close" id="card-modal-close">✕</button>    <div id="card-modal-nav-slot"></div>    <div id="card-modal-content"></div>  </div></div><div id="announce-modal" class="card-modal-overlay" style="display:none;">  <div class="announce-frame-wrap">    <div class="announce-frame-box">      <div class="announce-frame-text" id="announce-frame-text"></div>    </div>    <div class="announce-frame-btn-row" id="announce-frame-btn-row"></div>  </div></div><div id="daily-popup-modal" class="card-modal-overlay" style="display:none;">  <div class="daily-popup-box">    <img src="daily-popup.png" alt="" id="daily-popup-img" class="daily-popup-img">    <button class="btn full" id="daily-popup-ok-btn">確定</button>  </div></div><div id="achievement-modal" class="card-modal-overlay" style="display:none;">  <div class="card-modal-box achievement-modal-box">    <button class="card-modal-close" id="achievement-modal-close">✕</button>    <div id="achievement-modal-content"></div>  </div></div><div id="profile-modal" class="card-modal-overlay" style="display:none;">  <div class="card-modal-box achievement-modal-box">    <button class="card-modal-close" id="profile-modal-close">✕</button>    <div id="profile-modal-content"></div>  </div></div><script src="js/01-core-storage.js?v=0646079f"></script>
+<script src="js/02-bomb-map.js?v=2fa26ce0"></script>
+<script type="text/plain" data-lazy="m3" src="js/03-minigame-match3.js?v=e256420b"></script>
+<script src="js/04-minigame-switches.js?v=cfa4263b"></script>
+<script type="text/plain" data-lazy="pot" src="js/05-minigame-alchemy.js?v=d048f72a"></script>
+<script type="text/plain" data-lazy="bp" src="js/06-minigame-ballpit.js?v=fc4724f7"></script>
 <script src="js/07-base-game.js?v=fb7d5d6b"></script>
 <script src="js/08-world-boss.js?v=0f5be32a"></script>
-<script src="js/09-roulette.js?v=081f370b"></script>
+<script src="js/09-roulette.js?v=781ac804"></script>
 <script src="js/10-arena.js?v=1290cac7"></script>
 <script src="js/11-tournament.js?v=b5fd9462"></script>
 <script src="js/12-arena-pyramid.js?v=ae6226c3"></script>
@@ -18,11 +18,11 @@
 <script src="js/16-pvp-battle.js?v=53241408"></script>
 <script src="js/17-dice-ghost-boss.js?v=9b664400"></script>
 <script src="js/18-dice-expedition.js?v=08daf021"></script>
-<script src="js/19-session-flow.js?v=9032a55b"></script>
-<script src="js/20-auction-gm-tools.js?v=b364ceaf"></script>
+<script src="js/19-session-flow.js?v=16dd4f77"></script>
+<script src="js/20-auction-gm-tools.js?v=c16bb530"></script>
 <script src="js/21-relic.js?v=001c14a4"></script>
 <script src="js/22-relic-hall-ant.js?v=9ca20103"></script>
-<script src="js/23-gm-whitelist.js?v=66ce2b55"></script>
+<script src="js/23-gm-whitelist.js?v=070eaa98"></script>
 <script src="js/24-bu-core.js?v=e0c5ba44"></script>
-<script src="js/25-bootstrap.js?v=c7e19ff1"></script>
+<script src="js/25-bootstrap.js?v=268cba24"></script>
 <script src="js/auto-update.js?v=6c66daf6"></script><script>if("serviceWorker"in navigator&&(location.protocol==="https:"||location.hostname==="localhost")){window.addEventListener("load",function(){navigator.serviceWorker.register("sw.js").catch(function(){})})}</script></body></html>
