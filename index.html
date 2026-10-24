@@ -1,38 +1,28 @@
-<!DOCTYPE html><html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no"><title>塔羅背包亂鬥</title><link rel="stylesheet" href="css/base.css?v=14cfcfe5"><link rel="stylesheet" href="css/ui.css?v=9a16c299"><link rel="stylesheet" href="css/battle.css?v=89aaf21a"></head><body>
-<div id="stageBg"></div><div id="app">
-<header><span class="chip rd" id="hRound"></span><span class="chip" id="hLives"></span><span class="chip" id="hGold"></span><span class="chip" id="hWins"></span><button class="btn" id="btnMute" style="padding:5px 8px"></button></header><div class="pips" id="pips"></div><div id="relicBar" hidden></div>
-<section id="vBuild">
- <div class="enemybar" id="enemyBar"></div>
- <div class="hpline"><span id="hpLbl"></span><span id="incLine"></span></div>
- <div id="board"><div id="boardItems"></div><div id="boardPrev"></div></div>
- <div id="setBar"></div>
- <div id="trayWrap"><div class="th"><span>收納區（可拖進背包）</span><span id="trayCnt"></span></div><div id="tray"></div><div id="sellZone"></div></div>
- <div id="info"></div>
- <div id="overview"></div>
- <div class="shopbanner"><img src="img/shop-banner.webp" alt="" draggable="false"><div class="shopbar"><span id="shopTitle"></span><button class="btn" id="btnReroll"></button></div></div>
- <div id="shop"></div>
- <div class="actions"><button class="btn" id="btnAuto"></button><button class="btn primary" id="btnFight"></button></div>
-</section>
-<section id="mapv" hidden></section>
-<section id="vBattle" hidden>
- <div class="side"><div class="sn"><span class="av" id="eAv"></span><b id="eName"></b></div><div class="hpw" id="eHpW"><div class="gh" id="eGh"></div><div class="hp" id="eHp"></div><div class="sh" id="eSh"></div><div class="x" hidden></div><div class="t" id="eHpT"></div></div><div class="stl" id="eSt"></div><div class="bd" id="eBoard"></div></div>
- <div id="duel"><div id="pChar" data-pose="idle"><img data-p="idle" class="on" src="img/player-idle.webp" alt="" draggable="false"><img data-p="hurt" class="" src="img/player-hurt.webp" alt="" draggable="false"><img data-p="cast" class="" src="img/player-cast.webp" alt="" draggable="false"><img data-p="win" class="" src="img/player-win.webp" alt="" draggable="false"></div><div class="bctl"><span class="tm" id="bTime">0s</span><button class="btn" id="btnSpd">×1</button><button class="btn" id="btnSkip"></button></div><div id="eChar"></div></div>
- <div class="side"><div class="bd" id="pBoard"></div><div class="stl" id="pSt"></div><div class="hpw" id="pHpW"><div class="gh" id="pGh"></div><div class="hp" id="pHp"></div><div class="sh" id="pSh"></div><div class="x" hidden></div><div class="t" id="pHpT"></div></div><div class="sn"><span class="av" id="pAv"></span><b id="pName"></b></div></div>
- <div id="bResult" hidden></div>
-</section>
-</div>
-<canvas id="fx"></canvas><div class="flash" id="flash"></div><div class="vig" id="vig"></div><div id="sheet" hidden></div><div id="intro" hidden></div><div id="banner" hidden></div><div id="ov" hidden></div><div id="toast"></div>
-<script src="js/01-core-data.js?v=4861972b"></script>
-<script src="js/02-relics-boss.js?v=c4fd4202"></script>
-<script src="js/03-battle-engine.js?v=4032c3da"></script>
-<script src="js/04-shop-route-events.js?v=8a9c7333"></script>
-<script src="js/05-icons.js?v=dff8cdae"></script>
-<script src="js/06-fx-audio.js?v=892e5932"></script>
-<script src="js/07-ui.js?v=fc3f697c"></script>
-<script src="js/08-progress-save.js?v=0d27c266"></script>
-<script src="js/09-leaderboard.js?v=e5aca9e7"></script>
-<script src="js/10-map-nodes.js?v=acd401c9"></script>
-<script src="js/11-pose-bgm.js?v=d747b452"></script>
-<script src="js/12-art-maps.js?v=d60c0578"></script>
-<script src="js/99-bootstrap.js?v=7ce31b00"></script>
-<script src="js/auto-update.js?v=6c66daf6"></script></body></html>
+<!DOCTYPE html><html lang="zh-Hant"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="format-detection" content="telephone=no"><meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"><meta http-equiv="Pragma" content="no-cache"><meta http-equiv="Expires" content="0"><title>Mystic Tarot Collection</title><link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=Cinzel+Decorative:wght@700&family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=Space+Mono:wght@400;700&family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet"><link rel="stylesheet" href="css/base.css?v=e7a574d0"><link rel="stylesheet" href="css/bomb-ui.css?v=d0553349"><link rel="manifest" href="manifest.webmanifest"><meta name="theme-color" content="#120a1e"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Mystic Tarot"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png"><link rel="apple-touch-icon" href="icons/apple-touch-icon.png"><script src="js/pwa-install.js?v=2274a900"></script><link rel="stylesheet" href="css/world-boss-tower.css?v=4258ed02">
+<link rel="stylesheet" href="css/bomb-canvas.css?v=5fd9678c"><link rel="stylesheet" href="css/ui-polish.css?v=22c820fd">
+</head><body><div id="app"><div class="loading-line" id="initial-loading-line">Opening the mystic gate 🔮</div></div><audio id="bgm-audio" loop preload="none">  <source src="bgm.mp3" type="audio/mpeg"></audio><button id="bgm-toggle" class="bgm-toggle" title="播放背景音樂">🔇</button><button id="lang-toggle" class="lang-toggle" title="Switch language / 切換語言">EN</button><div class="bgm-credit">🎵 Background Music</div><div id="card-modal" class="card-modal-overlay" style="display:none;">  <div class="card-modal-box">    <button class="card-modal-close" id="card-modal-close">✕</button>    <div id="card-modal-nav-slot"></div>    <div id="card-modal-content"></div>  </div></div><div id="announce-modal" class="card-modal-overlay" style="display:none;">  <div class="announce-frame-wrap">    <div class="announce-frame-box">      <div class="announce-frame-text" id="announce-frame-text"></div>    </div>    <div class="announce-frame-btn-row" id="announce-frame-btn-row"></div>  </div></div><div id="daily-popup-modal" class="card-modal-overlay" style="display:none;">  <div class="daily-popup-box">    <img src="daily-popup.png" alt="" id="daily-popup-img" class="daily-popup-img">    <button class="btn full" id="daily-popup-ok-btn">確定</button>  </div></div><div id="achievement-modal" class="card-modal-overlay" style="display:none;">  <div class="card-modal-box achievement-modal-box">    <button class="card-modal-close" id="achievement-modal-close">✕</button>    <div id="achievement-modal-content"></div>  </div></div><div id="profile-modal" class="card-modal-overlay" style="display:none;">  <div class="card-modal-box achievement-modal-box">    <button class="card-modal-close" id="profile-modal-close">✕</button>    <div id="profile-modal-content"></div>  </div></div><script src="js/01-core-storage.js?v=0646079f"></script>
+<script src="js/02-bomb-map.js?v=2fa26ce0"></script>
+<script type="text/plain" data-lazy="m3" src="js/03-minigame-match3.js?v=e256420b"></script>
+<script src="js/04-minigame-switches.js?v=8cf2ee85"></script>
+<script type="text/plain" data-lazy="pot" src="js/05-minigame-alchemy.js?v=d048f72a"></script>
+<script type="text/plain" data-lazy="bp" src="js/06-minigame-ballpit.js?v=fc4724f7"></script>
+<script src="js/07-base-game.js?v=fb7d5d6b"></script>
+<script src="js/08-world-boss.js?v=0f5be32a"></script>
+<script src="js/09-roulette.js?v=081f370b"></script>
+<script src="js/10-arena.js?v=1290cac7"></script>
+<script src="js/11-tournament.js?v=b5fd9462"></script>
+<script src="js/12-arena-pyramid.js?v=ae6226c3"></script>
+<script src="js/13-star-race.js?v=fb04a539"></script>
+<script src="js/14-gm-dock.js?v=23fc799e"></script>
+<script src="js/15-robe-gear-market.js?v=a4142e1a"></script>
+<script src="js/16-pvp-battle.js?v=53241408"></script>
+<script src="js/17-dice-ghost-boss.js?v=9b664400"></script>
+<script src="js/18-dice-expedition.js?v=08daf021"></script>
+<script src="js/19-session-flow.js?v=16dd4f77"></script>
+<script src="js/20-auction-gm-tools.js?v=c16bb530"></script>
+<script src="js/21-relic.js?v=001c14a4"></script>
+<script src="js/22-relic-hall-ant.js?v=9ca20103"></script>
+<script src="js/23-gm-whitelist.js?v=070eaa98"></script>
+<script src="js/24-bu-core.js?v=e0c5ba44"></script>
+<script src="js/25-bootstrap.js?v=268cba24"></script>
+<script src="js/auto-update.js?v=6c66daf6"></script><script>if("serviceWorker"in navigator&&(location.protocol==="https:"||location.hostname==="localhost")){window.addEventListener("load",function(){navigator.serviceWorker.register("sw.js").catch(function(){})})}</script></body></html>
