@@ -67,7 +67,12 @@ function saveRun() {
   if (G.over || G.running || !G.map) return; if (G.phase === "build" && !G.enemy) return;
   try { localStorage.setItem("bb_save", JSON.stringify({ v: 2, round: G.round, lives: G.lives, gold: G.gold, wins: G.wins, hpBonus: G.hpBonus, relics: G.relics, mode: G.mode, fate: G.fate, bossAff: G.bossAff, diff: G.diff, char: G.char, seed: G.seed, rerolls: G.rerolls, freeUsed: G.freeUsed, rerollCost: G.rerollCost, lost: G.lost, inv: snapItems(G.inv), shop: G.shop, map: G.map, path: G.path, phase: G.phase, nodeType: G.nodeType, offer: G.offer, enemy: G.enemy ? { name: G.enemy.name, hp: G.enemy.hp, boss: G.enemy.boss, elite: G.enemy.elite, items: snapItems(G.enemy.items) } : null })); } catch (e) { }
 }
-const readSave = () => { try { const s = JSON.parse(localStorage.getItem("bb_save")); return s && s.v === 2 ? s : null; } catch (e) { return null; } };
+// 存檔檢查：裡面只要有「已不存在」的牌／遺物／命運牌／角色／Boss 詞綴，載入時畫面會畫到一半就報錯變空白，所以直接視為壞檔清掉
+const saveOk = s => {
+  const itemIds = new Set(ITEMS.map(d => d.id)), okItems = l => (l || []).every(o => o && itemIds.has(o.id));
+  return okItems(s.inv) && (!s.enemy || okItems(s.enemy.items)) && (s.relics || []).every(id => RID[id]) && (s.fate || []).every(id => FATE_ALL[id]) && (!s.char || CID[s.char]) && (!s.diff || DIFFS[s.diff]);
+};
+const readSave = () => { try { const s = JSON.parse(localStorage.getItem("bb_save")); if (!s || s.v !== 2) return null; if (!saveOk(s)) { localStorage.removeItem("bb_save"); return null; } return s; } catch (e) { return null; } };
 const clearRun = () => { try { localStorage.removeItem("bb_save"); } catch (e) { } };
 function loadRun(s) {
   Object.assign(G, { round: s.round, lives: s.lives, gold: s.gold, wins: s.wins, hpBonus: s.hpBonus, relics: s.relics || [], mode: s.mode, fate: s.fate || [], bossAff: s.bossAff || null, diff: s.diff || 0, char: s.char || null, seed: s.seed, rerolls: s.rerolls, freeUsed: s.freeUsed, rerollCost: s.rerollCost || 1, lost: s.lost || 0, inv: loadItems(s.inv), shop: s.shop, map: s.map, path: s.path || [], phase: s.phase, nodeType: s.nodeType, offer: s.offer, enemy: s.enemy ? { name: s.enemy.name, hp: s.enemy.hp, boss: s.enemy.boss, elite: s.enemy.elite, items: loadItems(s.enemy.items) } : null, sel: null, shopSel: -1, over: false, running: false, linkKeys: null });
