@@ -1650,3 +1650,14 @@ async function bombChatPoll(){
     // ignore — retry next tick
   }
 }
+
+/* 炸彈探索的分頁入口：原本跟彈珠放在同一個檔，彈珠改成延後載入後搬到這裡（炸彈是預設進入的頁面，必須常駐） */
+async function bombRenderTab(e){
+  srCaptureChatUiState();
+  try { await srRefreshChatCache(); } catch (err) { /* ignore, chat will just show empty until next poll */ }
+  if ("bomb" !== zl.tab) return;
+  e.innerHTML = bombBuildHtml();
+  if (bombState.dayEnd) { bombWireDayEnd(e); if (bombState.congratsPending) bombShowCongrats(); return; }
+  bombWire(e);
+  if (!bombState.mapId) bombAutoLoadSnapshot();
+}
