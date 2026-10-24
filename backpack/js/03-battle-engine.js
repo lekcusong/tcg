@@ -8,11 +8,12 @@ class Battle {
     this.s = [mk(pb, pHp), mk(eb, eHp)]; this.t = 0; this.over = false; this.winner = -1; this.ev = []; this.stat = [{}, {}]; this.boss = boss || null; this.bt = 0; this.phoenix = !!mods.phoenix; this.phoenixUsed = false;
     this.s.forEach(s => s.units.forEach(u => { if (u.vals.open) s.shield += Math.round(u.vals.open); if (u.vals.thorns) s.thorns += Math.round(u.vals.thorns); }));
     this.s[0].shield += (mods.open || 0) + (this.fx.open || 0); this.s[0].thorns += (mods.thorns || 0) + (this.fx.thorns || 0);
-    if (boss && boss.type === "armor") this.s[1].shield += 12;
+    const bp = (boss && boss.p) || {}; this.bp = bp; this.bossDmg = boss ? 1 + (mods.bossDmg || 0) : 1; this.bossSpd = boss && mods.bossCd ? 1 / (1 - Math.min(0.5, mods.bossCd)) : 1;
+    if (boss) { this.s[1].shield += bp.open != null ? bp.open : (boss.type === "armor" ? 12 : 0); if (bp.thorns) this.s[1].thorns += bp.thorns; if (mods.bossOpen) this.s[0].shield += mods.bossOpen; }
   }
   st(si, idx, k, v) { if (idx == null) return; const o = this.stat[si][idx] || (this.stat[si][idx] = { d: 0, s: 0 }); o[k] += v; }
   hit(si, v, pierce) {
-    const s = this.s[si]; let ab = 0; if (s.vuln > 0 && !this._dot) v *= 1.25; const tot = v;
+    const s = this.s[si]; let ab = 0; if (s.vuln > 0 && !this._dot) v *= 1.25; if (si === 1 && this.bossDmg !== 1) v *= this.bossDmg; const tot = v;
     if (!pierce && s.shield > 0) { ab = Math.min(s.shield, v); s.shield -= ab; v -= ab; }
     s.hp -= v; this.ev.push({ k: "dmg", si, v: Math.round(v), ab: Math.round(ab), src: this._src, dot: this._dot, pr: pierce ? 1 : 0 });
     if (this._src != null) {
@@ -50,9 +51,12 @@ class Battle {
     this.ev.push({ k: "fire", si, idx: u.idx }); this._src = undefined;
   }
   bossAct() {
-    const t = this.boss.type, p = this.s[0], e = this.s[1];
-    if (t === "armor") { e.shield += 5; this.ev.push({ k: "shield", si: 1, v: 5 }); }
-    else if (t === "reap") { p.shield = 0; const d = Math.round(p.max * 0.1); p.hp -= d; this.ev.push({ k: "boss", type: t }); this.ev.push({ k: "dmg", si: 0, v: d, ab: 0, dot: "boss" }); }
+    const t = this.boss.type, p = this.s[0], e = this.s[1], bp = this.bp;
+    if (t === "armor") {
+      const g = bp.gain != null ? bp.gain : 5; e.shield += g; this.ev.push({ k: "shield", si: 1, v: g });
+      if (bp.delay) { const c = p.units.filter(o => o.cd > 0); if (c.length) { const o = c[Math.floor(Math.random() * c.length)]; o.timer -= bp.delay; this.ev.push({ k: "delay", si: 0, idx: o.idx }); } }
+    }
+    else if (t === "reap") { if (bp.clear !== false) p.shield = 0; const d = Math.round(p.max * (bp.pct != null ? bp.pct : 0.1)); p.hp -= d; if (bp.poison) p.poison += bp.poison; this.ev.push({ k: "boss", type: t }); this.ev.push({ k: "dmg", si: 0, v: d, ab: 0, dot: "boss" }); }
     else if (t === "chaos") {
       const r = Math.floor(Math.random() * 4); this.ev.push({ k: "boss", type: t });
       if (r === 0) { const h = Math.round(e.max * 0.06); e.hp = Math.min(e.max, e.hp + h); this.ev.push({ k: "heal", si: 1, v: h }); }
@@ -64,8 +68,8 @@ class Battle {
   step(dt) {
     if (this.over) return;
     this.t += dt;
-    for (let si = 0; si < 2; si++) { const sp = this.s[si].slow > 0 ? 0.7 : 1; this.s[si].units.forEach(u => { if (!u.cd) return; u.timer += dt * sp; if (u.timer >= u.cd) { u.timer -= u.cd; this.fire(si, u); } }); this.s[si].slow = Math.max(0, this.s[si].slow - dt); this.s[si].vuln = Math.max(0, this.s[si].vuln - dt); }
-    if (this.boss) { const iv = this.boss.type === "reap" ? 6 : 5; this.bt += dt; while (this.bt >= iv) { this.bt -= iv; this.bossAct(); } }
+    for (let si = 0; si < 2; si++) { const sp = (this.s[si].slow > 0 ? 0.7 : 1) * (si === 0 ? this.bossSpd : 1); this.s[si].units.forEach(u => { if (!u.cd) return; u.timer += dt * sp; if (u.timer >= u.cd) { u.timer -= u.cd; this.fire(si, u); } }); this.s[si].slow = Math.max(0, this.s[si].slow - dt); this.s[si].vuln = Math.max(0, this.s[si].vuln - dt); }
+    if (this.boss) { let iv = this.bp.iv || (this.boss.type === "reap" ? 6 : 5); if (this.bp.enrageAt && this.s[1].hp < this.s[1].max * this.bp.enrageAt) iv = this.bp.enrageIv || iv; this.bt += dt; while (this.bt >= iv) { this.bt -= iv; this.bossAct(); } }
     for (let si = 0; si < 2; si++) {
       const s = this.s[si]; s.tk += dt;
       while (s.tk >= 1) {
@@ -73,6 +77,7 @@ class Battle {
         if (s.burn > 0) { this._dot = "burn"; this.hit(si, s.burn, false); this._dot = undefined; s.burn = Math.max(0, s.burn - 1); }
         if (s.poison > 0) { s.hp -= s.poison; this.ev.push({ k: "dmg", si, v: s.poison, ab: 0, p: 1 }); if (s.pt % 3 === 0) s.poison--; }
         if (s.regen > 0) { const h = s.regen; s.hp = Math.min(s.max, s.hp + h); this.ev.push({ k: "heal", si, v: h }); s.regen--; }
+        if (si === 1 && this.bp.regenE) { const h = this.bp.regenE; s.hp = Math.min(s.max, s.hp + h); this.ev.push({ k: "heal", si, v: h }); }
         if (si === 0 && this.rg) { s.hp = Math.min(s.max, s.hp + this.rg); this.ev.push({ k: "heal", si, v: this.rg }); }
         if (si === 0 && this.mods.pulse && s.pt % 5 === 0) { s.shield += this.mods.pulse; this.ev.push({ k: "shield", si, v: this.mods.pulse }); }
         if (this.t > 20) { const f = Math.floor((this.t - 20) / 2) + 1; s.hp -= f; this.ev.push({ k: "dmg", si, v: f, ab: 0, p: 1 }); }

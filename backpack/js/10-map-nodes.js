@@ -44,7 +44,7 @@ function renderMap() {
     nodes += `<text class="fl2 ${f === G.round ? "cur" : ""}" x="2" y="${py(f) + 4}">${f}</text>`;
   });
   const legend = ["fight", "elite", "shop", "event", "rest", "mystery"].map(t => `<span>${nodeIcon(t, 14)}${NODES[t].nm}</span>`).join("");
-  const bar = mapSel >= 0 ? (() => { const t = G.map[G.round - 1][mapSel].t; return `<div class="mbar"><div class="mi2">${mapFace(t, G.round) ? `<img class="mbp" src="${mapFace(t, G.round)}" alt="">` : nodeIcon(t, 28)}<div><b>${NODES[t].nm}</b><small>${NODES[t].d}</small></div></div><button class="btn primary" id="mGo">前往</button></div>`; })() : `<div class="mbar"><small>點選發亮的節點，確認後前往</small></div>`;
+  const bar = mapSel >= 0 ? (() => { const t = G.map[G.round - 1][mapSel].t; return `<div class="mbar"><div class="mi2">${mapFace(t, G.round) ? `<img class="mbp" src="${mapFace(t, G.round)}" alt="">` : nodeIcon(t, 28)}<div><b>${NODES[t].nm}</b><small>${NODES[t].d}${t === "boss" ? bossHint(G.round) : ""}</small></div></div><button class="btn primary" id="mGo">前往</button></div>`; })() : `<div class="mbar"><small>點選發亮的節點，確認後前往</small></div>`;
   mv.innerHTML = `<div class="mh"><span class="chip">第 ${G.round}/${MAX_ROUND} 回合</span><span class="chip">${uiIcon("heart", 14)}${G.lives}</span><span class="chip">${uiIcon("coin", 14)}${G.gold}</span><span class="chip">${uiIcon("gem", 14)}${G.relics.length}</span><button class="btn" id="mDeck" style="padding:5px 9px">${uiIcon("book", 14)}</button></div><div class="mleg">${legend}</div><div class="mscroll" id="mscroll"><svg class="mapsvg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${edges}${nodes}</svg></div>${bar}`;
   mv.querySelectorAll(".nd.can").forEach(g => g.onclick = () => { mapSel = +g.dataset.i; AU.tick(); renderMap(); });
   if ($("#mGo")) $("#mGo").onclick = () => { AU.buy(); chooseNode(mapSel); };
@@ -53,7 +53,7 @@ function renderMap() {
 }
 function showDeckPeek() {
   const ov = $("#ov"); ov.hidden = false;
-  ov.innerHTML = `<div class="card"><h2>我的牌組</h2><div class="rowi">${miniIcons(G.inv)}</div>${G.relics.length ? `<div class="rowi">${G.relics.map(id => `<span class="rl">${relicIcon(id, 24)}</span>`).join("")}</div><div class="sub">${G.relics.map(id => RID[id].nm).join("、")}</div>` : ""}<button class="btn primary" id="dkOk" style="margin-top:10px">返回地圖</button></div>`;
+  ov.innerHTML = `<div class="card"><h2>我的牌組</h2><div class="rowi">${miniIcons(G.inv)}</div>${(G.fate || []).length ? `<div class="sub">牌陣：${G.fate.map(id => FATE_ALL[id].nm).join("、")}</div>` : ""}${G.relics.length ? `<div class="rowi">${G.relics.map(id => `<span class="rl">${relicIcon(id, 24)}</span>`).join("")}</div><div class="sub">${G.relics.map(id => RID[id].nm).join("、")}</div>` : ""}<button class="btn primary" id="dkOk" style="margin-top:10px">返回地圖</button></div>`;
   $("#dkOk").onclick = () => { ov.hidden = true; };
 }
 function chooseNode(i) {
@@ -76,7 +76,7 @@ function startNode(t) {
 }
 function prepFight(elite) {
   G.rerollCost = 1; G.rerolls = 0; G.freeUsed = false; G.over = false; G.phase = "build"; G.shop = rollShop();
-  G.enemy = withSeed(sdKey(`enemy|${G.round}${elite ? "|e" : ""}`), () => genEnemy(G.round, elite)); G.shopSel = -1; G.offer = null;
+  G.enemy = withSeed(sdKey(`enemy|${G.round}${elite ? "|e" : ""}`), () => genEnemy(G.round, elite, G.bossAff && G.bossAff[G.round], G.diff || 0)); G.shopSel = -1; G.offer = null;
   noteSeen(); refresh(); saveRun();
 }
 function afterNode() {

@@ -1,8 +1,8 @@
 'use strict';
 /* ===== UI ===== */
 const $ = s => document.querySelector(s);
-const G = { relics: [], hpBonus: 0, mode: "normal", seed: "", rerolls: 0, freeUsed: false, over: true, round: 1, lives: LIVES, gold: START_GOLD, wins: 0, hp: START_HP, inv: [], shop: [], rerollCost: 1, enemy: null, sel: null, shopSel: -1, battle: null, running: false, best: +(localStorage.getItem("bb_best") || 0) };
-const MODS = () => Object.assign(relicMods(G.char ? G.relics.concat("ch_" + G.char) : G.relics), { sets: true }), priceOf = d => Math.max(1, d.cost - (MODS().discount || 0) - (G.nodeType === "shop" ? 1 : 0)), myMax = () => START_HP + G.hpBonus + (MODS().hpAdd || 0);
+const G = { relics: [], fate: [], bossAff: null, diff: 0, hpBonus: 0, mode: "normal", seed: "", rerolls: 0, freeUsed: false, over: true, round: 1, lives: LIVES, gold: START_GOLD, wins: 0, hp: START_HP, inv: [], shop: [], rerollCost: 1, enemy: null, sel: null, shopSel: -1, battle: null, running: false, best: +(localStorage.getItem("bb_best") || 0) };
+const MODS = () => Object.assign(relicMods((G.char ? G.relics.concat("ch_" + G.char) : G.relics).concat((G.fate || []).map(f => "ft_" + f))), { sets: true }), priceOf = d => Math.max(1, d.cost - (MODS().discount || 0) - (G.nodeType === "shop" ? 1 : 0)), myMax = () => START_HP + G.hpBonus + (MODS().hpAdd || 0);
 let CS = 52, drag = null, flashT = {};
 function calcCS() { const w = Math.min(window.innerWidth, 440) - 24; CS = Math.max(36, Math.min(56, Math.floor(w / COLS))); document.documentElement.style.setProperty("--cs", CS + "px"); }
 const mixc = (a, b, t) => { const p = x => [1, 3, 5].map(i => parseInt(x.slice(i, i + 2), 16)); const A = p(a), B = p(b); return "#" + A.map((v, i) => Math.round(v * t + B[i] * (1 - t)).toString(16).padStart(2, "0")).join(""); };
@@ -276,12 +276,13 @@ document.addEventListener("pointerdown", e => { if (!e.target.closest("#board,#t
 /* ----- 流程 ----- */
 const sdKey = k => G.mode === "daily" ? `${G.seed}|${k}` : null;
 function rollShop() { return withSeed(sdKey(`shop|${G.round}|${G.rerolls}`), () => genShop(G.round)); }
-function startRun(cid, mode, seed) {
-  const ch = CID[cid];
-  G.linkKeys = null; Object.assign(G, { round: 1, lives: LIVES, gold: START_GOLD + ch.gold, char: cid, wins: 0, inv: [], sel: null, shopSel: -1, relics: [], hpBonus: 0, mode: mode || "normal", seed: seed || "", over: false, lost: 0, path: [], offer: null, nodeType: null, phase: "map" });
+function startRun(cid, mode, seed, diff) {
+  const ch = CID[cid], df = mode === "daily" ? 0 : Math.max(0, Math.min(3, diff || 0));
+  G.linkKeys = null; Object.assign(G, { round: 1, lives: LIVES - (df >= 3 ? 1 : 0), gold: START_GOLD + ch.gold, char: cid, wins: 0, inv: [], sel: null, shopSel: -1, relics: [], fate: [], diff: df, bossAff: null, hpBonus: 0, mode: mode || "normal", seed: seed || "", over: false, lost: 0, path: [], offer: null, nodeType: null, phase: "map" });
   G.map = withSeed(sdKey("map"), genMap);
+  G.bossAff = withSeed(sdKey("bossaff"), () => Object.fromEntries(Object.keys(BOSS_VARIANTS).map(r => [r, BOSS_VARIANTS[r][Math.floor(rnd() * BOSS_VARIANTS[r].length)].id])));
   ch.start.forEach(id => G.inv.push(mkItem(id))); autoPlace(G.inv); G.sel = G.inv[0].uid; META.games++; saveMeta();
-  $("#ov").hidden = true; $("#vBattle").hidden = true; enterMap();
+  $("#ov").hidden = true; $("#vBattle").hidden = true; showSpread(enterMap);
 }
 const rerollFree = () => !!MODS().freeReroll && !G.freeUsed;
 $("#btnReroll").onclick = () => {
@@ -452,7 +453,7 @@ function finishBattle() {
   if (!BT || BT.done) return; BT.done = true; const b = BT.b, win = b.winner === 0, inc = buildUnits(G.inv.filter(i => i.x != null), MODS()).income, boss = G.enemy.boss, elite = G.enemy.elite;
   if (win) { G.wins++; META.totalWins++; if (boss) META.bossKills++; if (elite) META.eliteKills = (META.eliteKills || 0) + 1; } else { G.lives--; G.lost++; }
   bump("maxHit", BT.maxHit); if (G.inv.some(i => i.lv >= 3)) META.lv3 = 1; bump("maxRelics", G.relics.length);
-  const gain = 8 + (win ? 2 : 0) + (win && elite ? 4 : 0) + inc; G.gold += gain;
+  const fm = MODS(), gain = 8 + (win ? 2 : 0) + (win && elite ? 4 : 0) + inc + (win && boss ? (fm.bossGold || 0) : 0); G.gold += gain; if (win && boss && fm.bossHp) G.hpBonus += fm.bossHp;
   const last = G.round >= MAX_ROUND, dead = G.lives <= 0, end = dead || (last && win);
   const r = $("#bResult"); r.hidden = false; $("#vBattle").style.transform = "";
   r.innerHTML = `<div class="card">${eImg(G.enemy, "full", "rpt" + eTag(G.enemy) + (win ? " def" : "")) ? `<div class="rwrap">${eImg(G.enemy, "full", "rpt" + eTag(G.enemy) + (win ? " def" : ""))}<span class="rbadge">${uiIcon(win ? "trophy" : "heart0", 28, win ? "#ffd84a" : "#c46a7a")}</span></div>` : `<div class="big">${uiIcon(win ? "trophy" : "heart0", 52, win ? "#ffd84a" : "#c46a7a")}</div>`}<h2>${win ? (boss ? "擊破 BOSS" : elite ? "擊敗精英" : "勝利") : "落敗"}</h2><p>${win ? ((boss || elite) && !last ? "戰利品：選擇一件遺物" : "對手被打倒了") : "你被打倒了，失去 1 條命"}</p><p class="sub">收入 +${gain} ${uiIcon("coin", 13)}${inc ? `（含額外收入 ${inc}）` : ""}　剩 ${G.lives} 條命</p>${statRows(b)}<button class="btn primary" id="bNext" style="margin-top:10px;padding:11px 26px;font-size:15px">${end ? "查看結果" : win && (boss || elite) ? "選擇遺物" : "回到地圖"}</button></div>`;

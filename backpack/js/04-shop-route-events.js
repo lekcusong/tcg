@@ -1,9 +1,9 @@
 'use strict';
 /* ===== 對手與商店 ===== */
 const ENEMY_NAMES = ["見習占卜師", "星象學徒", "月下術士", "吉普賽卡蜜拉", "沙漠先知", "塔羅老人", "午夜讀牌人", "霧中女巫", "命運編織者", "水晶球商人", "高塔守望者", "命運女神"];
-function genEnemy(round, elite) {
-  const bs = BOSSES[round]; if (bs) elite = false;
-  const n = Math.min(12, 3 + Math.round(round * 1.0) + (elite ? 1 : 0)), maxTier = bs ? Math.min(round, 6) : Math.min(round + 1, 6);
+function genEnemy(round, elite, aff, diff) {
+  const bs = bossWith(round, aff); if (bs) elite = false; diff = diff || 0;
+  const n = Math.min(12, 3 + Math.round(round * 1.0) + (elite ? 1 : 0) + ((elite || bs) && diff >= 2 ? 1 : 0)), maxTier = bs ? Math.min(round, 6) : Math.min(round + 1, 6);
   const suits = ["wands", "cups", "swords", "pents"].sort(() => rnd() - 0.5), themes = [suits[0], suits[1]];
   const pool = ITEMS.filter(d => d.tier <= maxTier && d.id !== "p1" && d.id !== "p7" && !(round <= 2 && (d.id === "c1" || d.tier >= 3)) && !(bs && d.tier < 2)), items = [];
   for (let i = 0; i < n; i++) {
@@ -13,7 +13,7 @@ function genEnemy(round, elite) {
     items.push(mkItem(pool[k].id, q < p3 ? 3 : q < p3 + p2 ? 2 : 1));
   }
   autoPlace(items);
-  return { name: bs ? bs.nm : (elite ? "精英・" : "") + ENEMY_NAMES[Math.min(round - 1, ENEMY_NAMES.length - 1)], items: items.filter(i => i.x != null), hp: Math.round((45 + round * 7) * (bs ? 1.15 : elite ? 1.2 : 1)), boss: bs || null, elite: !!elite };
+  return { name: bs ? bs.nm : (elite ? "精英・" : "") + ENEMY_NAMES[Math.min(round - 1, ENEMY_NAMES.length - 1)], items: items.filter(i => i.x != null), hp: Math.round((45 + round * 7) * (bs ? 1.15 : elite ? 1.2 : 1) * (1 + 0.08 * diff)), boss: bs || null, elite: !!elite };
 }
 function genShop(round, n) {
   const pool = ITEMS.filter(d => d.tier <= round), out = [];

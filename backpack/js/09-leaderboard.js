@@ -52,7 +52,7 @@ function showStart() {
   const sv = readSave(), td = todayStr(), db = META.daily[td];
   ov.innerHTML = `<div class="card"><div class="big">${itemIcon("m19", 56)}</div><h2>塔羅背包亂鬥</h2><p class="sub">12 回合 · 3 場 Boss · 遺物與事件</p>
   <div class="menu">
-   ${sv ? `<button class="btn primary mb" id="mCont">${uiIcon("save", 18)}<span>繼續旅程<small>第 ${sv.round} 回合${sv.mode === "daily" ? "（每日挑戰）" : ""}</small></span></button>` : ""}
+   ${sv ? `<button class="btn primary mb" id="mCont">${uiIcon("save", 18)}<span>繼續旅程<small>第 ${sv.round} 回合${sv.mode === "daily" ? "（每日挑戰）" : sv.diff ? "・命運階 " + DIFFS[sv.diff].nm.slice(2) : ""}</small></span></button>` : ""}
    <button class="btn ${sv ? "" : "primary"} mb" id="mNew">${uiIcon("play", 18)}<span>開始新旅程<small>選擇角色與起始牌</small></span></button>
    <button class="btn mb" id="mDaily">${uiIcon("cal", 18)}<span>每日挑戰<small>${td}${db ? " · 今日最高 " + db : " · 全服同一組商店與對手"}</small></span></button>
    <button class="btn mb" id="mRank">${uiIcon("medal", 18)}<span>排行榜<small>總榜 · 每日挑戰榜（暫無獎勵）</small></span></button>
@@ -67,8 +67,8 @@ function showStart() {
 }
 function showPick() {
   const ov = $("#ov");
-  ov.innerHTML = `<div class="card"><h2>選擇角色</h2><div class="chars">${CHARS.map(c => { const open = !c.ok || c.ok(META), d = ID[c.ic], S = SUITS[d.suit]; return `<button class="chr ${open ? "" : "lk"}" data-id="${c.id}" style="${sv(S)}"><div class="sic">${open ? itemIcon(c.ic, 40) : uiIcon("lock", 30)}</div><div class="cinf"><b>${c.nm}</b><span class="pro">＋ ${c.pro}</span><span class="con">－ ${c.con}</span><small>${open ? "起始：" + c.start.map(i => ID[i].nm).join("、") : "解鎖：" + c.unlock}</small></div></button>`; }).join("")}</div><button class="btn" id="back" style="margin-top:10px">返回</button></div>`;
-  ov.querySelectorAll(".chr").forEach(b => b.onclick = () => { const c = CID[b.dataset.id]; if (c.ok && !c.ok(META)) return toast("尚未解鎖：" + c.unlock); AU.buy(); clearRun(); startRun(c.id); }); $("#back").onclick = showStart;
+  ov.innerHTML = `<div class="card"><h2>選擇角色</h2>${tierRowHtml()}<div class="chars">${CHARS.map(c => { const open = !c.ok || c.ok(META), d = ID[c.ic], S = SUITS[d.suit]; return `<button class="chr ${open ? "" : "lk"}" data-id="${c.id}" style="${sv(S)}"><div class="sic">${open ? itemIcon(c.ic, 40) : uiIcon("lock", 30)}</div><div class="cinf"><b>${c.nm}</b><span class="pro">＋ ${c.pro}</span><span class="con">－ ${c.con}</span><small>${open ? "起始：" + c.start.map(i => ID[i].nm).join("、") : "解鎖：" + c.unlock}</small></div></button>`; }).join("")}</div><button class="btn" id="back" style="margin-top:10px">返回</button></div>`;
+  ov.querySelectorAll(".chr").forEach(b => b.onclick = () => { const c = CID[b.dataset.id]; if (c.ok && !c.ok(META)) return toast("尚未解鎖：" + c.unlock); AU.buy(); clearRun(); startRun(c.id, "normal", "", Math.min(META.diffSel || 0, dMax())); }); wireTiers(); $("#back").onclick = showStart;
 }
 function showHow() {
   const ov = $("#ov"); ov.hidden = false;
@@ -78,6 +78,8 @@ function showHow() {
    <li><b>控場狀態：</b><b>緩速</b>讓敵方所有牌慢 30%、<b>易傷</b>讓敵方受到的直接傷害 +25%（灼燒、中毒不受影響）。聖杯系負責緩速、寶劍系負責易傷；淨化牌可以解除自己身上的狀態。</li>
    <li><b>自動戰鬥：</b>每張牌冷卻好就出手，打倒對手血量即勝。超過 20 秒會進入疲勞。</li>
    <li><b>合成：</b>兩張相同、同等級的牌可合成升級（最高 Lv3）。</li>
+    <li><b>命運牌陣：</b>開局在<b>過去／現在／未來</b>各從兩張中選一張：過去是饋贈、現在是有利有弊的本局修正、未來是 Boss 戰專用的預兆。牌陣上方會預告三場 Boss 的<b>詞綴</b>，同一隻 Boss 每局可能換招。</li>
+    <li><b>命運階：</b>通關後解鎖更高難度（敵人更硬、精英與 Boss 更多牌、命更少）。每日挑戰固定為階 0。</li>
    <li><b>路線地圖：</b>每回合在地圖上選下一個節點：戰鬥、<b>精英</b>（更強，勝利必得遺物）、商店（全場 −1、可買遺物）、事件、營地（升級／回血）、神秘（隨機）。路線不能回頭，要規劃。</li>
    <li><b>Boss：</b>第 4、8、12 回合是 Boss，各有特殊機制；擊破可三選一<b>遺物</b>。</li>
    <li><b>事件：</b>回合之間可能遇到命運事件，用選擇換取風險與機會。</li>
@@ -127,7 +129,8 @@ function showEnd(clear) {
   const reached = clear ? MAX_ROUND : G.round; G.over = true; clearRun();
   const bpRun = { mode: G.mode === "daily" ? "daily" : "normal", day: G.mode === "daily" ? G.seed.replace("daily-", "") : null, char: G.char || "", reached, wins: G.wins, lives: Math.max(0, G.lives), relics: G.relics.length, clear: !!clear };
   if (reached > G.best) { G.best = reached; try { localStorage.setItem("bb_best", reached); } catch (e) { } }
-  META.relics = META.relics || {}; if (clear) { META.clears++; if (G.lost === 0) META.perfect = 1; }
+  META.relics = META.relics || {}; const wasMax = dMax(); if (clear) { META.clears++; if (G.lost === 0) META.perfect = 1; if (G.mode !== "daily") META.diffClear = Math.max(META.diffClear || 0, (G.diff || 0) + 1); }
+  const tierMsg = (G.diff ? `<p class="sub">命運階 ${DIFFS[G.diff].nm.slice(2)}</p>` : "") + (clear && G.mode !== "daily" && dMax() > wasMax ? `<p class="sub" style="color:#8fe3a0">已解鎖「命運階 ${DIFFS[dMax()].nm.slice(2)}」</p>` : "");
   let extra = "";
   if (G.mode === "daily") {
     const sc = calcScore(reached, G.wins, Math.max(0, G.lives), G.relics.length, clear), td = G.seed.replace("daily-", ""), prev = META.daily[td] || 0; META.dailyDone++; if (sc > prev) META.daily[td] = sc;
@@ -137,7 +140,7 @@ function showEnd(clear) {
   saveMeta(); checkAch();
   $("#bResult").hidden = true;
   const ov = $("#ov"); ov.hidden = false;
-  ov.innerHTML = `<div class="card"><div class="big">${uiIcon(clear ? "trophy" : "heart0", 56, clear ? "#ffd84a" : "#c46a7a")}</div><h2>${clear ? "通關！命運站在你這邊" : "旅程結束"}</h2><p>撐到第 <b>${reached}</b> 回合　勝場 <b>${G.wins}</b></p>${extra}<p class="sub" id="bpRes" style="min-height:20px"></p><div class="rowi">${miniIcons(G.inv.filter(i => i.x != null))}</div>${G.relics.length ? `<div class="rowi">${G.relics.map(id => `<span class="rl">${relicIcon(id, 24)}</span>`).join("")}</div>` : ""}<button class="btn primary" id="again" style="padding:11px 26px;font-size:15px;margin-top:6px">回主選單</button></div>`;
+  ov.innerHTML = `<div class="card"><div class="big">${uiIcon(clear ? "trophy" : "heart0", 56, clear ? "#ffd84a" : "#c46a7a")}</div><h2>${clear ? "通關！命運站在你這邊" : "旅程結束"}</h2><p>撐到第 <b>${reached}</b> 回合　勝場 <b>${G.wins}</b></p>${tierMsg}${extra}<p class="sub" id="bpRes" style="min-height:20px"></p><div class="rowi">${miniIcons(G.inv.filter(i => i.x != null))}</div>${G.relics.length ? `<div class="rowi">${G.relics.map(id => `<span class="rl">${relicIcon(id, 24)}</span>`).join("")}</div>` : ""}<button class="btn primary" id="again" style="padding:11px 26px;font-size:15px;margin-top:6px">回主選單</button></div>`;
   $("#again").onclick = showStart;
   bpReport(bpRun);
   if ($("#shr")) $("#shr").onclick = () => { try { navigator.clipboard.writeText(window._share); toast("已複製"); } catch (e) { toast("無法複製"); } };
