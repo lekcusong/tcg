@@ -282,7 +282,7 @@ function startRun(cid, mode, seed, diff) {
   G.map = withSeed(sdKey("map"), genMap);
   G.bossAff = withSeed(sdKey("bossaff"), () => Object.fromEntries(Object.keys(BOSS_VARIANTS).map(r => [r, BOSS_VARIANTS[r][Math.floor(rnd() * BOSS_VARIANTS[r].length)].id])));
   ch.start.forEach(id => G.inv.push(mkItem(id))); autoPlace(G.inv); G.sel = G.inv[0].uid; META.games++; saveMeta();
-  $("#ov").hidden = true; $("#vBattle").hidden = true; showSpread(enterMap);
+  $("#ov").hidden = true; $("#vBattle").hidden = true; try { showSpread(enterMap); } catch (e) { console.error(e); G.fate = []; enterMap(); }
 }
 const rerollFree = () => !!MODS().freeReroll && !G.freeUsed;
 $("#btnReroll").onclick = () => {

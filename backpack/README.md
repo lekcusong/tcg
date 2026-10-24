@@ -23,10 +23,9 @@ tools/build.js      stamp：更新 index.html 裡的 ?v= 雜湊
 - 回滾：保留原本的 backpack_demo.html 即可。
 
 ## 命運牌陣／Boss 詞綴／命運階（新增）
-- `js/13-spread.js`：開局牌陣畫面（過去／現在／未來各選 1）、Boss 預告、角色選擇頁的命運階按鈕。
+- `js/10-map-nodes.js` 最後面：開局牌陣畫面（過去／現在／未來各選 1）、Boss 預告、角色選擇頁的命運階按鈕。
 - 資料在 `02-relics-boss.js` 最後面：`BOSS_VARIANTS`（每隻 Boss 3 種詞綴，參數見註解）、`FATE`（牌陣卡）、`DIFFS`（命運階）。
   牌陣的持續效果跟遺物共用 mods（註冊成 `RID["ft_<id>"]`）；Boss 專用預兆是 `bossDmg/bossOpen/bossCd/bossGold/bossHp`。
 - 詞綴改引擎行為（`03-battle-engine.js`：`bp = boss.p`），Boss 名字不變所以美術不用動。舊存檔沒有 `boss.p` 會當標準版。
 - 每日挑戰：牌陣候選與 Boss 詞綴都走種子（`sdKey`），全服相同；命運階固定 0。
 - 存檔新增 `fate / bossAff / diff`；META 新增 `diffClear / diffSel`。
-- 新增玩法的檔案順序：`13-spread.js` 必須在 `99-bootstrap.js` 之前。
