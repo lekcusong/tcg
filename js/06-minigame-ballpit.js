@@ -28,7 +28,7 @@ let HARD_FROM = 20, HARD_RATE = 1.16;
 const MAX_FLOOR = 60, GOLD_PER_KILL = 5, GOLD_PER_FLOOR = 20, WIN_BONUS = 250;
 // 下面這些 GM 可在面板調整（config:ballpit_settings）
 let RANK_SHARDS = [3, 2, 1];   // 每日排行榜第 1／2／3 名的神秘碎片數（GM 可調）
-let DAILY_PLAYS = 3, MAX_GOLD_PER_SEC = 40, GOLD_PER_ITEM_ROLL = 400, ITEM_MEDIUM_CHANCE = 0.18, MAX_RUN_SEC = 3600, MIN_SEC_PER_FLOOR = 1.0, LB_MIN_SEC_PER_FLOOR = 2.0, MILESTONE_FLOOR_CAP = 100, OUT_COIN_PER_FLOOR = 20, OUT_FLOOR_CAP = 40, OUT_FLOORS_PER_ITEM = 10, START_COINS = 600, AFFIX_ON = true;
+let DAILY_PLAYS = 3, MAX_GOLD_PER_SEC = 40, GOLD_PER_ITEM_ROLL = 400, ITEM_MEDIUM_CHANCE = 0.18, MAX_RUN_SEC = 3600, MIN_SEC_PER_FLOOR = 1.0, LB_MIN_SEC_PER_FLOOR = 2.0, MILESTONE_FLOOR_CAP = 100, OUT_COIN_PER_FLOOR = 20, OUT_FLOOR_CAP = 40, OUT_FLOORS_PER_ITEM = 10, START_COINS = 600, AFFIX_ON = true, RELIC_ON = true, MUT_ON = true;
 const RC = { common: "#8a94a6", uncommon: "#4fb286", rare: "#4a90e2", epic: "#b98cf0", legendary: "#e8c468" };
 const RK = { common: 0, uncommon: 1, rare: 2, epic: 3, legendary: 4 };
 const EN_ICONS = ["👻", "💀", "👹", "👾", "👿"];
@@ -132,6 +132,54 @@ const AFFIXES = [
   { id: "scholar",  ic: "📖", zh: "學者",     en: "Scholar",      dz: "經驗 +50%（升級更快），所有傷害 ×0.85",      de: "XP +50% (level up faster), all damage ×0.85",   ap: g => { g.xpMul *= 1.5; g.dmgMul *= 0.85; } }
 ];
 const AFFIX_BY = Object.fromEntries(AFFIXES.map(a => [a.id, a]));
+/* ===== 局內遺物（打倒 BOSS 後三選一，只在本局有效）=====
+   跟「詞綴」的差別：詞綴是開局選一個；遺物是每擊敗一隻 BOSS（每 10 層）選一件，可累積。
+   大部分遺物直接改 g 上既有的欄位（立即生效）；只有「沙漏」和「收割者之鐮」需要在 endVolley／damage 裡讀旗標。
+   數值為初版，需實際玩測後調整。 */
+const RELICS = [
+  { id: "coin",    ic: "🪙", zh: "命運硬幣", en: "Fate Coin",       dz: "金幣 ×1.3、經驗 ×1.15",              de: "Gold ×1.3, XP ×1.15",                     ap: g => { g.goldMul *= 1.3; g.xpMul *= 1.15; } },
+  { id: "orb",     ic: "🔮", zh: "預言水晶", en: "Oracle Orb",      dz: "暴擊率 +12%",                         de: "+12% crit chance",                        ok: g => g.crit < 0.7, ap: g => { g.crit = Math.min(0.75, g.crit + 0.12); } },
+  { id: "ward",    ic: "🧿", zh: "守護護符", en: "Ward Charm",      dz: "獲得 2 層護盾（各擋 1 次傷害）",       de: "Gain 2 Ward charges (each blocks a hit)", ap: g => { g.shield = (g.shield || 0) + 2; } },
+  { id: "chalice", ic: "🏆", zh: "生命聖杯", en: "Life Chalice",    dz: "最大血量 +40，並回復 40 點",           de: "+40 max HP and heal 40",                  ap: g => { g.maxHp += 40; g.hp = Math.min(g.maxHp, g.hp + 40); } },
+  { id: "blade",   ic: "🗡️", zh: "鋒銳之刃", en: "Keen Edge",       dz: "所有彈珠每次命中 +2 傷害",             de: "Every ball hits for 2 more damage",       ap: g => { g.dmgBonus += 2; } },
+  { id: "eye",     ic: "🌪️", zh: "風暴之眼", en: "Storm Eye",       dz: "彈珠速度 +20%",                       de: "Ball speed +20%",                         ok: g => g.spd < 880, ap: g => { g.spd = Math.min(900, g.spd * 1.2); } },
+  { id: "anchor",  ic: "⚓", zh: "深淵之錨", en: "Abyss Anchor",    dz: "深坑線下移 1 排",                     de: "Pit line moves down 1 row",               ok: g => g.pit < PIT_MAX, ap: g => { g.pit = Math.min(PIT_MAX, g.pit + 1); } },
+  { id: "spring",  ic: "⛲", zh: "再生之泉", en: "Renewal Spring",  dz: "每輪結束額外回復 2 點血量",           de: "Heal 2 more HP each volley",              ap: g => { g.regen = (g.regen || 0) + 2; } },
+  { id: "tome",    ic: "📖", zh: "智者之書", en: "Sage's Tome",     dz: "立刻獲得 2 次升級三選一",             de: "Gain 2 upgrade picks right now",          ap: g => { g.pending += 2; } },
+  { id: "fang",    ic: "🐍", zh: "毒蛇之牙", en: "Viper Fang",      dz: "所有彈珠命中附帶 1 層劇毒",           de: "Every ball poisons on hit",               ok: g => !g.venom, ap: g => { g.venom = true; } },
+  { id: "feather", ic: "🪶", zh: "鳳凰羽",   en: "Phoenix Feather", dz: "獲得 1 次復活機會",                   de: "Gain 1 revive",                           ap: g => { g.revives = (g.revives || 0) + 1; } },
+  { id: "twin",    ic: "♊", zh: "雙生子",   en: "Gemini",          dz: "每輪多射一顆彈珠（從你帶的卡牌隨機）", de: "Fire one more ball per volley (random from your cards)", ap: g => { g.loadout.push(g.base[Math.floor(Math.random() * g.base.length)]); } },
+  { id: "glass",   ic: "⏳", zh: "沙漏",     en: "Hourglass",       dz: "每 10 輪自動觸發一次時間靜止",         de: "Every 10 volleys, enemies skip an advance", ok: g => !g.relGlass, ap: g => { g.relGlass = true; } },
+  { id: "scythe",  ic: "🪓", zh: "收割者之鐮", en: "Reaper's Scythe", dz: "每擊殺 1 隻怪回復 1 點血量（可疊加）", de: "Heal 1 HP per kill",                      ap: g => { g.relKH = (g.relKH || 0) + 1; } }
+];
+const RELIC_BY = Object.fromEntries(RELICS.map(r => [r.id, r]));
+
+/* ===== 每日突變規則（全服同一天同一條，強制套用；跟每日種子一起決定）=====
+   用日期算出「第幾天」，每 N 天一個週期，週期內洗牌且不重複；所有玩家同一天看到同一條，排行榜依然公平。 */
+const MUTATORS = [
+  { id: "revstr",  ic: "🦁", zh: "逆位・力量", en: "Reversed Strength", dz: "所有傷害 ×0.85，暴擊率 +25%",                         de: "All damage ×0.85, crit chance +25%",                      ap: g => { g.dmgMul *= 0.85; g.crit = Math.min(0.75, g.crit + 0.25); } },
+  { id: "eclipse", ic: "🌑", zh: "月蝕",       en: "Eclipse",           dz: "一般怪物血量 +25%，金幣與經驗 ×1.4",                  de: "Normal enemy HP +25%, gold and XP ×1.4",                  ap: g => { g.enemyHpMul *= 1.25; g.goldMul *= 1.4; g.xpMul *= 1.4; } },
+  { id: "swarmd",  ic: "🐜", zh: "蟲潮之日",   en: "Swarm Day",         dz: "每排多 1 隻怪（最多 6 隻），一般怪物血量 −20%，經驗 ×1.2", de: "+1 enemy per row (max 6), normal enemy HP −20%, XP ×1.2", ap: g => { g.extraEnemy += 1; g.enemyHpMul *= 0.8; g.xpMul *= 1.2; } },
+  { id: "calm",    ic: "🕊️", zh: "寧靜之日",   en: "Calm Day",          dz: "怪物攻擊力 ×0.6，一般怪物血量 +15%",                  de: "Enemy attack ×0.6, normal enemy HP +15%",                 ap: g => { g.enemyAtkMul *= 0.6; g.enemyHpMul *= 1.15; } },
+  { id: "fragile", ic: "🔮", zh: "易碎之日",   en: "Fragile Day",       dz: "最大血量 −30%，所有傷害 ×1.3",                        de: "Max HP −30%, all damage ×1.3",                            ap: g => { g.maxHp = Math.max(10, Math.round(g.maxHp * 0.7)); g.hp = g.maxHp; g.hpShow = g.hp; g.dmgMul *= 1.3; } },
+  { id: "harvest", ic: "🌾", zh: "豐收之日",   en: "Harvest Day",       dz: "金幣 ×1.5、經驗 ×1.2，一般怪物血量 +10%",             de: "Gold ×1.5, XP ×1.2, normal enemy HP +10%",                ap: g => { g.goldMul *= 1.5; g.xpMul *= 1.2; g.enemyHpMul *= 1.1; } },
+  { id: "miasma",  ic: "☠", zh: "毒霧之日",   en: "Miasma Day",        dz: "所有彈珠命中附帶 1 層劇毒，一般怪物血量 +10%",         de: "Every ball poisons on hit, normal enemy HP +10%",         ap: g => { g.venom = true; g.enemyHpMul *= 1.1; } },
+  { id: "gale",    ic: "💨", zh: "疾風之日",   en: "Gale Day",          dz: "彈珠速度 +25%，怪物攻擊力 +25%",                      de: "Ball speed +25%, enemy attack +25%",                      ap: g => { g.spd = Math.min(900, g.spd * 1.25); g.enemyAtkMul *= 1.25; } }
+];
+const MUT_BY = Object.fromEntries(MUTATORS.map(m => [m.id, m]));
+function mutatorFor(key) {
+  const mt = String(key || "").match(/(\d+)\D+(\d+)\D+(\d+)/);
+  const day = mt ? Math.floor(Date.UTC(+mt[1], +mt[2] - 1, +mt[3]) / 864e5) : (hashSeed(String(key || "")) >>> 0);
+  const N = MUTATORS.length, cyc = Math.floor(day / N), pos = ((day % N) + N) % N;
+  const order = shuffle(MUTATORS.map((_, i) => i), mulberry32(hashSeed("bpmut|" + cyc)));
+  return MUTATORS[order[pos]];
+}
+function mutCardHtml() {
+  if (!MUT_ON) return "";
+  const m = mutatorFor(ys());
+  if (!m) return "";
+  return `<div class="panel" style="margin:8px 0;border-color:var(--gold-bright);"><b>📅 ${dc("今日規則", "Daily rule")}：${m.ic} ${dc(m.zh, m.en)}</b><div class="sub" style="margin-top:2px;">${dc(m.dz, m.de)}</div><div class="sub" style="opacity:.7;">${dc("全服同一條規則，每天隨每日地圖一起更換。", "Same rule for everyone, changes daily with the daily map.")}</div></div>`;
+}
 const st = { running: false, settling: false, sel: [], selTouched: false, g: null, canvas: null, ctx: null, wrap: null, ov: null, raf: 0, last: 0, host: null, lastResult: null, mute: (function () { try { return localStorage.getItem("tarot_ballpit_sfx_on") !== "1"; } catch (e) { return true; } })(), musicOff: (function () { try { return localStorage.getItem("tarot_ballpit_music_off") !== "0"; } catch (e) { return true; } })(), tab: "play", drawMsg: "", loaded: false, starting: false, busy: false, standings: null, standingsFor: null, settledFor: "" };
 (function () { let o = {}; try { o = JSON.parse(localStorage.getItem("tarot_ballpit_vol") || "{}"); } catch (e) {} const ok = x => typeof x === "number" && x >= 0 && x <= 1; st.sfxVol = ok(o.s) ? o.s : 1; st.musVol = ok(o.m) ? o.m : 0.5; })();
 function saveVol() { try { localStorage.setItem("tarot_ballpit_vol", JSON.stringify({ s: st.sfxVol, m: st.musVol })); } catch (e) {} }
@@ -158,12 +206,14 @@ async function loadSettings() {
       if (num("hardRate", 1)) HARD_RATE = Math.min(1.5, t.hardRate);
       if (num("hardFrom", 1)) HARD_FROM = Math.round(t.hardFrom);
       if (typeof t.affixOn === "boolean") AFFIX_ON = t.affixOn;
+      if (typeof t.relicOn === "boolean") RELIC_ON = t.relicOn;
+      if (typeof t.mutOn === "boolean") MUT_ON = t.mutOn;
       if (t.rankShards) RANK_SHARDS = rankShardParse(t.rankShards, RANK_SHARDS);
     }
   } catch (e) {}
 }
 async function saveSettings() {
-  await a.set(settingsKey(), JSON.stringify({ dailyPlays: DAILY_PLAYS, maxGoldPerSec: MAX_GOLD_PER_SEC, goldPerItemRoll: GOLD_PER_ITEM_ROLL, itemMediumChance: ITEM_MEDIUM_CHANCE, maxRunSec: MAX_RUN_SEC, minSecPerFloor: MIN_SEC_PER_FLOOR, lbMinSecPerFloor: LB_MIN_SEC_PER_FLOOR, milestoneFloorCap: MILESTONE_FLOOR_CAP, outCoinPerFloor: OUT_COIN_PER_FLOOR, outFloorCap: OUT_FLOOR_CAP, outFloorsPerItem: OUT_FLOORS_PER_ITEM, startCoins: START_COINS, hardRate: HARD_RATE, hardFrom: HARD_FROM, affixOn: AFFIX_ON, rankShards: RANK_SHARDS }));
+  await a.set(settingsKey(), JSON.stringify({ dailyPlays: DAILY_PLAYS, maxGoldPerSec: MAX_GOLD_PER_SEC, goldPerItemRoll: GOLD_PER_ITEM_ROLL, itemMediumChance: ITEM_MEDIUM_CHANCE, maxRunSec: MAX_RUN_SEC, minSecPerFloor: MIN_SEC_PER_FLOOR, lbMinSecPerFloor: LB_MIN_SEC_PER_FLOOR, milestoneFloorCap: MILESTONE_FLOOR_CAP, outCoinPerFloor: OUT_COIN_PER_FLOOR, outFloorCap: OUT_FLOOR_CAP, outFloorsPerItem: OUT_FLOORS_PER_ITEM, startCoins: START_COINS, hardRate: HARD_RATE, hardFrom: HARD_FROM, affixOn: AFFIX_ON, relicOn: RELIC_ON, mutOn: MUT_ON, rankShards: RANK_SHARDS }));
 }
 
 /* ===== 每日次數（跟三消同一套：GMT+8 重置、固定 5 次、GM 不受限）===== */
@@ -686,7 +736,9 @@ function newGame(p) {
   g.dmgBonus = M.dmg || 0; g.crit = 0.04 * (M.crit || 0); g.goldMul = 1 + 0.1 * (M.gold || 0); g.spd = Math.min(900, BASE_SPEED * (1 + 0.06 * (M.spd || 0))); g.pit = Math.min(PIT_MAX, PIT_ROW + (M.pit || 0));
   for (let i = 0; i < (M.balls || 0); i++) g.loadout.push(base[Math.floor(Math.random() * base.length)]);
   g.maxHp += 15 * (M.hp || 0); g.hp = g.maxHp; g.hpShow = g.hp; g.regen = M.regen || 0; g.xp = M.head || 0; g.shield = M.ward || 0; g.pierceB = M.pen || 0;
-  g.seedKey = ys(); g.rnd = Math.random; g.upN = 0;   // 每日種子：以「開局當天」的日期為準
+  g.seedKey = ys(); g.rnd = Math.random; g.upN = 0;
+  g.relics = []; g.relPending = 0; g.relN = 0; g.mut = null;
+  if (MUT_ON) { const mu = mutatorFor(g.seedKey); if (mu) { mu.ap(g); g.mut = mu.id; } }   // 每日種子：以「開局當天」的日期為準
   for (let r = 0; r < 4; r++) spawnRow(g, r);
   return g;
 }
@@ -1022,13 +1074,15 @@ function damage(g, en, d, crit) {
     return;
   }
   en.dead = true; g.kills++; deathHook(g, en);
+  if (g.relKH > 0 && g.hp > 0) g.hp = Math.min(g.maxHp, g.hp + g.relKH);
   (g.ghosts = g.ghosts || []).push({ ...eRect(en), col: kcol(en), boss: !!en.boss, t: en.boss ? 0.6 : 0.3, m: en.boss ? 0.6 : 0.3 });
   g.orbs = g.orbs || [];
   for (let i = 0, no = en.boss ? 9 : en.elite ? 4 : 2; i < no && g.orbs.length < 60; i++) { const a = Math.random() * 6.283, sp3 = 120 + Math.random() * 160; g.orbs.push({ x: c.x, y: c.y, vx: Math.cos(a) * sp3, vy: Math.sin(a) * sp3, tx: W - 60, ty: CEIL / 2, age: 0, dl: i * 0.03, col: "#b98cf0" }); }
   if (!en.boss) stopHit(g, en.elite ? 0.05 : 0.022);
   g.zoom = Math.max(g.zoom || 0, en.boss ? 0.05 : en.elite ? 0.02 : 0.006);
   sfxNoise(en.boss ? 0.5 : en.elite ? 0.2 : 0.12, en.boss ? 0.22 : 0.14, en.boss ? 500 : 2400, true); tone(en.boss ? 90 : 140, en.boss ? 0.4 : 0.16, "sine", en.boss ? 0.3 : 0.22, 45);
-  if (en.boss) { g.flashW = 1; g.slowT = 0.7; Music.stinger("boss"); }
+  if (en.boss && en.bk === MAX_FLOOR / 10) g.finalDown = true;
+  if (en.boss) { g.flashW = 1; g.slowT = 0.7; Music.stinger("boss"); if (RELIC_ON) g.relPending = (g.relPending || 0) + 1; }
   g.goldW += en.kind === "gold" ? 5 : en.boss ? 12 : en.elite ? 3 : 1;
   g.xp += (en.boss ? 6 : en.elite ? 2 : 1) * g.xpMul;
   const lv0 = g.level;
@@ -1158,6 +1212,8 @@ function startClear(g) {
 }
 function endVolley(g) {
   g.volleyT = 0; g.ff = 1;
+  if (g.finalDown) { g.floor = Math.max(g.floor, MAX_FLOOR + 1); return finish(true); } // 打死第 60 層 BOSS 才通關
+  if (g.relGlass) { g.relVol = (g.relVol || 0) + 1; if (g.relVol % 10 === 0) { g.skip++; pop(g, W / 2, SHOOT_Y - 40, "⏳", "#8fd3ff", true); } }
   g.enemies.forEach(e => { if (!e.dead && e.burn > 0) { e.burn--; damage(g, e, 2 + Math.floor(g.floor / 8)); } });
   g.enemies.forEach(e => { if (!e.dead && e.pois > 0) { damage(g, e, e.pois); e.pois--; } });
   g.enemies.forEach(e => { if (e.mark > 0) e.mark--; });
@@ -1167,7 +1223,7 @@ function endVolley(g) {
   else { abilityTick(g); g.floor++; const stp = g.floor >= 25 && g.floor % 5 === 0 ? 2 : 1; advance(g, stp); spawnRow(g, 0); if (stp === 2) spawnRow(g, 1); announceFloor(g); enemiesAttack(g); }
   if (g.hp <= 0) { if (g.revives > 0) { g.revives--; g.hp = Math.round(g.maxHp * 0.5); g.shake = 18; sfx(520, 0.3, "sine", 0.08); ac(dc("💫 復活！回復一半血量", "💫 Revived! Half HP restored")); } else return finish(false); }
   if (g.enemies.some(e => e.r >= g.pit)) { if (g.revives > 0) { g.revives--; g.enemies.filter(e => e.r >= g.pit - 3).forEach(e => { e.dead = true; }); g.enemies = g.enemies.filter(e => !e.dead); g.shake = 18; sfx(520, 0.3, "sine", 0.08); ac(dc("💫 復活！清除最底 4 排", "💫 Revived! Bottom 4 rows cleared")); } else return finish(false); }
-  if (g.floor > MAX_FLOOR) return finish(true);
+  if (g.relPending > 0 && RELIC_ON) return void showRelicPicker();
   if (g.pending > 0) showUpgrade();
 }
 function update(dt) {
@@ -1215,7 +1271,10 @@ function fxText(d) {
 function loadoutHtml() {
   const g = st.g;
   if (!g) return "";
-  return g.loadout.map(d => `<span class="bp-chip" style="border-color:${RC[d.rarity] || RC.common};" title="${fxText(d)}">${d.icon || "🃏"} ${d.name}${d.tier ? " ✦" + d.tier : ""}</span>`).join("");
+  const mm = g.mut && MUT_BY[g.mut];
+  const pre = (mm ? `<span class="bp-chip" style="border-color:var(--gold-bright);" title="${dc(mm.dz, mm.de)}">📅 ${dc(mm.zh, mm.en)}</span>` : "") +
+    (g.relics || []).map(id => RELIC_BY[id]).filter(Boolean).map(r => `<span class="bp-chip" style="border-color:#e8c468;" title="${dc(r.dz, r.de)}">${r.ic} ${dc(r.zh, r.en)}</span>`).join("");
+  return pre + g.loadout.map(d => `<span class="bp-chip" style="border-color:${RC[d.rarity] || RC.common};" title="${fxText(d)}">${d.icon || "🃏"} ${d.name}${d.tier ? " ✦" + d.tier : ""}</span>`).join("");
 }
 function updateLoadoutBar() { const el = document.getElementById("bp-loadout"); if (el) el.innerHTML = loadoutHtml(); }
 function pickAffix(a) {
@@ -1238,6 +1297,30 @@ function showAffixPicker() {
     `<button class="btn small secondary" id="bp-aff-none">${dc("不選詞綴（標準規則）", "No affix (standard rules)")}</button>`;
   st.ov.querySelectorAll("[data-bp-aff]").forEach(btn => { btn.onclick = () => pickAffix(pool[+btn.dataset.bpAff]); });
   st.ov.querySelector("#bp-aff-none").onclick = () => pickAffix(null);
+}
+function showRelicPicker() {
+  const g = st.g;
+  if (!g || !st.ov) return;
+  g.relN = (g.relN || 0) + 1;
+  const pool = shuffle(RELICS.filter(r => !(g.relics || []).includes(r.id) && (!r.ok || r.ok(g))), seedRng(g, "rel" + g.relN)).slice(0, 3);
+  if (!pool.length) { g.relPending = 0; if (g.pending > 0) showUpgrade(); return; }
+  g.upgrading = true;
+  st.ov.style.display = "flex";
+  st.ov.innerHTML = `<div style="text-align:center;font-weight:700;color:var(--gold-bright);margin-bottom:4px;">👑 ${dc("擊敗 BOSS！選擇一件遺物", "Boss defeated! Choose a relic")}</div>` +
+    pool.map((r, i) => `<button class="btn" data-bp-rel="${i}" style="text-align:left;flex:0 0 auto;height:auto;min-height:0;white-space:normal;line-height:1.4;"><b>${r.ic} ${dc(r.zh, r.en)}</b><br><span style="font-size:12px;opacity:.8;">${dc(r.dz, r.de)}</span></button>`).join("");
+  st.ov.querySelectorAll("[data-bp-rel]").forEach(btn => { btn.onclick = () => pickRelic(pool[+btn.dataset.bpRel]); });
+}
+function pickRelic(r) {
+  const g = st.g;
+  if (!g || !r) return;
+  (g.relics = g.relics || []).push(r.id);
+  r.ap(g);
+  g.relPending = Math.max(0, (g.relPending || 0) - 1);
+  ac(dc(`👑 獲得遺物：${r.ic} ${r.zh} — ${r.dz}`, `👑 Relic: ${r.ic} ${r.en} — ${r.de}`));
+  sfx(660, 0.2, "sine", 0.06);
+  if (g.relPending > 0) return void showRelicPicker();
+  if (g.pending > 0) return void showUpgrade();
+  closeUpgrade();
 }
 function closeUpgrade() { const g = st.g; g.upgrading = false; if (st.ov) { st.ov.style.display = "none"; st.ov.innerHTML = ""; } updateLoadoutBar(); }
 function showFusePicker(pool) {
@@ -1311,7 +1394,7 @@ async function finish(win) {
   g.over = true;
   stopLoop(); Music.stop(); if (!win) Music.stinger("over");
   const floorsCleared = Math.max(0, g.floor - 1);
-  const raw = { gold: Math.round(g.goldW * GOLD_PER_KILL * g.goldMul) + floorsCleared * GOLD_PER_FLOOR + (win ? WIN_BONUS : 0), elapsedSeconds: Math.max(1, Math.round((Date.now() - g.startedAt) / 1000)), floor: Math.min(g.floor, MAX_FLOOR + 1), hpPct: Math.max(0, Math.min(100, Math.round(100 * (g.hp || 0) / (g.maxHp || 1)))) };
+  const raw = { gold: Math.round(g.goldW * GOLD_PER_KILL * g.goldMul) + floorsCleared * GOLD_PER_FLOOR + (win ? WIN_BONUS : 0), elapsedSeconds: Math.max(1, Math.round((Date.now() - g.startedAt) / 1000)), floor: win ? MAX_FLOOR + 1 : Math.min(g.floor, MAX_FLOOR), hpPct: Math.max(0, Math.min(100, Math.round(100 * (g.hp || 0) / (g.maxHp || 1)))) };
   const summary = { floor: Math.min(g.floor, MAX_FLOOR), kills: g.kills, win, combo: g.maxCombo, slain: !win && g.hp <= 0 };
   st.running = false; st.settling = true; st.canvas = null; st.wrap = null; st.ov = null;
   const h0 = liveHost(); if (h0) renderTab(h0);
@@ -1737,6 +1820,8 @@ function infoHtml(g) {
   if (g.revives > 0) b.push(dc(`💫 復活 ${g.revives} 次`, `💫 ${g.revives} revive(s)`));
   if (g.rerolls > 0) b.push(dc(`🎲 重抽選項 ${g.rerolls} 次`, `🎲 ${g.rerolls} reroll(s)`));
   if (g.affix && AFFIX_BY[g.affix]) { const af = AFFIX_BY[g.affix]; b.unshift(`${af.ic} <b>${dc(af.zh, af.en)}</b>：${dc(af.dz, af.de)}`); }
+  (g.relics || []).forEach(id => { const r = RELIC_BY[id]; if (r) b.push(`${r.ic} <b>${dc(r.zh, r.en)}</b>：${dc(r.dz, r.de)}`); });
+  if (g.mut && MUT_BY[g.mut]) { const m = MUT_BY[g.mut]; b.unshift(`📅 <b>${dc("今日規則：", "Daily rule: ")}${dc(m.zh, m.en)}</b>：${dc(m.dz, m.de)}`); }
   const buffs = b.length ? b.map(t => `<div style="text-align:left;font-size:12px;line-height:1.6;">• ${t}</div>`).join("") : `<div style="font-size:12px;opacity:.7;">${dc("本局還沒有獲得任何強化技能", "No run upgrades yet")}</div>`;
   return `<div style="text-align:center;font-size:12px;opacity:.85;">${dc("第", "Floor ")} <b>${g.floor}</b> ${dc("層", "")} · Lv <b>${g.level}</b> · ❤ <b>${Math.round(g.hp)}/${Math.round(g.maxHp)}</b></div>` +
     sec(`🎱 ${dc("彈珠", "Balls")} (${g.loadout.length})`) + rows.join("") + sec(`✨ ${dc("本局技能／強化", "Run skills / upgrades")}`) + buffs;
@@ -1819,6 +1904,7 @@ async function startRun(host) {
   }
   st.g = newGame(zl.player); st.lastResult = null; st.running = true; Music.start();
   buildStage();
+  if (st.g && st.g.mut && MUT_BY[st.g.mut]) { const m = MUT_BY[st.g.mut]; ac(dc(`📅 今日規則：${m.ic} ${m.zh} — ${m.dz}`, `📅 Daily rule: ${m.ic} ${m.en} — ${m.de}`)); }
   showAffixPicker();
   renderTab(host);
 }
@@ -1839,7 +1925,7 @@ function ensureStyles() {
   document.head.appendChild(s);
 }
 function legendHtml() {
-  return ["common", "uncommon", "rare", "epic"].map(k => `<span style="color:${RC[k]};">● ${dc(TYPE_INFO[k].zh, TYPE_INFO[k].en)}</span> <span style="opacity:.75;">${dc(TYPE_INFO[k].dz, TYPE_INFO[k].de)}</span>`).join("<br>") + `<br><span style="opacity:.75;">${dc("👑 每 10 層出 BOSS · 🔴 紅色徽章的怪會攻擊你（數字是傷害，閃紅框＝本輪結束就出手）· 💣 炸彈怪會連爆 · 💰 寶箱怪金幣豐厚 · 連擊每 15 下全彈珠 +1 傷害 · ✧ 每張卡牌有專屬特效，融合會合併", "👑 Boss every 10 floors · 🔴 Red-badge enemies attack you (number = damage, flashing = strikes after this volley) · 💣 Bombs chain-explode · 💰 Chests pay big · every 15 combo = +1 dmg · ✧ Each card has its own effect; fusing merges them")}</span>`;
+  return ["common", "uncommon", "rare", "epic"].map(k => `<span style="color:${RC[k]};">● ${dc(TYPE_INFO[k].zh, TYPE_INFO[k].en)}</span> <span style="opacity:.75;">${dc(TYPE_INFO[k].dz, TYPE_INFO[k].de)}</span>`).join("<br>") + `<br><span style="opacity:.75;">${dc("👑 每 10 層出 BOSS（擊敗後三選一遺物） · 🔴 紅色徽章的怪會攻擊你（數字是傷害，閃紅框＝本輪結束就出手）· 💣 炸彈怪會連爆 · 💰 寶箱怪金幣豐厚 · 連擊每 15 下全彈珠 +1 傷害 · ✧ 每張卡牌有專屬特效，融合會合併", "👑 Boss every 10 floors (defeat one to pick a relic) · 🔴 Red-badge enemies attack you (number = damage, flashing = strikes after this volley) · 💣 Bombs chain-explode · 💰 Chests pay big · every 15 combo = +1 dmg · ✧ Each card has its own effect; fusing merges them")}</span>`;
 }
 function resultHtml() {
   const r = st.lastResult;
@@ -1918,6 +2004,8 @@ function gmPanelHtml() {
       ${f("bp-gm-itemroll", dc("每 N 彈珠幣 +1 材料", "Pit coins per mat"), GOLD_PER_ITEM_ROLL, 'min="20"')}
       ${f("bp-gm-startcoins", dc("起始彈珠幣", "Starting pit coins"), START_COINS, 'min="0"')}
       <div><label>${dc("每局詞綴", "Run affixes")}</label><select id="bp-gm-affix" style="width:100px;"><option value="1"${AFFIX_ON ? " selected" : ""}>${dc("開", "On")}</option><option value="0"${AFFIX_ON ? "" : " selected"}>${dc("關", "Off")}</option></select></div>
+      <div><label>${dc("BOSS 遺物", "Boss relics")}</label><select id="bp-gm-relic" style="width:100px;"><option value="1"${RELIC_ON ? " selected" : ""}>${dc("開", "On")}</option><option value="0"${RELIC_ON ? "" : " selected"}>${dc("關", "Off")}</option></select></div>
+      <div><label>${dc("每日突變規則", "Daily rule")}</label><select id="bp-gm-mut" style="width:100px;"><option value="1"${MUT_ON ? " selected" : ""}>${dc("開", "On")}</option><option value="0"${MUT_ON ? "" : " selected"}>${dc("關", "Off")}</option></select></div>
     </div>
     <div class="form-row">
       ${f("bp-gm-outcoin", dc("對外：每層正式金幣", "Main coins / new floor"), OUT_COIN_PER_FLOOR, 'min="0"')}
@@ -1960,6 +2048,8 @@ function wireGmPanel(e) {
     set(n("#bp-gm-itemroll", 20), x => { GOLD_PER_ITEM_ROLL = x; });
     set(n("#bp-gm-startcoins", 0), x => { START_COINS = Math.round(x); });
     if (q("#bp-gm-affix")) AFFIX_ON = q("#bp-gm-affix").value !== "0";
+    if (q("#bp-gm-relic")) RELIC_ON = q("#bp-gm-relic").value !== "0";
+    if (q("#bp-gm-mut")) MUT_ON = q("#bp-gm-mut").value !== "0";
     set(n("#bp-gm-outcoin", 0), x => { OUT_COIN_PER_FLOOR = x; });
     set(n("#bp-gm-outcap", 0), x => { OUT_FLOOR_CAP = Math.round(x); });
     set(n("#bp-gm-outitem", 1), x => { OUT_FLOORS_PER_ITEM = Math.round(x); });
@@ -2013,6 +2103,7 @@ function panelHtmlCore() {
     ${tabsHtml()}
     <p class="sub">${dc(`把塔羅牌當彈珠：瞄準後一次射出整輪，彈珠在牆壁間反彈打怪，怪物每輪逼近一排，碰到深坑線就結束。擊殺升級可三選一強化，還能把兩顆彈珠「融合」成更強的一顆。每天的地圖固定（全服同一張、共 60 層），排行榜比分數。免費玩，每天 5 次（開局就扣次數）。賺到的彈珠幣和材料只能用在彈珠裡；另外每天依新達成的最高層數發少量正式版金幣。卡牌只當彈珠，不會被消耗。`, `Use tarot cards as balls: aim and fire a whole volley, balls bounce around smashing monsters that creep closer each volley; touch the pit line and it's over. Level up for 3-choice upgrades, including Fusion to merge two balls into a stronger one. The map is the same for everyone each day (60 floors) and the leaderboard ranks by score. Free to play, 5 runs a day, a run is spent when it starts. Pit coins and mats only work inside Ball Pit; you also get a small daily main-game coin reward for new best floors. Cards are never consumed.`)}</p>
     ${Js.ballpitChampion ? `<p class="who">${dc("今日封號", "Today's title")}: ${Ys("ballpitChampion", 13)} ${Iu(Js.ballpitChampion)}</p>` : ""}
+    ${mutCardHtml()}
     ${resultHtml()}
     <div style="font-size:13px;margin-top:8px;"><b>${dc("選擇出戰卡牌", "Choose your cards")}</b> <span id="bp-sel-count" style="color:var(--gold-bright);">${sel.size}/${LM()}</span> <span class="sub">${dc("（不足 3 張會補學徒彈珠）", "(padded with Apprentice balls)")}</span></div>
     ${own.length ? `<div class="bp-grid" id="bp-grid">${picks}</div>` : `<p class="sub">${dc("你還沒有任何卡牌，會用 3 顆學徒彈珠出戰。先到「卡牌」分頁抽卡吧！", "You own no cards yet — you'll go in with 3 Apprentice balls. Draw some in the Cards tab first!")}</p>`}
