@@ -8,28 +8,38 @@
    英文版是選填：沒寫 en 的話，英文介面也顯示中文。
    這個是「每個版本一次」的更新說明；原本 GM 面板的「📜 公告 / GM 留言」另外照舊，兩者互不影響。 */
 const ANNOUNCE = {
-  v: '2026-11-01b',
-  title: '塔羅彈珠通關條件調整：要打死第 60 層 BOSS 才通關；另新增 BOSS 遺物與每日規則',
+  v: '2026-11-02',
+  title: '塔羅三消大更新：新增「愚者」萬能牌與特殊組合、開局抽牌、時間獎勵，操作也更順手',
   add: [
-    '<b>BOSS 遺物</b>：每擊敗一隻 BOSS（第 10、20、30、40、50 層），可以從 3 件遺物中選 1 件；遺物只在本局有效、可以累積，共 14 種，例如沙漏、鳳凰羽、智者之書、雙生子',
-    '<b>每日規則</b>：每天會有一條全服共通的規則（共 8 種，例如月蝕、疾風之日、易碎之日），每條都有好處也有代價，隨每日地圖一起更換；排行榜仍然是同一天同一規則下比分'
+    '<b>愚者（萬能牌）</b>：筆直消 5 連以上會生成一張 🃏 愚者。它不能自己三消，要靠「交換」來發動；被別的爆炸波及時，會清掉盤面上數量最多的花色',
+    '<b>特殊組合</b>：交換兩顆特殊方塊會有大招——<b>愚者＋一般方塊</b>清掉全盤同花色；<b>愚者＋行／列／十字</b>讓全盤同花色都變成那種特殊方塊一起引爆；<b>愚者＋愚者</b>清空整個盤面；<b>兩顆行／列／十字互換</b>則是兩格的整行＋整列全清',
+    '<b>開局抽牌</b>：每局開始前先抽 3 張大阿爾克那，選 1 張帶進這局：星星（開局 +10 秒）、力量（連鎖每波倍率 +0.75，上限 ×4）、惡魔（得分 ×1.5，但時間 −15 秒）、高塔（每 20 秒隨機炸掉一整行）、魔術師（開局盤面送 2 張愚者）、太陽（連鎖倍率從 ×1.25 起跳）',
+    '<b>時間獎勵</b>：4 消 +1 秒、十字／愚者 +2 秒、特殊組合另有加成、連鎖到第 4 波 +2 秒、之後每多一波 +1 秒；畫面上會跳出 ⏱ 提示',
+    '<b>操作提示</b>：5 秒沒動作時，會閃出一步可以走的棋',
+    '<b>滑動操作</b>：手指（或滑鼠）按住方塊往旁邊一拖就能交換，原本的「點兩格」也照舊可用'
   ],
   chg: [
-    '<b>通關條件</b>：不再是「撐到第 60 層就結束」，改成<b>必須打死第 60 層的 BOSS</b> 才算通關',
-    '<b>沒打死 BOSS 會怎樣</b>：第 60 層 BOSS 還活著時遊戲會繼續，直到你把它打死，或是被它（或其他怪物）打倒、被逼進深坑才結束',
-    '<b>排行榜</b>：沒打死第 60 層 BOSS 就倒下，成績最多算到第 60 層，不算通關；通關才有通關加分'
+    '<b>時間規則</b>：剩餘時間最多累積到 90 秒，單局最長 120 秒，時間獎勵不會無限續命',
+    '<b>特殊方塊外觀</b>：行／列／十字方塊右下角會標出 ↔ ↕ ✚，一眼分得出是哪一種',
+    '<b>連鎖顯示</b>：第 2 波起才顯示連鎖倍率；產生特殊方塊或特殊組合時有專屬音效，特殊組合會顯示「✨ 特殊組合」',
+    '<b>動畫節奏</b>：交換、消除、掉落的動畫速度加快，連鎖打起來更爽快'
   ],
   fix: [],
   en: {
-    title: 'Ball Pit clear condition changed: you must defeat the floor-60 boss to clear; plus boss relics and a daily rule',
+    title: 'Tarot Match-3 big update: the Fool wild tile, special combos, a starting card draw and time bonuses, plus smoother controls',
     add: [
-      '<b>Boss relics</b>: defeat a boss (floors 10, 20, 30, 40, 50) and pick 1 of 3 relics. Relics last for the current run and stack; there are 14, such as Hourglass, Phoenix Feather, Sage\'s Tome and Gemini',
-      '<b>Daily rule</b>: each day has one rule shared by every player (8 in total, e.g. Eclipse, Gale Day, Fragile Day). Each has an upside and a cost and changes with the daily map; the leaderboard still compares scores under the same rule on the same day'
+      '<b>The Fool (wild)</b>: a straight line of 5 or more creates a 🃏 Fool. It cannot match on its own and is triggered by swapping; if caught in another blast, it clears the most common suit on the board',
+      '<b>Special combos</b>: swap two special tiles for a big effect. <b>Fool + normal tile</b> clears every tile of that suit; <b>Fool + row/column/cross</b> turns every tile of that suit into that special and detonates them all; <b>Fool + Fool</b> clears the whole board; <b>two row/column/cross tiles</b> clear both full rows and columns',
+      '<b>Starting draw</b>: before each run, draw 3 Major Arcana and take 1 into the run: The Star (+10 seconds at the start), Strength (+0.75 per chain wave, cap x4), The Devil (score x1.5 but -15 seconds), The Tower (a random row explodes every 20 seconds), The Magician (start with 2 Fools), The Sun (chain multiplier starts at x1.25)',
+      '<b>Time bonuses</b>: a 4-match gives +1 second, cross/Fool +2, special combos add more, reaching chain wave 4 gives +2 and each wave after that +1. A ⏱ pop-up shows each gain',
+      '<b>Hints</b>: after 5 seconds without a move, one possible move starts to flash',
+      '<b>Swipe controls</b>: press a tile and drag sideways to swap. Tapping two tiles still works'
     ],
     chg: [
-      '<b>Clear condition</b>: surviving to floor 60 no longer ends the run. You now have to <b>defeat the floor-60 boss</b> to clear',
-      '<b>If the boss is still alive</b>: the run keeps going until you kill it, or you are slain or pushed into the pit',
-      '<b>Leaderboard</b>: if you fall before killing the floor-60 boss, your result counts as floor 60 at most and is not a clear; only a clear earns the clear bonus'
+      '<b>Time rules</b>: remaining time is capped at 90 seconds and a run lasts at most 120 seconds, so bonuses cannot extend a run forever',
+      '<b>Special tile look</b>: row/column/cross tiles now show ↔ ↕ ✚ in the corner so you can tell them apart',
+      '<b>Chain display</b>: the chain multiplier shows from wave 2 on; creating specials and special combos have their own sound, and combos show "✨ Special combo"',
+      '<b>Animation pace</b>: swap, clear and fall animations are faster, so chains feel snappier'
     ],
     fix: []
   }

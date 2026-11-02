@@ -47,6 +47,13 @@ function sfxChainBonus() {
   playTone(900, 0.09, { type: "sine", volume: 0.12 });
   setTimeout(() => playTone(1350, 0.12, { type: "sine", volume: 0.1 }), 60);
 }
+// 特殊方塊生成／特殊組合：短短兩聲
+function sfxSpecial() {
+  playTone(520, 0.1, { type: "square", volume: 0.08 });
+  setTimeout(() => playTone(780, 0.14, { type: "triangle", volume: 0.1 }), 70);
+}
+// 時間獎勵：輕輕一聲
+function sfxTime() { playTone(1000, 0.08, { type: "sine", volume: 0.1 }); }
 // 結算音：成功（上升三音）／失敗或沒次數（下滑一聲）
 function sfxRoundEnd(success) {
   if (success) {
@@ -62,7 +69,8 @@ function toggleSfxMuted() {
   try { localStorage.setItem("m3-sfx-muted", sfxMuted ? "1" : "0"); } catch (e) {}
   return sfxMuted;
 }
-const W = 8, H = 8, TYPES = 6;
+const W = 8, H = 8, TYPES = 6, WILD = 6;          // 6 種花色方塊（0~5）；WILD(6) 是「愚者」萬能牌，不屬於任何花色
+const MAX_ROUND_SEC = 120, TIME_CAP = 90;          // 單局真實時間上限／剩餘時間上限（時間獎勵不能無限續命）
 const idx = (r, c) => r * W + c;
 const inB = (r, c) => r >= 0 && r < H && c >= 0 && c < W;
 
@@ -125,32 +133,71 @@ function groupRuns(runs) {
   return groups;
 }
 
-function findMatches(get) { return groupRuns(findRuns(get)); }
+// 愚者（萬能牌）不參與一般三消：給它一個每格獨一無二的負數，永遠湊不成一排
+function findMatches(get) {
+  return groupRuns(findRuns((r, c) => { const t = get(r, c); return t === WILD ? -100 - idx(r, c) : t; }));
+}
 
+// 4 消 → 整行／整列；L／T／十字 → 十字；筆直 5 連（以上）→ 愚者（萬能牌）
 function specialKindFor(group) {
   if (group.dirs.length >= 2) return 'cross';
   const n = group.cells.length;
-  if (n >= 5) return 'cross';
+  if (n >= 5) return 'wild';
   if (n === 4) return group.dirs[0] === 'h' ? 'row' : 'col';
   return 'none';
 }
 
-function waveMultiplier(wave) { return Math.min(1 + (wave - 1) * 0.5, 3.0); }
+// opts（開局抽到的牌可以改）：multBonus 起跳加成、multStep 每波增量、multCap 倍率上限
+function waveMultiplier(wave, opts) {
+  const o = opts || {};
+  return Math.min(1 + (o.multBonus || 0) + (wave - 1) * (o.multStep || 0.5), o.multCap || 3.0);
+}
 
-function hasAnyMove(board) {
+/* 特殊方塊交換組合（board 是「交換之後」的盤面，a、b 是兩格）。沒有組合回傳 null。
+   - 愚者 ＋ 一般方塊：清掉全盤跟那顆同花色的方塊
+   - 愚者 ＋ 整行／整列／十字：全盤同花色的方塊全部變成那種特殊方塊一起引爆
+   - 愚者 ＋ 愚者：清掉整個盤面
+   - 兩個行／列／十字特殊方塊：兩格的整行＋整列全清 */
+function comboCells(board, a, b) {
+  const ta = board[a], tb = board[b];
+  if (!ta || !tb) return null;
+  const wa = ta.special === 'wild', wb = tb.special === 'wild';
+  if (!wa && !wb && !(ta.special && tb.special)) return null;
+  const pick = (pred) => { const s = new Set(); for (let i = 0; i < W * H; i++) { const t = board[i]; if (t && pred(t)) s.add(i); } return s; };
+  if (wa && wb) return { cells: pick(() => true), bonus: 3, markWilds: true };
+  if (wa || wb) {
+    const other = wa ? tb : ta, wcell = wa ? a : b;
+    const cells = pick(t => t.special !== 'wild' && t.type === other.type);
+    if (other.special) cells.forEach(i => { board[i].special = other.special; });
+    cells.add(wcell);
+    return { cells, bonus: 2, markWilds: true };
+  }
+  ta.special = 'cross'; tb.special = 'cross';
+  return { cells: new Set([a, b]), bonus: 2, markWilds: false };
+}
+
+// 這個交換合不合法（會形成三消，或本身就是特殊組合）——不會動到盤面
+function canSwap(board, a, b) {
+  const ta = board[a], tb = board[b];
+  if (!ta || !tb) return false;
+  if (ta.special === 'wild' || tb.special === 'wild' || (ta.special && tb.special)) return true;
+  const swapped = board.slice(); swapped[a] = tb; swapped[b] = ta;
+  return findMatches((r, c) => swapped[idx(r, c)] ? swapped[idx(r, c)].type : -1).length > 0;
+}
+
+// 找一步可以走的棋（提示用）；找不到回傳 null
+function findHintMove(board) {
   for (let r = 0; r < H; r++) for (let c = 0; c < W; c++) {
     for (const d of [[0, 1], [1, 0]]) {
       const nr = r + d[0], nc = c + d[1];
       if (!inB(nr, nc)) continue;
       const a = idx(r, c), b = idx(nr, nc);
-      const swapped = board.slice();
-      const tmp = swapped[a]; swapped[a] = swapped[b]; swapped[b] = tmp;
-      const get = (rr, cc) => swapped[idx(rr, cc)] ? swapped[idx(rr, cc)].type : -1;
-      if (findMatches(get).length > 0) return true;
+      if (canSwap(board, a, b)) return [a, b];
     }
   }
-  return false;
+  return null;
 }
+function hasAnyMove(board) { return !!findHintMove(board); }
 
 function freshBoard(rng) {
   const board = new Array(W * H);
@@ -180,20 +227,24 @@ function refill(board, nextId, rng) {
   return nextId;
 }
 
-function resolveSwap(board, nextId, a, b, rng) {
-  const tmp = board[a]; board[a] = board[b]; board[b] = tmp;
-  const get = (r, c) => board[idx(r, c)] ? board[idx(r, c)].type : -1;
-  if (findMatches(get).length === 0) {
-    const tmp2 = board[a]; board[a] = board[b]; board[b] = tmp2;
-    return { waves: [], totalGold: 0, totalCleared: 0, board, nextId, reshuffled: false, invalid: true };
-  }
-  let wave = 1, totalGold = 0, totalCleared = 0;
+/* 一連串消除（共用）：forced = 一開始就強制清掉的格子（特殊組合／高塔炸行）；沒有就只看三消。
+   每一波：算出要清的格子 → 特殊方塊連鎖引爆 → 算分數與時間獎勵 → 生成新特殊方塊 → 補位，直到沒有三消為止。 */
+function runWaves(board, nextId, rng, opts, forced, lastSwapped) {
+  opts = opts || {};
+  const goldMult = opts.goldMult || 1;
+  let wave = 1, totalGold = 0, totalCleared = 0, totalTime = 0;
   const waves = [];
-  let lastSwapped = new Set([a, b]);
-  while (true) {
+  lastSwapped = lastSwapped || new Set();
+  let forcedNow = forced || null;
+  while (wave <= 60) {
     const groups = findMatches((r, c) => board[idx(r, c)] ? board[idx(r, c)].type : -1);
-    if (groups.length === 0) break;
+    if (groups.length === 0 && !forcedNow) break;
     const toClear = new Set();
+    const triggeredWild = new Set();
+    if (forcedNow) {
+      forcedNow.cells.forEach(x => toClear.add(x));
+      if (forcedNow.markWilds) forcedNow.cells.forEach(x => { const t = board[x]; if (t && t.special === 'wild') triggeredWild.add(x); });
+    }
     const spawns = [];
     for (const g of groups) {
       const kind = specialKindFor(g);
@@ -211,24 +262,40 @@ function resolveSwap(board, nextId, a, b, rng) {
         const t = board[cell];
         if (!t || !t.special) continue;
         const r = Math.floor(cell / W), c = cell % W;
-        const addLine = (cells) => cells.forEach(x => { if (!toClear.has(x) && !spawnCells.has(x)) { toClear.add(x); grew = true; } });
-        if (t.special === 'row' || t.special === 'cross') addLine(Array.from({ length: W }, (_, cc) => idx(r, cc)));
-        if (t.special === 'col' || t.special === 'cross') addLine(Array.from({ length: H }, (_, rr) => idx(rr, c)));
+        const addCell = (x) => { if (!toClear.has(x) && !spawnCells.has(x)) { toClear.add(x); grew = true; } };
+        if (t.special === 'row' || t.special === 'cross') for (let cc = 0; cc < W; cc++) addCell(idx(r, cc));
+        if (t.special === 'col' || t.special === 'cross') for (let rr = 0; rr < H; rr++) addCell(idx(rr, c));
+        if (t.special === 'wild' && !triggeredWild.has(cell)) {
+          // 愚者被別的爆炸波及：清掉盤面上數量最多的那個花色
+          triggeredWild.add(cell);
+          const counts = new Array(TYPES).fill(0);
+          for (let i = 0; i < W * H; i++) { const u = board[i]; if (u && u.type < TYPES) counts[u.type]++; }
+          let best = 0;
+          for (let k = 1; k < TYPES; k++) if (counts[k] > counts[best]) best = k;
+          for (let i = 0; i < W * H; i++) { const u = board[i]; if (u && u.type === best) addCell(i); }
+        }
       }
     }
     spawnCells.forEach(c => toClear.delete(c));
     const clearedCount = toClear.size;
-    const mult = waveMultiplier(wave);
-    const goldThisWave = clearedCount * 10 * mult;
+    const mult = waveMultiplier(wave, opts);
+    const goldThisWave = clearedCount * 10 * mult * goldMult;
+    // 時間獎勵：4 消 +1、十字／愚者 +2、特殊組合另加、第 4 波連鎖 +2、之後每波 +1
+    let tb = 0;
+    spawns.forEach(s => { tb += (s.kind === 'row' || s.kind === 'col') ? 1 : 2; });
+    if (forcedNow) tb += forcedNow.bonus || 0;
+    if (wave === 4) tb += 2; else if (wave > 4) tb += 1;
     totalGold += goldThisWave;
     totalCleared += clearedCount;
+    totalTime += tb;
     const clearedCells = Array.from(toClear);
     toClear.forEach(cell => { board[cell] = null; });
-    spawns.forEach(s => { board[s.cell] = { id: nextId++, type: s.type, special: s.kind }; });
+    spawns.forEach(s => { board[s.cell] = { id: nextId++, type: s.kind === 'wild' ? WILD : s.type, special: s.kind }; });
     nextId = refill(board, nextId, rng);
-    waves.push({ wave, cleared: clearedCount, gold: Math.round(goldThisWave), mult, specials: spawns.length,
-      clearedCells, spawns: spawns.slice(), afterBoard: board.slice() });
+    waves.push({ wave, cleared: clearedCount, gold: Math.round(goldThisWave), mult, specials: spawns.length, timeBonus: tb,
+      forced: !!forcedNow, clearedCells, spawns: spawns.slice(), afterBoard: board.slice() });
     lastSwapped = new Set();
+    forcedNow = null;
     wave++;
   }
   let reshuffled = false;
@@ -236,7 +303,26 @@ function resolveSwap(board, nextId, a, b, rng) {
     const fresh = freshBoard(rng);
     board = fresh.board; nextId = fresh.nextId; reshuffled = true;
   }
-  return { waves, totalGold: Math.round(totalGold), totalCleared, board, nextId, reshuffled, invalid: false };
+  return { waves, totalGold: Math.round(totalGold), totalCleared, totalTime, board, nextId, reshuffled, invalid: false };
+}
+
+function resolveSwap(board, nextId, a, b, rng, opts) {
+  const ta = board[a], tb = board[b];
+  const bad = { waves: [], totalGold: 0, totalCleared: 0, totalTime: 0, board, nextId, reshuffled: false, invalid: true };
+  if (!ta || !tb) return bad;
+  board[a] = tb; board[b] = ta;
+  const combo = comboCells(board, a, b);
+  if (!combo && findMatches((r, c) => board[idx(r, c)] ? board[idx(r, c)].type : -1).length === 0) {
+    board[a] = ta; board[b] = tb;
+    return bad;
+  }
+  return runWaves(board, nextId, rng, opts, combo, new Set([a, b]));
+}
+
+// 高塔：整行炸掉（不用交換），後面照常連鎖
+function blastRow(board, nextId, row, rng, opts) {
+  const cells = new Set(Array.from({ length: W }, (_, c) => idx(row, c)));
+  return runWaves(board, nextId, rng, opts, { cells, bonus: 0, markWilds: false }, new Set());
 }
 
 /* ===== 玩法設定（GM 可調）與每日次數 ===== */
@@ -370,9 +456,32 @@ async function ensureYesterdaySettled() {
 const ICONS = ["🔥", "🏆", "🗡️", "💰", "☀️", "🌙"];
 function tarotName(i) { return dc(["權杖", "聖杯", "寶劍", "星幣", "太陽", "月亮"][i], ["Wands", "Cups", "Swords", "Pentacles", "Sun", "Moon"][i]); }
 
+const SP_GLYPH = { row: "↔", col: "↕", cross: "✚" };
+const SWAP_MS = 140, POP_MS = 150, FALL_MS = 200, HINT_IDLE_MS = 5000;
+
+/* ===== 開局抽牌：每局先抽 3 張大阿爾克那，選 1 張帶進這局（數值都集中在這張表，要調平衡改這裡）=====
+   addTime：開局時間加減（秒）；opts：傳給計分（multBonus 倍率起跳加成／multStep 每波增量／multCap 上限／goldMult 得分倍率）；
+   tower：每 20 秒炸一整行；startWilds：開局盤面送幾張愚者 */
+const BUFFS = [
+  { id: "star",     num: "XVII", icon: "⭐", art: "major-the-star",     zh: "星星",   en: "The Star",     dzh: "開局 +10 秒",               den: "+10 seconds at the start",       addTime: 10 },
+  { id: "strength", num: "VIII", icon: "🦁", art: "major-strength",     zh: "力量",   en: "Strength",     dzh: "連鎖更猛：每波倍率 +0.75（上限 ×4）", den: "Bigger chains: +0.75 per wave (cap x4)", opts: { multStep: 0.75, multCap: 4 } },
+  { id: "devil",    num: "XV",   icon: "😈", art: "major-the-devil",    zh: "惡魔",   en: "The Devil",    dzh: "得分 ×1.5，但時間 −15 秒",   den: "Score x1.5, but -15 seconds",    addTime: -15, opts: { goldMult: 1.5 } },
+  { id: "tower",    num: "XVI",  icon: "⚡", art: "major-the-tower",    zh: "高塔",   en: "The Tower",    dzh: "每 20 秒隨機炸掉一整行",     den: "Every 20s a random row explodes", tower: true },
+  { id: "magician", num: "I",    icon: "🎩", art: "major-the-magician", zh: "魔術師", en: "The Magician", dzh: "開局盤面送 2 張愚者（萬能牌）", den: "Start with 2 Fools (wilds) on the board", startWilds: 2 },
+  { id: "sun",      num: "XIX",  icon: "🌞", art: "major-the-sun",      zh: "太陽",   en: "The Sun",      dzh: "連鎖倍率從 ×1.25 起跳",      den: "Chain multiplier starts at x1.25", opts: { multBonus: 0.25 } }
+];
+function buffById(id) { return BUFFS.find(b => b.id === id) || null; }
+function buffArtUrl(b) { return "https://lekcusong.github.io/tcg/assets/" + b.art + ".jpg"; }
+function buffChipHtml() {
+  const b = st.running && st.buff;
+  return b ? `<span class="m3-buffchip">${b.icon} ${b.num} ${dc(b.zh, b.en)}：${dc(b.dzh, b.den)}</span>` : "";
+}
+function updateBuffChip() { const el = document.getElementById("m3-buff"); if (el) el.innerHTML = buffChipHtml(); }
+
 const st = {
   board: null, nextId: 1, rng: null, gold: 0, cleared: 0, bestMult: 1,
-  timeLeft: 60, timerHandle: null, running: false, busy: false, tileSize: 40,
+  timeLeft: 60, elapsed: 0, timerHandle: null, running: false, busy: false, tileSize: 40,
+  buff: null, opts: {}, pendingBlast: false, lastActionAt: 0, hintCells: null, timeBonusTotal: 0,
   els: {}, standings: null, standingsFor: null, loaded: false, result: null
 };
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
@@ -382,14 +491,33 @@ function ensureStyles() {
   const style = document.createElement("style");
   style.id = "m3-styles";
   style.textContent = `
-    .m3-board{position:relative;margin:10px auto;border-radius:12px;background:rgba(0,0,0,.22);border:1px solid var(--line);}
+    .m3-board{position:relative;margin:10px auto;border-radius:12px;background:rgba(0,0,0,.22);border:1px solid var(--line);touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;}
     .m3-tile{position:absolute;display:flex;align-items:center;justify-content:center;border-radius:9px;cursor:pointer;
-      transition:left .17s cubic-bezier(.4,0,.2,1),top .26s cubic-bezier(.3,0,.2,1),transform .14s ease,opacity .14s ease;}
+      transition:left .13s cubic-bezier(.4,0,.2,1),top .2s cubic-bezier(.3,0,.2,1),transform .12s ease,opacity .12s ease;}
     .m3-tile.sel{box-shadow:0 0 0 2px var(--gold-bright),0 0 14px rgba(232,195,74,.55);transform:scale(1.06);z-index:5;}
     .m3-tile.pop{transform:scale(.35);opacity:0;}
     .m3-tile.spawnIn{opacity:0;transform:scale(.55);}
     .m3-tile.special::after{content:"";position:absolute;inset:3px;border-radius:7px;pointer-events:none;
       border:2px solid rgba(255,255,255,.85);box-shadow:0 0 8px rgba(255,255,255,.55) inset;}
+    .m3-tile .m3-sp{position:absolute;right:3px;bottom:1px;font-size:.4em;line-height:1;font-weight:800;color:#fff;text-shadow:0 0 3px #000,0 0 6px #000;pointer-events:none;}
+    .m3-tile.sp-wild{background:conic-gradient(from 0deg,#e8c468,#d1547e,#5b6fd1,#2f8f8a,#5c8a3a,#e8c468);animation:m3wild 2.2s ease-in-out infinite;}
+    @keyframes m3wild{0%,100%{box-shadow:0 0 6px rgba(232,196,104,.6);filter:hue-rotate(0deg)}50%{box-shadow:0 0 14px rgba(255,255,255,.85);filter:hue-rotate(40deg)}}
+    .m3-tile.hint{animation:m3hint .85s ease-in-out infinite;z-index:4;}
+    @keyframes m3hint{0%,100%{transform:scale(1);filter:brightness(1)}50%{transform:scale(1.13);filter:brightness(1.5)}}
+    .m3-timepop{display:inline-block;margin-left:6px;color:var(--gold-bright);font-weight:700;opacity:0;transition:opacity .2s ease;}
+    .m3-timepop.show{opacity:1;}
+    .m3-timerbar.over>i{background:linear-gradient(90deg,var(--gold-bright),#fff6d8);}
+    .m3-buffchip{display:inline-block;margin:2px 0 0;padding:3px 12px;border-radius:999px;font-size:12px;color:var(--gold-bright);border:1px solid var(--gold);background:rgba(201,162,74,.1);}
+    .m3-draw{width:100%;padding:8px 6px;text-align:center;}
+    .m3-draw-title{font-family:Cinzel,serif;font-size:12px;letter-spacing:.5px;color:var(--gold-bright);margin-bottom:8px;}
+    .m3-draw-cards{display:flex;gap:6px;justify-content:center;}
+    .m3-bcard{flex:1 1 0;max-width:106px;min-width:0;border:1px solid var(--gold);border-radius:10px;overflow:hidden;cursor:pointer;padding-bottom:6px;
+      background:linear-gradient(170deg,rgba(48,26,70,.97),rgba(18,10,28,.98));transition:transform .15s ease,box-shadow .15s ease;}
+    .m3-bcard:hover,.m3-bcard:active{transform:translateY(-4px);box-shadow:0 0 16px rgba(232,196,104,.55);}
+    .m3-bcard-art{position:relative;width:100%;aspect-ratio:3/4;background-size:cover;background-position:center top;background-color:rgba(0,0,0,.4);}
+    .m3-bcard-art span{position:absolute;left:3px;top:2px;font-size:15px;filter:drop-shadow(0 0 3px #000);}
+    .m3-bcard-name{font-family:Cinzel,serif;font-size:11px;color:var(--gold-bright);margin:5px 2px 2px;}
+    .m3-bcard-desc{font-size:10.5px;line-height:1.3;color:var(--cream);padding:0 4px;}
     .m3-t0{background:linear-gradient(150deg,#d68c34,#a15f1f);}
     .m3-t1{background:linear-gradient(150deg,#2f8f8a,#1d5f5b);}
     .m3-t2{background:linear-gradient(150deg,#5b6fd1,#3b4aa0);}
@@ -433,12 +561,17 @@ function cellXY(cell) {
 }
 function makeTileEl(boardEl, tile, cell) {
   const el = document.createElement("div");
-  el.className = "m3-tile m3-t" + tile.type + (tile.special ? " special" : "");
+  el.className = "m3-tile m3-t" + tile.type + (tile.special ? " special sp-" + tile.special : "");
   const { left, top } = cellXY(cell);
   el.style.left = left + "px"; el.style.top = top + "px";
   el.style.width = (st.tileSize - 4) + "px"; el.style.height = (st.tileSize - 4) + "px";
   el.style.fontSize = Math.round(st.tileSize * 0.5) + "px";
-  el.textContent = ICONS[tile.type];
+  if (tile.special === "wild") {
+    el.textContent = "🃏";      // 愚者
+  } else {
+    el.textContent = ICONS[tile.type];
+    if (tile.special) { const b = document.createElement("b"); b.className = "m3-sp"; b.textContent = SP_GLYPH[tile.special] || ""; el.appendChild(b); }
+  }
   boardEl.appendChild(el);
   st.els[tile.id] = el;
   return el;
@@ -453,17 +586,51 @@ function setSelectedVisual(cell) {
   if (cell != null && st.board[cell] && st.els[st.board[cell].id]) st.els[st.board[cell].id].classList.add("sel");
 }
 function showCombo(e, text) {
-  const el = e.querySelector("#m3-combo"); if (!el) return;
+  const el = document.getElementById("m3-combo"); if (!el) return;
   el.textContent = text; el.classList.add("show");
   clearTimeout(showCombo._t); showCombo._t = setTimeout(() => el.classList.remove("show"), 850);
+}
+function clearHint() {
+  st.hintCells = null;
+  Object.values(st.els).forEach(el => el.classList.remove("hint"));
+}
+function maybeShowHint() {
+  if (!st.running || st.busy || st.hintCells || !st.board) return;
+  if (Date.now() - st.lastActionAt < HINT_IDLE_MS) return;
+  const mv = findHintMove(st.board);
+  if (!mv) return;
+  st.hintCells = mv;
+  mv.forEach(cell => { const t = st.board[cell]; if (t && st.els[t.id]) st.els[t.id].classList.add("hint"); });
+}
+function updateTimerUI() {
+  const timeEl = document.getElementById("m3-time"), fillEl = document.getElementById("m3-timerfill"), barEl = document.getElementById("m3-timerbar");
+  const t = Math.max(0, st.timeLeft);
+  if (timeEl) timeEl.textContent = t;
+  if (fillEl) fillEl.style.width = Math.min(100, (t / 60) * 100) + "%";
+  if (barEl) { barEl.classList.toggle("low", t <= 10); barEl.classList.toggle("over", t > 60); }
+}
+function addTime(sec) {
+  const before = st.timeLeft;
+  st.timeLeft = Math.min(TIME_CAP, st.timeLeft + sec);
+  const gained = st.timeLeft - before;
+  updateTimerUI();
+  if (gained > 0) {
+    st.timeBonusTotal += gained;
+    sfxTime();
+    const pop = document.getElementById("m3-timepop");
+    if (pop) { pop.textContent = "+" + gained + "s"; pop.classList.add("show"); clearTimeout(addTime._t); addTime._t = setTimeout(() => pop.classList.remove("show"), 900); }
+  }
 }
 
 async function animateWave(e, boardEl, prevBoard, wave) {
   wave.clearedCells.forEach(cell => { const t = prevBoard[cell]; if (t && st.els[t.id]) st.els[t.id].classList.add("pop"); });
   if (wave.cleared > 0) sfxMatch(wave.wave);
-  if (wave.mult > 1) { showCombo(e, dc(`連鎖 x${wave.mult.toFixed(1)}！+${wave.gold}`, `Chain x${wave.mult.toFixed(1)}! +${wave.gold}`)); sfxChainBonus(); }
-  else if (wave.cleared > 0) showCombo(e, "+" + wave.gold);
-  await sleep(190);
+  if (wave.specials > 0 || wave.forced) sfxSpecial();
+  const tt = wave.timeBonus > 0 ? ` ⏱+${wave.timeBonus}` : "";
+  if (wave.forced) showCombo(e, dc(`✨ 特殊組合！+${wave.gold}${tt}`, `✨ Special combo! +${wave.gold}${tt}`));
+  else if (wave.wave > 1) { showCombo(e, dc(`連鎖 x${wave.mult.toFixed(1)}！+${wave.gold}${tt}`, `Chain x${wave.mult.toFixed(1)}! +${wave.gold}${tt}`)); sfxChainBonus(); }
+  else if (wave.cleared > 0) showCombo(e, "+" + wave.gold + tt);
+  await sleep(POP_MS);
   wave.clearedCells.forEach(cell => { const t = prevBoard[cell]; if (t && st.els[t.id]) { st.els[t.id].remove(); delete st.els[t.id]; } });
   const after = wave.afterBoard;
   const seenIds = new Set();
@@ -477,34 +644,12 @@ async function animateWave(e, boardEl, prevBoard, wave) {
   }
   Object.keys(st.els).forEach(id => { if (!seenIds.has(Number(id))) { st.els[id].remove(); delete st.els[id]; } });
   st.board = after.slice();
-  await sleep(230);
+  await sleep(FALL_MS);
 }
 
-async function onTileClick(e, boardEl, cell) {
-  if (st.busy || !st.running) return;
-  if (st.selected == null) { st.selected = cell; setSelectedVisual(cell); return; }
-  if (st.selected === cell) { st.selected = null; setSelectedVisual(null); return; }
-  const r1 = Math.floor(st.selected / W), c1 = st.selected % W, r2 = Math.floor(cell / W), c2 = cell % W;
-  if (Math.abs(r1 - r2) + Math.abs(c1 - c2) !== 1) { st.selected = cell; setSelectedVisual(cell); return; }
-  const a2 = st.selected, b2 = cell;
-  st.selected = null; setSelectedVisual(null);
-  st.busy = true;
-  const ta = st.board[a2], tb = st.board[b2];
-  const posA = cellXY(b2), posB = cellXY(a2);
-  if (st.els[ta.id]) { st.els[ta.id].style.left = posA.left + "px"; st.els[ta.id].style.top = posA.top + "px"; }
-  if (st.els[tb.id]) { st.els[tb.id].style.left = posB.left + "px"; st.els[tb.id].style.top = posB.top + "px"; }
-  await sleep(180);
-  const res = resolveSwap(st.board, st.nextId, a2, b2, st.rng);
-  st.nextId = res.nextId;
-  if (res.invalid) {
-    if (st.els[ta.id]) { st.els[ta.id].style.left = posB.left + "px"; st.els[ta.id].style.top = posB.top + "px"; }
-    if (st.els[tb.id]) { st.els[tb.id].style.left = posA.left + "px"; st.els[tb.id].style.top = posA.top + "px"; }
-    await sleep(180);
-    st.busy = false;
-    return;
-  }
-  let snapshot = st.board.slice();
-  snapshot[a2] = tb; snapshot[b2] = ta;
+// 播完一次交換（或高塔）產生的所有波次，並結算金幣／時間獎勵。pre = 消除前（交換後）的盤面快照，第一波的消除動畫要靠它找方塊。
+async function playResult(e, boardEl, res, pre) {
+  let snapshot = pre;
   for (const wave of res.waves) {
     await animateWave(e, boardEl, snapshot, wave);
     snapshot = wave.afterBoard;
@@ -512,33 +657,153 @@ async function onTileClick(e, boardEl, cell) {
   }
   st.gold += res.totalGold; st.cleared += res.totalCleared;
   st.board = res.board;
-  const goldEl = e.querySelector("#m3-gold"); if (goldEl) goldEl.textContent = st.gold.toLocaleString();
+  const goldEl = document.getElementById("m3-gold"); if (goldEl) goldEl.textContent = st.gold.toLocaleString();
+  if (res.totalTime > 0 && st.running) addTime(res.totalTime);
   if (res.reshuffled) { renderFull(boardEl); showCombo(e, dc("盤面卡住，已重新洗牌", "Board stuck, reshuffled")); await sleep(200); }
-  st.busy = false;
+}
+
+async function doSwap(e, boardEl, a2, b2) {
+  if (st.busy || !st.running || !st.board) return;
+  const ta = st.board[a2], tb = st.board[b2];
+  if (!ta || !tb) return;
+  st.busy = true; clearHint(); st.lastActionAt = Date.now();
+  st.selected = null; setSelectedVisual(null);
+  const posA = cellXY(b2), posB = cellXY(a2);
+  if (st.els[ta.id]) { st.els[ta.id].style.left = posA.left + "px"; st.els[ta.id].style.top = posA.top + "px"; }
+  if (st.els[tb.id]) { st.els[tb.id].style.left = posB.left + "px"; st.els[tb.id].style.top = posB.top + "px"; }
+  await sleep(SWAP_MS);
+  const pre = st.board.slice(); pre[a2] = tb; pre[b2] = ta;      // 交換後、消除前的盤面
+  const res = resolveSwap(st.board, st.nextId, a2, b2, st.rng, st.opts);
+  st.nextId = res.nextId;
+  if (res.invalid) {
+    if (st.els[ta.id]) { st.els[ta.id].style.left = posB.left + "px"; st.els[ta.id].style.top = posB.top + "px"; }
+    if (st.els[tb.id]) { st.els[tb.id].style.left = posA.left + "px"; st.els[tb.id].style.top = posA.top + "px"; }
+    await sleep(SWAP_MS);
+    st.busy = false; st.lastActionAt = Date.now();
+    return;
+  }
+  await playResult(e, boardEl, res, pre);
+  st.busy = false; st.lastActionAt = Date.now();
+  maybeRunBlast(e);
+}
+
+// 點選：先點一格、再點相鄰的一格就交換
+function onTileClick(e, boardEl, cell) {
+  if (st.busy || !st.running) return;
+  st.lastActionAt = Date.now(); clearHint();
+  if (st.selected == null) { st.selected = cell; setSelectedVisual(cell); return; }
+  if (st.selected === cell) { st.selected = null; setSelectedVisual(null); return; }
+  const r1 = Math.floor(st.selected / W), c1 = st.selected % W, r2 = Math.floor(cell / W), c2 = cell % W;
+  if (Math.abs(r1 - r2) + Math.abs(c1 - c2) !== 1) { st.selected = cell; setSelectedVisual(cell); return; }
+  doSwap(e, boardEl, st.selected, cell);
+}
+
+// 滑動：手指（或滑鼠）按在方塊上往旁邊拖超過半格，就跟那個方向的鄰居交換；沒拖動就當成點選
+function wireBoardInput(e, boardEl) {
+  let down = null;
+  const cellAt = (ev) => {
+    const rect = boardEl.getBoundingClientRect();
+    const col = Math.floor((ev.clientX - rect.left) / st.tileSize), row = Math.floor((ev.clientY - rect.top) / st.tileSize);
+    return (col < 0 || col >= W || row < 0 || row >= H) ? -1 : row * W + col;
+  };
+  boardEl.addEventListener("pointerdown", ev => {
+    if (st.busy || !st.running) return;
+    const cell = cellAt(ev); if (cell < 0) return;
+    clearHint(); st.lastActionAt = Date.now();
+    down = { cell, x: ev.clientX, y: ev.clientY, id: ev.pointerId, done: false };
+    try { boardEl.setPointerCapture(ev.pointerId); } catch (err) {}
+  });
+  boardEl.addEventListener("pointermove", ev => {
+    if (!down || down.done || ev.pointerId !== down.id) return;
+    const dx = ev.clientX - down.x, dy = ev.clientY - down.y;
+    if (Math.max(Math.abs(dx), Math.abs(dy)) < st.tileSize * 0.35) return;
+    let r = Math.floor(down.cell / W), c = down.cell % W;
+    if (Math.abs(dx) > Math.abs(dy)) c += dx > 0 ? 1 : -1; else r += dy > 0 ? 1 : -1;
+    down.done = true;
+    if (!inB(r, c)) return;
+    doSwap(e, boardEl, down.cell, idx(r, c));
+  });
+  boardEl.addEventListener("pointerup", ev => {
+    if (!down || ev.pointerId !== down.id) return;
+    const d = down; down = null;
+    if (d.done || st.busy || !st.running) return;
+    const cell = cellAt(ev); if (cell < 0) return;
+    onTileClick(e, boardEl, cell);
+  });
+  boardEl.addEventListener("pointercancel", () => { down = null; });
+}
+
+// 高塔：每 20 秒隨機炸一整行（先閃一下預警），後面照常連鎖，得分／時間獎勵一樣算
+function maybeRunBlast(e) { if (st.pendingBlast && st.running && !st.busy) runBlast(e); }
+async function runBlast(e) {
+  const boardEl = document.getElementById("m3-board");
+  st.pendingBlast = false;
+  if (!boardEl || !st.board) return;
+  st.busy = true; clearHint(); st.selected = null; setSelectedVisual(null);
+  const row = Math.floor(Math.random() * H);
+  for (let c = 0; c < W; c++) { const t = st.board[idx(row, c)]; if (t && st.els[t.id]) st.els[t.id].classList.add("hint"); }
+  showCombo(e, dc("⚡ 高塔降下！", "⚡ The Tower strikes!"));
+  await sleep(450);
+  clearHint();
+  const pre = st.board.slice();
+  const res = blastRow(st.board, st.nextId, row, st.rng, st.opts);
+  st.nextId = res.nextId;
+  await playResult(e, boardEl, res, pre);
+  st.busy = false; st.lastActionAt = Date.now();
 }
 
 function tickTimer(e) {
-  st.timeLeft -= 1;
-  const timeEl = e.querySelector("#m3-time"), fillEl = e.querySelector("#m3-timerfill"), barEl = e.querySelector("#m3-timerbar");
-  if (timeEl) timeEl.textContent = Math.max(0, st.timeLeft);
-  if (fillEl) fillEl.style.width = Math.max(0, (st.timeLeft / 60) * 100) + "%";
-  if (barEl) barEl.classList.toggle("low", st.timeLeft <= 10);
-  if (st.timeLeft <= 0) endRound(e);
+  if (!st.running) return;
+  st.timeLeft -= 1; st.elapsed += 1;
+  updateTimerUI();
+  if (st.timeLeft <= 0 || st.elapsed >= MAX_ROUND_SEC) { endRound(e); return; }
+  if (st.buff && st.buff.tower && st.elapsed % 20 === 0) st.pendingBlast = true;
+  maybeRunBlast(e);
+  maybeShowHint();
 }
 
-function startRound(e) {
-  const boardEl = e.querySelector("#m3-board"); if (!boardEl) return;
-  st.gold = 0; st.cleared = 0; st.bestMult = 1; st.timeLeft = 60; st.selected = null; st.busy = false; st.running = true;
-  st.startedAt = Date.now();
+function startRound(e, buff) {
+  const boardEl = document.getElementById("m3-board"); if (!boardEl) return;
+  st.buff = buff || null;
+  st.opts = buff && buff.opts ? Object.assign({}, buff.opts) : {};
+  st.gold = 0; st.cleared = 0; st.bestMult = 1; st.timeBonusTotal = 0;
+  st.timeLeft = 60 + ((buff && buff.addTime) || 0); st.elapsed = 0;
+  st.selected = null; st.busy = false; st.running = true; st.pendingBlast = false; st.hintCells = null;
+  st.startedAt = Date.now(); st.lastActionAt = Date.now();
   layout(boardEl);
   st.rng = mulberry32((Date.now() ^ Math.floor(Math.random() * 1e9)) & 0xffffffff);
   const fresh = freshBoard(st.rng);
   st.board = fresh.board; st.nextId = fresh.nextId;
+  if (buff && buff.startWilds) {
+    // 魔術師：開局送愚者（挑不重複的格子，直接換掉原本那格）
+    const used = new Set();
+    for (let i = 0; i < buff.startWilds; i++) {
+      let cell; do { cell = Math.floor(st.rng() * W * H); } while (used.has(cell));
+      used.add(cell);
+      st.board[cell] = { id: st.nextId++, type: WILD, special: "wild" };
+    }
+  }
   renderFull(boardEl);
-  const startOv = e.querySelector("#m3-startov"); if (startOv) startOv.style.display = "none";
-  const resOv = e.querySelector("#m3-resultov"); if (resOv) resOv.classList.remove("show");
+  const startOv = document.getElementById("m3-startov"); if (startOv) startOv.style.display = "none";
+  const resOv = document.getElementById("m3-resultov"); if (resOv) resOv.classList.remove("show");
+  const goldEl = document.getElementById("m3-gold"); if (goldEl) goldEl.textContent = "0";
+  updateTimerUI(); updateBuffChip();
   clearInterval(st.timerHandle);
   st.timerHandle = setInterval(() => tickTimer(e), 1000);
+}
+
+// 開局抽牌：隨機抽 3 張大牌，玩家選 1 張帶進這局（還沒選之前不扣次數、計時也還沒開始）
+function showDraw(e) {
+  const ov = document.getElementById("m3-startov"); if (!ov) return;
+  const pool = BUFFS.slice();
+  for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const t = pool[i]; pool[i] = pool[j]; pool[j] = t; }
+  const picks = pool.slice(0, 3);
+  ov.style.display = "flex"; ov.style.background = "rgba(15,8,20,.9)";
+  ov.innerHTML = `<div class="m3-draw"><div class="m3-draw-title">${dc("🔮 抽到三張牌，選一張帶進這局", "🔮 Three cards drawn — pick one for this round")}</div>
+    <div class="m3-draw-cards">${picks.map(b => `<div class="m3-bcard" role="button" data-m3-buff="${b.id}">
+      <div class="m3-bcard-art" style="background-image:url('${buffArtUrl(b)}')"><span>${b.icon}</span></div>
+      <div class="m3-bcard-name">${b.num} ${dc(b.zh, b.en)}</div><div class="m3-bcard-desc">${dc(b.dzh, b.den)}</div></div>`).join("")}</div></div>`;
+  ov.querySelectorAll("[data-m3-buff]").forEach(el => { el.onclick = () => startRound(e, buffById(el.dataset.m3Buff)); });
 }
 
 // 找目前「真的還在畫面上」的那個彈窗容器，而不是死認交換分頁時被拿掉的那個舊節點——
@@ -567,8 +832,11 @@ function showResult(state) {
 async function endRound(e) {
   st.running = false;
   clearInterval(st.timerHandle);
+  clearHint();
+  for (let i = 0; i < 60 && st.busy; i++) await sleep(50);   // 等最後一步動畫跑完，這步的金幣才不會漏算
   const elapsedSeconds = Math.max(1, Math.round((Date.now() - st.startedAt) / 1000));
-  const raw = { gold: st.gold, cleared: st.cleared, bestMult: st.bestMult, elapsedSeconds };
+  const raw = { gold: st.gold, cleared: st.cleared, bestMult: st.bestMult, elapsedSeconds, buff: st.buff ? st.buff.id : null };
+  st.buff = null; updateBuffChip();
   try {
     showResult({ loading: true });
     let res;
@@ -607,6 +875,7 @@ function resultBodyHtml(res, raw) {
   return `<div class="gres-title">${dc("本局結算", "Round Settlement")}</div>
     <div class="gres-amount">+${res.gold.toLocaleString()} ${dc("金幣", "coins")}</div>
     <p class="gres-sub">${dc(`消除 ${res.cleared} 個　最高連鎖 x${res.bestMult.toFixed(1)}`, `Cleared ${res.cleared} · Best chain x${res.bestMult.toFixed(1)}`)}</p>
+    ${(() => { const bf = raw && raw.buff ? buffById(raw.buff) : null; return bf ? `<p class="gres-sub">${bf.icon} ${bf.num} ${dc(bf.zh, bf.en)}</p>` : ""; })()}
     ${capNote}<div class="gres-chips">${itemChips || `<span class="gres-sub">${dc("這局沒有成品掉落", "No items dropped this round")}</span>`}</div>
     <p class="gres-sub">${dc(`今天還剩 ${res.playsLeft} 次`, `${res.playsLeft} plays left today`)}</p>
     <div class="form-row" style="gap:8px;margin-top:14px;justify-content:center;">
@@ -632,7 +901,8 @@ function boardHtml() {
 }
 
 function legendHtml() {
-  return `<div class="m3-legend">${ICONS.map((ic, i) => `<span><i class="m3-t${i}"></i>${ic} ${tarotName(i)}</span>`).join("")}</div>`;
+  return `<div class="m3-legend">${ICONS.map((ic, i) => `<span><i class="m3-t${i}"></i>${ic} ${tarotName(i)}</span>`).join("")}</div>
+  <div class="m3-legend"><span>↔ ${dc("清整行", "row")}</span><span>↕ ${dc("清整列", "column")}</span><span>✚ ${dc("清十字", "cross")}</span><span>🃏 ${dc("愚者・萬能", "Fool · wild")}</span></div>`;
 }
 
 function standingsHtml() {
@@ -651,13 +921,14 @@ function panelHtml() {
       <h2 style="margin-bottom:0;">🔮 ${dc("塔羅三消", "Tarot Match-3")}</h2>
       <button class="btn small secondary" id="m3-sfx-toggle" title="${dc("音效開關", "Sound effects on/off")}" style="padding:6px 12px;">${sfxMuted ? "🔇" : "🔊"} ${dc("音效", "SFX")}</button>
     </div>
-    <p class="sub">${dc(`交換相鄰方塊湊 3 個以上同圖案消除；4 消清整行／整列，5 消或 L／T 型清整行＋整列；連鎖（一次交換引發的每一波消除）獎勵會往上加成。免費玩，每天 5 次，獎勵金幣＋成品（藥水／武器／飾品／家具，小型為主偶爾中型）。`, `Swap adjacent tiles to match 3+; a 4-match clears its row/column, a 5-match or L/T-shape clears both. Each chain wave in one swap pays out more. Free to play, 5 times a day, rewards coins + crafted items (potions/weapons/accessories/furniture, mostly small tier with occasional medium).`)}</p>
+    <p class="sub">${dc(`每局先抽 3 張大牌選 1 張加成，再用滑動（或點兩下）交換相鄰方塊，湊 3 個以上同圖案消除；4 消清整行／整列，L／T 型清十字，筆直 5 連會變成「愚者」🃏——跟任何方塊交換就清掉全盤那個花色，兩個特殊方塊交換還會組合。4 消、5 消、4 連鎖以上都會加時間（最多 90 秒）；連鎖（一次交換引發的每一波消除）獎勵會往上加成。免費玩，每天 5 次，獎勵金幣＋成品（藥水／武器／飾品／家具，小型為主偶爾中型）。`, `Pick 1 of 3 tarot cards for a bonus, then swipe (or tap twice) to swap adjacent tiles and match 3+. A 4-match clears its row/column, an L/T-shape clears a cross, and a straight 5 becomes the Fool 🃏 — swap it with any tile to wipe that suit off the board; two specials combine. 4-matches, 5-matches and 4+ chains add time (max 90s). Each chain wave pays out more. Free to play, 5 times a day, rewards coins + crafted items (potions/weapons/accessories/furniture, mostly small tier with occasional medium).`)}</p>
     ${champion ? `<p class="who">${dc("今日封號", "Today's title")}: ${Ys("match3Champion", 13)} ${Iu(champion)}</p>` : ""}
     <div class="stats" style="display:flex;align-items:center;justify-content:space-between;margin:10px 2px 4px;font-size:14px;">
       <div>✦ <b id="m3-gold">${st.gold}</b> ${dc("金幣", "coins")}</div>
-      <div>⏱ <span id="m3-time">60</span> ${dc("秒", "s")}</div>
+      <div>⏱ <span id="m3-time">60</span> ${dc("秒", "s")}<span id="m3-timepop" class="m3-timepop"></span></div>
     </div>
     <div class="m3-timerbar" id="m3-timerbar"><i id="m3-timerfill" style="width:100%"></i></div>
+    <div id="m3-buff" style="min-height:22px;text-align:center;">${buffChipHtml()}</div>
     ${boardHtml()}
     ${legendHtml()}
     <p class="sub" style="text-align:center;margin-top:6px;">${dc(`今天剩餘次數：${left} / ${cap}`, `Plays left today: ${left} / ${cap}`)}</p>
@@ -675,7 +946,8 @@ async function tryStart(e) {
   if (!(await mgFresh("match3"))) { ac(dc("塔羅三消目前由 GM 暫時關閉", "Tarot Match-3 is temporarily closed by the GM")); Bu(); return; }
   const left = playsRemaining(zl.player);
   if (left <= 0 && !ku()) { ac(dc("今天的三消次數已經用完了，明天再來吧！", "No Match-3 plays left for today, come back tomorrow!")); return; }
-  startRound(e);
+  const resOv = document.getElementById("m3-resultov"); if (resOv) resOv.classList.remove("show");
+  showDraw(e);     // 先抽牌；選好牌才開始計時
 }
 function wireResultOverlay() {
   // 只重畫分頁內容（Bu），不整頁重畫（Eu）：Eu 會複製舊畫面並洗掉事件，造成按鈕失效。
@@ -698,14 +970,7 @@ function wireTab(e) {
   const boardEl = e.querySelector("#m3-board");
   if (boardEl && !boardEl.dataset.wired) {
     boardEl.dataset.wired = "1";
-    boardEl.addEventListener("click", ev => {
-      if (st.busy || !st.running) return;
-      const rect = boardEl.getBoundingClientRect();
-      const x = ev.clientX - rect.left, y = ev.clientY - rect.top;
-      const col = Math.floor(x / st.tileSize), row = Math.floor(y / st.tileSize);
-      if (col < 0 || col >= W || row < 0 || row >= H) return;
-      onTileClick(e, boardEl, row * W + col);
-    });
+    wireBoardInput(e, boardEl);
   }
   wireGmPanel(e);
 }
