@@ -59,19 +59,19 @@ function menu(){S.pause=1;show(`<div class="seal">江湖</div><h1>倖存者</h1>
 <button class="card" onclick="newGame(1)" onpointerenter="this.dataset.h=1" onpointerleave="delete this.dataset.h" onfocus="this.dataset.h=1" onblur="delete this.dataset.h"><div class="cimg" data-p="hf"><img src="${IMG.hf_w1}" alt=""></div><b>拳師</b><span>起手：降龍掌，氣血較厚<br>被動【金剛不壞】降龍掌範圍 +20%</span></button>
 <button class="card" onclick="newGame(2)" onpointerenter="this.dataset.h=1" onpointerleave="delete this.dataset.h" onfocus="this.dataset.h=1" onblur="delete this.dataset.h"><div class="cimg" data-p="hd"><img src="${IMG.hd_w1}" alt=""></div><b>暗器手</b><span>起手：漫天花雨<br>被動【連珠暗器】暗器數量 +2</span></button>
 <button class="card" onclick="newGame(3)" onpointerenter="this.dataset.h=1" onpointerleave="delete this.dataset.h" onfocus="this.dataset.h=1" onblur="delete this.dataset.h"><div class="cimg" data-p="hpo"><img src="${IMG.hpo_w1}" alt=""></div><b>毒師</b><span>起手：蝕骨毒霧<br>被動【百毒不侵】毒霧範圍 +25%</span></button>
-<button class="card" onclick="newGame(4)" onpointerenter="this.dataset.h=1" onpointerleave="delete this.dataset.h" onfocus="this.dataset.h=1" onblur="delete this.dataset.h"><div class="cimg" data-p="hw"><img src="${IMG.hw_w1}" alt=""></div><b>輪客</b><span>起手：迴旋輪<br>被動【輪轉如意】飛輪折返速度 +45%</span></button></div><p></p><button class="card" onclick="shop()"><b>修煉</b><span>銀兩 ${M.g}　永久強化</span></button>`);cardAnim()}
+<button class="card" onclick="newGame(4)" onpointerenter="this.dataset.h=1" onpointerleave="delete this.dataset.h" onfocus="this.dataset.h=1" onblur="delete this.dataset.h"><div class="cimg" data-p="hw"><img src="${IMG.hw_w1}" alt=""></div><b>輪客</b><span>起手：迴旋輪<br>被動【輪轉如意】飛輪折返速度 +45%</span></button></div><p></p><div class="row"><button class="card" onclick="daily()"><b>每日挑戰</b><span>${CHN[dInfo().ch]}・${AFX[dInfo().af][0]}<br>不計強化${EMB?'<br>榜首 🧩×3':''}</span></button><button class="card" onclick="shop()"><b>修煉</b><span>銀兩 ${M.g}　永久強化</span></button>${EMB?'<button class="card" onclick="board()"><b>江湖榜</b><span>今日榜　總榜</span></button>':''}</div>`);cardAnim()}
 function heroSpr(s,ak,mg,wp,hf,fh){let k=HK[s.ch],w=84,y=-40;const P=HP[s.ch],at=ak>0&&(s.ae||(s.af&&(s.ch==1||s.ch==3))),kk=at?P+'_a'+Math.min(3,((1-ak)*4)|0):P+'_w'+(mg>.1?(((wp/1.5708)|0)%4):1),i=IM[kk];if(i&&IM[P+'_w1']){k=kk;w=i.width*.45;y=-w*i.height/i.width/2}return spr(k,0,y,w,0,hf,fh)}
 function hGhost(ch){const k=HP[ch]+'_w1',i=IM[k];return ch&&i?[k,i.width*.45,36-i.height*.225]:[HK[ch],84,-4]}
 const atkP=(e,f)=>{S.atk=.32;S.ae=!!e;S.af=!!f;S.aa=e?Math.atan2(e.y-S.p.y,e.x-S.p.x):0};
 const HK=['hsword','hfist','hdart','hpoison','hwheel'],HP=['hs','hf','hd','hpo','hw'];
-function newGame(ch){S={p:{x:0,y:0,hp:100,mh:100,inv:0,f:1},lv:1,xp:0,nx:5,t:0,k:0,en:[],pj:[],gm:[],fx:[],w:{},ps:{},cd:{},pend:0,pause:0,over:0,b1:0,b2:0,sa:0,oa:0,dr:[],ev:{},rage:0,et:100};
-S.ch=ch;S.u={...M.u};S.eb=[];S.bm=[];S.sh=0;S.dn=[];S.pa=[];S.cb=0;S.ct=0;S.hs=0;S.fl=0;S.hv=0;gp=0;S.sta=100+10*(S.u.sta||0);S.dash=0;S.dd=[1,0];S.rv=S.u.rev||0;S.pt=0;S.nel=60;if(ch==0)S.w.sword=1;if(ch==1){S.w.palm=1;S.p.mh=S.p.hp=125}if(ch==2)S.w.dart=1;if(ch==3)S.w.poison=1;if(ch==4)S.w.wheel=1;S.p.mh+=12*(S.u.hp||0);S.p.hp=S.p.mh;hide()}
+function newGame(ch,dly){S={p:{x:0,y:0,hp:100,mh:100,inv:0,f:1},lv:1,xp:0,nx:5,t:0,k:0,en:[],pj:[],gm:[],fx:[],w:{},ps:{},cd:{},pend:0,pause:0,over:0,b1:0,b2:0,sa:0,oa:0,dr:[],ev:{},rage:0,et:100};
+S.ch=ch;S.u=dly?{}:{...M.u};S.dm=dly?1:0;S.dk=dly?dInfo().k:'';S.af=dly?dInfo().af:-1;S.eb=[];S.bm=[];S.sh=0;S.dn=[];S.pa=[];S.cb=0;S.ct=0;S.hs=0;S.fl=0;S.hv=0;gp=0;S.sta=100+10*(S.u.sta||0);S.dash=0;S.dd=[1,0];S.rv=S.u.rev||0;S.pt=0;S.nel=60;if(ch==0)S.w.sword=1;if(ch==1){S.w.palm=1;S.p.mh=S.p.hp=125}if(ch==2)S.w.dart=1;if(ch==3)S.w.poison=1;if(ch==4)S.w.wheel=1;S.p.mh+=12*(S.u.hp||0);if(S.af==2)S.p.mh=Math.round(S.p.mh*.7);S.p.hp=S.p.mh;hide()}
 function mv(){let x=(K.d||K.arrowright?1:0)-(K.a||K.arrowleft?1:0),y=(K.s||K.arrowdown?1:0)-(K.w||K.arrowup?1:0);
 if(jo){x=jo.cx-jo.x;y=jo.cy-jo.y;const l=Math.hypot(x,y);if(l>8){const m=Math.min(l,60)/60;x=x/l*m;y=y/l*m}else x=y=0}
 else{const l=Math.hypot(x,y);if(l){x/=l;y/=l}}return[x,y]}
 function spawn(){const s=S,t=s.t*TS,a=R()*TAU,d=Math.max(W,H)/2+40,i=t<30?0:Math.floor(R()*Math.min(7,1+t/45)),T=TY[i],m=1+t/100;
-s.en.push({x:s.p.x+Math.cos(a)*d,y:s.p.y+Math.sin(a)*d,hp:T.hp*m,mh:T.hp*m,sk:T.sk,st:1+R()*3,slow:0,bt:0,sp:T.sp,r:T.r,d:T.d,c:T.c,k:T.k,dx:1,xv:T.x,fl:0,ot:0})}
-function mk(i,x,y){const T=TY[i],m=1+S.t*TS/100;S.en.push({x,y,hp:T.hp*m,mh:T.hp*m,sk:T.sk,st:2+R()*3,slow:0,bt:0,sp:T.sp,r:T.r,d:T.d,c:T.c,k:T.k,dx:1,xv:T.x,fl:0,ot:0})}
+s.en.push({x:s.p.x+Math.cos(a)*d,y:s.p.y+Math.sin(a)*d,hp:T.hp*m*(S.af==0?1.3:1),mh:T.hp*m*(S.af==0?1.3:1),sk:T.sk,st:1+R()*3,slow:0,bt:0,sp:T.sp*(S.af==1?1.15:1),r:T.r,d:T.d,c:T.c,k:T.k,dx:1,xv:T.x,fl:0,ot:0})}
+function mk(i,x,y){const T=TY[i],m=1+S.t*TS/100;S.en.push({x,y,hp:T.hp*m*(S.af==0?1.3:1),mh:T.hp*m*(S.af==0?1.3:1),sk:T.sk,st:2+R()*3,slow:0,bt:0,sp:T.sp*(S.af==1?1.15:1),r:T.r,d:T.d,c:T.c,k:T.k,dx:1,xv:T.x,fl:0,ot:0})}
 function ebl(e,a,sp,d){S.eb.push({x:e.x,y:e.y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,l:4,d})}
 function boss(n){const a=R()*TAU,s=S;s.en.push({x:s.p.x+Math.cos(a)*(Math.max(W,H)/2+60),y:s.p.y+Math.sin(a)*(Math.max(W,H)/2+60),hp:n==1?2500:7000,mh:n==1?2500:7000,sp:n==1?48:55,r:n==1?32:40,d:n==1?18:26,c:n==1?'梟':'魔',k:'boss'+n,dx:1,sk:n==1?'summon':'burst',st:3,slow:0,bt:0,xv:60,fl:0,ot:0,b:n})}
 function nr(){let b=null,bd=1e9;for(const e of S.en){if(e.dead)continue;const d=(e.x-S.p.x)**2+(e.y-S.p.y)**2;if(d<bd){bd=d;b=e}}return b}
@@ -111,7 +111,7 @@ for(const b of s.eb){b.x+=b.vx*dt;b.y+=b.vy*dt;b.l-=dt;if(p.inv<=0&&Math.hypot(b
 for(let i=0;i<s.en.length;i++){const a=s.en[i];for(let j=i+1;j<s.en.length;j++){const b=s.en[j],dx=b.x-a.x,dy=b.y-a.y,m=(a.r+b.r)*.8;if(Math.abs(dx)<m&&Math.abs(dy)<m){const d=Math.hypot(dx,dy)||1;if(d<m){const f=(m-d)*.15;a.x-=dx/d*f;a.y-=dy/d*f;b.x+=dx/d*f;b.y+=dy/d*f}}}}
 for(const q of s.pj){q.x+=q.vx*dt;q.y+=q.vy*dt;q.l-=dt;for(const e of s.en){if(e.dead||q.h.has(e))continue;if(Math.hypot(e.x-q.x,e.y-q.y)<e.r+q.r){q.h.add(e);hurt(e,q.d,q.vx*.03,q.vy*.03);if(q.sl)e.slow=2;if(--q.pr<=0){q.l=0;break}}}}
 s.pj=s.pj.filter(q=>q.l>0);s.en=s.en.filter(e=>!e.dead);
-const mr=60+35*(s.ps.mag||0)+10*(s.u.pick||0);for(const g of s.gm){const d=Math.hypot(p.x-g.x,p.y-g.y)||1;if(d<mr){g.x+=(p.x-g.x)/d*320*dt;g.y+=(p.y-g.y)/d*320*dt}if(d<14){g.z=1;gp=Math.min(gp+1,10);gt=.6;sfx('gem');s.xp+=g.v*TS*(1+.06*(s.u.exp||0))}}
+const mr=60+35*(s.ps.mag||0)+10*(s.u.pick||0);for(const g of s.gm){const d=Math.hypot(p.x-g.x,p.y-g.y)||1;if(d<mr){g.x+=(p.x-g.x)/d*320*dt;g.y+=(p.y-g.y)/d*320*dt}if(d<14){g.z=1;gp=Math.min(gp+1,10);gt=.6;sfx('gem');s.xp+=g.v*TS*(1+.06*(s.u.exp||0))*(s.af==3?.7:1)}}
 for(const d of s.dr)if(Math.hypot(p.x-d.x,p.y-d.y)<24){d.z=1;sfx('drop');if(d.k=='heart')p.hp=Math.min(p.mh,p.hp+p.mh*.25);else if(d.k=='gourd')s.rage=8;else s.pend++}
 s.dr=s.dr.filter(d=>!d.z);s.rage=Math.max(0,s.rage-dt);if(s.ct>0){s.ct-=dt;if(s.ct<=0)s.cb=0}s.sh=Math.max(0,s.sh-dt*30);s.fl=Math.max(0,s.fl-dt*2);s.hv=Math.max(0,s.hv-dt);gt-=dt;if(gt<=0)gp=0;
 for(const d of s.dn){d.t+=dt;d.y-=40*dt}s.dn=s.dn.filter(d=>d.t<.7);for(const q of s.pa){q.t+=dt;q.x+=q.vx*dt;q.y+=q.vy*dt;q.vx*=.92;q.vy*=.92}s.pa=s.pa.filter(q=>q.t<q.l);if(s.t*TS>=s.et&&!s.over){s.et+=110;openEvt()}
@@ -119,7 +119,7 @@ s.gm=s.gm.filter(g=>!g.z);while(s.xp>=s.nx){s.xp-=s.nx;s.nx=Math.floor(s.nx*1.3+
 for(const f of s.fx)f.t+=dt;s.fx=s.fx.filter(f=>f.t<f.l);
 if(p.hp<=0&&!s.over){if(s.rv>0){s.rv--;sfx('evo');p.hp=p.mh*.4;p.inv=2.5;s.fx.push({k:'sh',x:p.x,y:p.y,m:200,l:.5,t:0});for(const e of s.en){const dx=e.x-p.x,dy=e.y-p.y,d=Math.hypot(dx,dy)||1;if(d<220&&!e.b){e.x+=dx/d*120;e.y+=dy/d*120}}}else{s.over=1;end(0)}}}
 function end(win){const s=S,gn=Math.floor((S.k*.5+S.t*TS/5)*(win?2:1)*(1+.08*(S.u.gold||0))),t=Math.floor(s.t),m=`${Math.floor(t/60)}:${String(t%60).padStart(2,'0')}`;
-M.g+=gn;sv();sfx(win?'win':'lose');show(`<div class="seal">${win?'大勝':'敗北'}</div><h1>${win?'魔頭伏誅':'江湖路遠'}</h1><p>存活 ${m}　擊敗 ${s.k} 人　境界 ${s.lv}<br>獲得銀兩 +${gn}</p><button class="card" onclick="menu()"><b>再入江湖</b></button>`)}
+M.g+=gn;sv();sfx(win?'win':'lose');host('score',{kills:s.k,time:t,win:!!win,ch:s.ch,lv:s.lv,mode:s.dm?'daily':'free',date:s.dk});const sc=scoreOf(s.k,t,win);RK=null;show(`<div class="seal">${s.dm?'每日挑戰・':''}${win?'大勝':'敗北'}</div><h1>${win?'魔頭伏誅':'江湖路遠'}</h1><p>存活 ${m}　擊敗 ${s.k} 人　境界 ${s.lv}<br>獲得銀兩 +${gn}<br>江湖分 ${sc}${EMB?'<br><span id="rk">登錄江湖榜中…</span>':''}</p><div class="row"><button class="card" onclick="menu()"><b>再入江湖</b></button>${s.dm?'<button class="card" onclick="daily()"><b>再戰挑戰</b></button>':''}${EMB?`<button class="card" onclick="board(${s.dm?2:0})"><b>江湖榜</b></button>`:''}</div>`)}
 function openLv(){S.pause=1;S.pend--;sfx('level');S.fl=.5;const pool=[];
 for(const k in SK)if((S.w[k]||0)<5)pool.push({k,w:1,n:SK[k].n,d:SK[k].d,l:(S.w[k]||0)+1});
 for(const k in PS)if((S.ps[k]||0)<5)pool.push({k,w:0,n:PS[k][0],d:PS[k][1],l:(S.ps[k]||0)+1});
@@ -223,5 +223,32 @@ function togglePause(){if(S&&S.pm)resumeGame();else pauseMenu()}
 E('ps').onclick=togglePause;
 function loop(ts){let dt=Math.min(.05,(ts-last)/1000||0);last=ts;if(S.hs>0){S.hs-=dt;dt*=.15}
 if(!S.pause&&!S.over){up(dt);if(S.pend>0&&!S.over&&!S.pause)openLv()}dr();hud();requestAnimationFrame(loop)}
+
+/* ===== 每日挑戰：每天固定角色＋詞綴，所有強化（修煉）全部失效；榜首每日結算送神秘碎片（由外層秘境集卡發放）===== */
+const AFX=[['悍匪橫行','小怪氣血 +30%'],['疾風驟起','小怪移速 +15%'],['體弱多病','氣血上限 −30%'],['大器晚成','經驗獲得 −30%']];
+function todayKey(){const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
+function dInfo(){const k=todayKey();let h=2166136261;for(let i=0;i<k.length;i++){h^=k.charCodeAt(i);h=Math.imul(h,16777619)>>>0}return{k,ch:h%5,af:(h>>>8)%4}}
+function daily(){const i=dInfo();window.bo=0;S.pause=1;show(`<div class="seal">每日挑戰</div><h2>${i.k}</h2><p>今日角色：<b>${CHN[i.ch]}</b><br>今日詞綴：<b>${AFX[i.af][0]}</b>（${AFX[i.af][1]}）<br>修煉強化全部失效，所有人條件相同。${EMB?'<br>榜首每日結算送 🧩神秘碎片 ×3，可無限重打，取最高分。':'<br>（從秘境集卡進入才會上榜）'}</p><div class="row"><button class="card" onclick="newGame(${i.ch},1)"><b>出發</b></button><button class="card" onclick="menu()"><b>返回</b></button></div>`)}
+
+/* ===== 江湖榜（排行榜）：成績交給外層「秘境集卡」登錄，本檔單獨開啟時不顯示 ===== */
+const EMB=(()=>{try{return parent!==window&&/[?&]embed=1/.test(location.search)}catch(e){return false}})();
+const CHN=['劍客','拳師','暗器手','毒師','輪客'];
+let BD=null,BT=2,RK=null,BTO=null;
+const esc=v=>String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function scoreOf(k,t,win){return Math.floor(k)*10+Math.floor(t)*2+(win?1500:0)}
+function host(type,o){if(!EMB)return;try{parent.postMessage(Object.assign({src:'survivor',type},o||{}),location.origin)}catch(e){}}
+function rkHtml(){if(!RK)return '登錄江湖榜中…';if(!RK.ok)return RK.reason=='nologin'?'尚未登入，成績沒有上榜':RK.reason=='expired'?'挑戰已跨日，這局沒有上榜':'成績未登錄';if(RK.mode=='daily')return `今日挑戰榜第 ${RK.chRank||'-'} 名${RK.newBest?'　🎉 今日新高':''}`;return `今日第 ${RK.dailyRank||'-'} 名　總榜第 ${RK.allRank||'-'} 名${RK.newBest?'　🎉 個人新高':''}`}
+addEventListener('message',e=>{const d=e.data;if(e.origin!==location.origin||e.source!==parent||!d||d.src!=='survivor-host')return;
+if(d.type=='board'){BD=d;if(window.bo)drawBoard()}
+else if(d.type=='submitted'){RK=d;const el=E('rk');if(el)el.textContent=rkHtml()}});
+function board(i){if(i!=null)BT=i;window.bo=1;BD=null;show('<div class="seal">江湖榜</div><p>讀取排行榜中…</p>');host('board');clearTimeout(BTO);BTO=setTimeout(()=>{if(window.bo&&!BD)show('<div class="seal">江湖榜</div><p>讀取失敗，請稍後再試。</p><button class="card" onclick="bclose()"><b>返回</b></button>')},7000)}
+function bclose(){window.bo=0;clearTimeout(BTO);menu()}
+function bt(i){BT=i;drawBoard()}
+function drawBoard(){const L=(BT==2?BD.ch:BT?BD.all:BD.daily)||[],me=BD.me||{};
+const rows=L.length?L.map((r,i)=>{const mk=i==0?'🥇':i==1?'🥈':i==2?'🥉':(i+1)+'.',mine=me.nick&&String(r.nick).toLowerCase()==String(me.nick).toLowerCase();
+return `<div style="display:flex;justify-content:space-between;gap:8px;padding:5px 8px;border-bottom:1px solid rgba(235,230,214,.25);${mine?'color:#e8c25a;font-weight:bold':''}"><span style="text-align:left">${mk} ${esc(r.nick)}<small style="opacity:.7">　${CHN[r.ch]||''}${r.win?'・通關':''}</small></span><span>${Number(r.score).toLocaleString()}</span></div>`}).join(''):'<p>還沒有人上榜，快來搶頭香！</p>';
+const mt=BT==2?(me.chRank?`我：挑戰榜第 ${me.chRank} 名　${Number(me.chScore).toLocaleString()} 分`:'我：今日尚未挑戰'):BT?(me.allRank?`我：總榜第 ${me.allRank} 名　${Number(me.allScore).toLocaleString()} 分`:'我：尚未上榜'):(me.dailyRank?`我：今日第 ${me.dailyRank} 名　${Number(me.dailyScore).toLocaleString()} 分`:'我：今日尚未上榜');
+const tb=(i,n)=>`<button class="card" style="width:96px;padding:8px 6px;${BT==i?'border-color:var(--seal);border-width:3px':''}" onclick="bt(${i})"><b style="font-size:18px">${n}</b></button>`;
+show(`<div class="seal">江湖榜</div><h2>${BT==2?'每日挑戰':BT?'歷史最高':'今日最高'}</h2><div class="row" style="margin-bottom:10px">${tb(2,'挑戰榜')}${tb(0,'今日榜')}${tb(1,'總榜')}</div>${BT==2?`<p style="margin:0 0 8px;font-size:13px">今日：${CHN[dInfo().ch]}・${AFX[dInfo().af][0]}（${AFX[dInfo().af][1]}）<br>不計強化；每天結算，榜首自動獲得 🧩神秘碎片 ×3${BD.yday?`<br>昨日榜首：${esc(BD.yday.nick)}（${Number(BD.yday.score).toLocaleString()} 分）`:''}</p>`:''}<div style="width:min(420px,100%)">${rows}</div><p style="margin:10px 0 4px;font-size:14px">${me.nick?mt:'尚未登入，成績不會上榜'}<br><small style="opacity:.75">${BT==2?'挑戰榜每人取當天單局最高分。':''}江湖分 ＝ 擊敗數×10 ＋ 存活秒數×2 ＋ 通關 1500；每人取單局最高分</small></p><button class="card" onclick="bclose()"><b>返回</b></button>`)}
 newGame(0);menu();requestAnimationFrame(loop);
 </script></body></html>

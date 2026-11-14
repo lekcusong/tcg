@@ -56,10 +56,11 @@ function rltYesterdayDate(){const e=new Date;e.setDate(e.getDate()-1);return `${
 const MG_DAILY_RANK1_SHARDS=3;
 const MG_DAILY_GAMES={
   roulette:{zh:"塔羅輪盤",en:"Tarot Roulette",scorePrefix:"roulette_daily_score:",boardKey:d=>`roulette_daily_leaderboard:${d}`,settledKey:d=>`roulette_daily_settled:${d}`,setChampion:n=>rltSetChampion(n)},
-  starrace:{zh:"賽馬場",en:"Star Race",scorePrefix:"star_race_daily_score:",boardKey:d=>`star_race_daily_leaderboard:${d}`,settledKey:d=>`star_race_daily_settled:${d}`,setChampion:n=>srSetChampion(n)}
+  starrace:{zh:"賽馬場",en:"Star Race",scorePrefix:"star_race_daily_score:",boardKey:d=>`star_race_daily_leaderboard:${d}`,settledKey:d=>`star_race_daily_settled:${d}`,setChampion:n=>srSetChampion(n)},
+  survivor:{zh:"江湖倖存者挑戰",en:"Jianghu Challenge",scorePrefix:"survivor_challenge_score:",boardKey:d=>`survivor_challenge_leaderboard:${d}`,settledKey:d=>`survivor_challenge_settled:${d}`,setChampion:n=>Promise.resolve()}
 };
 const MG_SETTLE_GRACE_MS=60000;
-function mgWindowCfg(g){const st=(g==="roulette"?rltSettings:srSettings)||{},def=g==="roulette"?["21:00","22:00"]:["19:00","23:00"],p=(v,d)=>{const x=String(v||d).split(":");return(parseInt(x[0],10)||0)*60+(parseInt(x[1],10)||0)};return{openM:p(st.daily_open_time,def[0]),closeM:p(st.daily_close_time,def[1])}}
+function mgWindowCfg(g){if(g==="survivor")return{openM:0,closeM:1440};const st=(g==="roulette"?rltSettings:srSettings)||{},def=g==="roulette"?["21:00","22:00"]:["19:00","23:00"],p=(v,d)=>{const x=String(v||d).split(":");return(parseInt(x[0],10)||0)*60+(parseInt(x[1],10)||0)};return{openM:p(st.daily_open_time,def[0]),closeM:p(st.daily_close_time,def[1])}}
 /* 「場次日期」：現在在開放時段內（或剛結束）就是今天開的那一場；還沒到今天開放時間就算昨天那一場。跨午夜的時段也成立。 */
 function mgDayKey(g){const{openM}=mgWindowCfg(g),n=new Date();return n.getHours()*60+n.getMinutes()>=openM?Ii():IiOffset(1)}
 function mgWindowEnded(g,date){const{openM,closeM}=mgWindowCfg(g);if(openM===closeM)return false;const[y,m,d]=date.split("-").map(Number),end=new Date(y,m-1,d,Math.floor(closeM/60),closeM%60,0,0);if(openM>closeM)end.setDate(end.getDate()+1);return Date.now()>=end.getTime()+MG_SETTLE_GRACE_MS}

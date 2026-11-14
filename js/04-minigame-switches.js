@@ -183,6 +183,57 @@ window.bpOpenOverlay = bpOpenOverlay;
    - 開啟前先重新讀一次 GM 開關（mgFresh，id = survivor）；GM 本人不受影響，一般玩家被關閉時只顯示提示。
    - 開啟時暫停主遊戲背景音樂，關閉後（原本在播的話）恢復。遊戲自己的存檔（銀兩、修煉）放在 localStorage 的 wxs1 / wxs_mute，跟主遊戲互不干擾。
    - 關閉方式：上方 ✕ 返回、Esc、或 iframe 內 postMessage({src:"survivor",type:"close"})。 */
+/* ---- 江湖榜：每人每天一筆（今日榜）＋歷史最高一筆（總榜），都取單局最高分；跟三消同一套 kv 模式（Vl 比較後寫入、a.listValues 讀榜）----
+   分數由這裡用「擊敗數、存活秒數、是否通關」重算，不直接採用遊戲回報的分數。
+   key：survivor_daily_score:<日期>:<暱稱小寫>、survivor_best:<暱稱小寫>。每日挑戰（不計強化）另存 survivor_challenge_score:<日期(Ii)>:<暱稱小寫>，每天由 09-roulette.js 的每日結算（MG_DAILY_GAMES.survivor）發第一名神秘碎片 ×3。 */
+const SV_DAILY_PREFIX = "survivor_daily_score:", SV_BEST_PREFIX = "survivor_best:", SV_CH_PREFIX = "survivor_challenge_score:";
+let svLastSubmit = 0;
+function svScore(k, t, w) { return Math.floor(k) * 10 + Math.floor(t) * 2 + (w ? 1500 : 0); }
+async function svStandings(prefix) {
+  let ents = []; try { ents = await a.listValues(prefix); } catch (e) { ents = []; }
+  return (ents || []).map(e => {
+    let d = null; try { d = JSON.parse(e.value); } catch (err) { }
+    if (!d) return null;
+    return { nick: d.nick || e.key.slice(prefix.length), score: d.score || 0, lastAt: d.lastAt || 0, win: !!d.win, kills: d.kills || 0, time: d.time || 0, ch: d.ch | 0 };
+  }).filter(Boolean).filter(p => p.score > 0).sort((x, y) => y.score - x.score || x.lastAt - y.lastAt);
+}
+async function svPutBest(key, rec) {
+  const raw = await Vl(key, t => { const s = t ? JSON.parse(t) : { score: 0 }; return JSON.stringify(rec.score > (s.score || 0) ? rec : s); }, JSON.stringify({ score: 0 }));
+  return raw ? JSON.parse(raw) : null;
+}
+function svRankOf(list, nick) { const n = String(nick).toLowerCase(); const i = list.findIndex(p => String(p.nick).toLowerCase() === n); return i < 0 ? 0 : i + 1; }
+async function svSubmit(d) {
+  const nick = zl && zl.nickname;
+  if (!nick) return { ok: false, reason: "nologin" };
+  if (Date.now() - svLastSubmit < 3000) return { ok: false, reason: "busy" };
+  svLastSubmit = Date.now();
+  const k = Math.floor(Number(d.kills)), tm = Math.floor(Number(d.time));
+  if (!(k >= 0 && k <= 20000) || !(tm >= 10 && tm <= 900)) return { ok: false, reason: "invalid" };
+  const win = !!d.win, score = svScore(k, tm, win), key = nick.toLowerCase();
+  const rec = { nick, score, win, kills: k, time: tm, ch: Math.max(0, Math.min(4, d.ch | 0)), lastAt: Date.now() };
+  if (d.mode === "daily") {
+    // 每日挑戰：日期用本地日期 Ii()（跟每日結算同一套），跨日才打完的不算
+    const cd = Ii();
+    if (String(d.date) !== cd) return { ok: false, reason: "expired" };
+    const mine = await svPutBest(SV_CH_PREFIX + cd + ":" + key, rec);
+    const cl = await svStandings(SV_CH_PREFIX + cd + ":");
+    return { ok: true, mode: "daily", score, chRank: svRankOf(cl, nick), newBest: !!(mine && mine.lastAt === rec.lastAt && mine.score === score) };
+  }
+  const day = ys();
+  await svPutBest(SV_DAILY_PREFIX + day + ":" + key, rec);
+  const best = await svPutBest(SV_BEST_PREFIX + key, rec);
+  const [dl, al] = await Promise.all([svStandings(SV_DAILY_PREFIX + day + ":"), svStandings(SV_BEST_PREFIX)]);
+  return { ok: true, score, dailyRank: svRankOf(dl, nick), allRank: svRankOf(al, nick), newBest: !!(best && best.lastAt === rec.lastAt && best.score === score) };
+}
+async function svBoard() {
+  const nick = (zl && zl.nickname) || "", day = ys();
+  const [dl, al, cl] = await Promise.all([svStandings(SV_DAILY_PREFIX + day + ":"), svStandings(SV_BEST_PREFIX), svStandings(SV_CH_PREFIX + Ii() + ":")]);
+  const mk = (l, n) => { const r = svRankOf(l, n); return { rank: r, score: r ? l[r - 1].score : 0 }; };
+  const z = { rank: 0, score: 0 }, md = nick ? mk(dl, nick) : z, ma = nick ? mk(al, nick) : z, mc = nick ? mk(cl, nick) : z;
+  let yday = null;   // 昨天挑戰榜第一名（每日結算後才有）
+  try { const r = await a.get("survivor_challenge_leaderboard:" + IiOffset(1)); const b = r ? JSON.parse(r.value) : null; if (b && b.top && b.top[0]) yday = { nick: b.top[0].nick, score: b.top[0].score }; } catch (e) { }
+  return { daily: dl.slice(0, 10), all: al.slice(0, 10), ch: cl.slice(0, 10), yday, me: nick ? { nick, dailyRank: md.rank, dailyScore: md.score, allRank: ma.rank, allScore: ma.score, chRank: mc.rank, chScore: mc.score } : null };
+}
 function svOpenOverlay(ev) { if (ev && ev.preventDefault) ev.preventDefault(); svOpenAsync(); return false; }
 async function svOpenAsync() {
   if (document.getElementById("sv-overlay")) return;
@@ -213,7 +264,13 @@ async function svOpenAsync() {
     box.remove(); document.body.classList.remove("sv-open");
     if (bgmWas && bgm) { try { bgm.play().catch(() => { }); } catch (e) { } }
   };
-  const onMsg = e => { if (e.origin === location.origin && e.source === fr.contentWindow && e.data && e.data.src === "survivor" && e.data.type === "close") close(); };
+  const reply = (type, o) => { try { fr.contentWindow.postMessage(Object.assign({ src: "survivor-host", type }, o || {}), location.origin); } catch (e) { } };
+  const onMsg = e => {
+    if (e.origin !== location.origin || e.source !== fr.contentWindow || !e.data || e.data.src !== "survivor") return;
+    if (e.data.type === "close") close();
+    else if (e.data.type === "score") svSubmit(e.data).then(r => reply("submitted", r), () => reply("submitted", { ok: false, reason: "error" }));
+    else if (e.data.type === "board") svBoard().then(r => reply("board", r), () => { /* 讀取失敗：遊戲端 7 秒後會顯示失敗提示 */ });
+  };
   const onKey = e => { if (e.key === "Escape") close(); };
   x.onclick = close; window.addEventListener("message", onMsg); document.addEventListener("keydown", onKey);
 }

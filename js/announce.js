@@ -8,32 +8,26 @@
    英文版是選填：沒寫 en 的話，英文介面也顯示中文。
    這個是「每個版本一次」的更新說明；原本 GM 面板的「📜 公告 / GM 留言」另外照舊，兩者互不影響。 */
 const ANNOUNCE = {
-  v: '2026-11-14',
-  title: '新小遊戲上線：⚔️ 江湖倖存者（武俠割草生存）',
+  v: '2026-11-14c',
+  title: '⚔️ 江湖倖存者新增「每日挑戰」：不計強化，榜首送神秘碎片',
   add: [
-    '<b>⚔️ 江湖倖存者</b>：到「小遊戲」分頁，點最右邊的 ⚔️ 就能開玩。撐過五個時辰（5 分鐘）、擊敗魔頭就過關；武功會自動出招，你只要負責走位',
-    '<b>五種角色</b>：劍客（飛劍訣）、拳師（降龍掌）、暗器手（漫天花雨）、毒師（蝕骨毒霧）、輪客（迴旋輪），各有專屬被動',
-    '<b>操作</b>：手機拖曳螢幕移動，電腦用 WASD；右下角「閃」可以閃避（會耗體力）、左下「停」可暫停或放棄本局',
-    '<b>升級與進化</b>：殺敵撿經驗升級，挑選武功與內功；武功滿級再配上指定內功，可以進化成絕學。路上還會遇到「奇遇」事件，二選一賭運氣',
-    '<b>修煉</b>：每局結算的銀兩可以在主頁「修煉」換永久強化（筋骨、內勁、身法、氣海、悟性、不死心法、財運、輕身、拾遺）'
+    '<b>每日挑戰</b>：在江湖倖存者主頁點「每日挑戰」。每天固定一位角色和一個詞綴（悍匪橫行／疾風驟起／體弱多病／大器晚成），<b>修煉的永久強化全部失效</b>，所有人條件相同，比的是操作和選技能',
+    '<b>挑戰榜與獎勵</b>：可以無限重打，每人取當天單局最高分。每天結算，<b>第一名自動獲得 🧩神秘碎片 ×3</b>（直接放進背包）；「江湖榜」多了「挑戰榜」頁籤，也看得到昨天的榜首',
+    '<b>注意</b>：挑戰以本地日期為準，跨日才打完的那局不會上榜；中途放棄不計分'
   ],
   chg: [
-    '<b>小遊戲分頁</b>：多了 ⚔️ 江湖倖存者 的入口；GM 總開關也能單獨開關這個遊戲',
-    '<b>注意</b>：江湖倖存者的銀兩與修煉進度只存在你自己的瀏覽器裡，跟遊戲內的 ✦ 沒有互通；清除瀏覽器資料就會歸零。開啟時會暫停背景音樂，返回後自動恢復'
+    '江湖榜（今日榜／總榜）與武俠配樂也已上線；一般模式的排行仍然沒有獎勵，也照常吃修煉強化'
   ],
   fix: [],
   en: {
-    title: 'New minigame: ⚔️ Jianghu Survivors (wuxia survival action)',
+    title: '⚔️ Jianghu Survivors adds the Daily Challenge: no upgrades, #1 wins Mystery Shards',
     add: [
-      '<b>⚔️ Jianghu Survivors</b>: open the Minigames tab and tap the ⚔️ tab on the far right. Survive five "hours" (5 minutes) and defeat the demon lord to win; your skills fire automatically, you just handle the movement',
-      '<b>Five heroes</b>: Swordsman (Flying Sword), Brawler (Dragon Palm), Dart Thrower (Flower Rain), Poisoner (Bone-Eating Mist) and Wheel Master (Boomerang Wheel), each with a unique passive',
-      '<b>Controls</b>: drag the screen on mobile, WASD on desktop; the 閃 button in the lower right dodges (costs stamina) and the 停 button in the lower left pauses or abandons the run',
-      '<b>Leveling and evolution</b>: collect XP to level up and pick skills and inner arts; a maxed skill plus its matching inner art evolves into an ultimate. Random "encounters" offer a two-way gamble',
-      '<b>Training</b>: silver earned at the end of each run buys permanent upgrades from the main page (health, power, speed, stamina, XP, revive, silver bonus, dodge cost, pickup range)'
+      '<b>Daily Challenge</b>: tap "每日挑戰" on the Jianghu Survivors main page. Each day has one fixed hero and one modifier (Bandit Tide / Gale / Frail / Late Bloomer), and <b>all permanent training upgrades are disabled</b> so everyone plays under the same conditions',
+      '<b>Challenge board and reward</b>: retry as often as you like; your best single run of the day counts. Settled daily, <b>the #1 player automatically receives 🧩 Mystery Shard x3</b> in their inventory. The Jianghu Board has a new Challenge tab and shows yesterday\'s winner',
+      '<b>Note</b>: the challenge uses your local date, so a run that finishes after midnight is not ranked; abandoned runs do not count'
     ],
     chg: [
-      '<b>Minigames tab</b>: added the ⚔️ Jianghu Survivors entry; the GM master switch can open or close this game on its own',
-      '<b>Note</b>: silver and training progress are stored only in your own browser and are separate from the in-game ✦; clearing browser data resets them. Background music pauses while it is open and resumes when you return'
+      'The Jianghu Board (daily / all-time) and the wuxia music are also live; normal runs still have no reward and still use your training upgrades'
     ],
     fix: []
   }
