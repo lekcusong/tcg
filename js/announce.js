@@ -8,38 +8,32 @@
    英文版是選填：沒寫 en 的話，英文介面也顯示中文。
    這個是「每個版本一次」的更新說明；原本 GM 面板的「📜 公告 / GM 留言」另外照舊，兩者互不影響。 */
 const ANNOUNCE = {
-  v: '2026-11-02',
-  title: '塔羅三消大更新：新增「愚者」萬能牌與特殊組合、開局抽牌、時間獎勵，操作也更順手',
+  v: '2026-11-14',
+  title: '新小遊戲上線：⚔️ 江湖倖存者（武俠割草生存）',
   add: [
-    '<b>愚者（萬能牌）</b>：筆直消 5 連以上會生成一張 🃏 愚者。它不能自己三消，要靠「交換」來發動；被別的爆炸波及時，會清掉盤面上數量最多的花色',
-    '<b>特殊組合</b>：交換兩顆特殊方塊會有大招——<b>愚者＋一般方塊</b>清掉全盤同花色；<b>愚者＋行／列／十字</b>讓全盤同花色都變成那種特殊方塊一起引爆；<b>愚者＋愚者</b>清空整個盤面；<b>兩顆行／列／十字互換</b>則是兩格的整行＋整列全清',
-    '<b>開局抽牌</b>：每局開始前先抽 3 張大阿爾克那，選 1 張帶進這局：星星（開局 +10 秒）、力量（連鎖每波倍率 +0.75，上限 ×4）、惡魔（得分 ×1.5，但時間 −15 秒）、高塔（每 20 秒隨機炸掉一整行）、魔術師（開局盤面送 2 張愚者）、太陽（連鎖倍率從 ×1.25 起跳）',
-    '<b>時間獎勵</b>：4 消 +1 秒、十字／愚者 +2 秒、特殊組合另有加成、連鎖到第 4 波 +2 秒、之後每多一波 +1 秒；畫面上會跳出 ⏱ 提示',
-    '<b>操作提示</b>：5 秒沒動作時，會閃出一步可以走的棋',
-    '<b>滑動操作</b>：手指（或滑鼠）按住方塊往旁邊一拖就能交換，原本的「點兩格」也照舊可用'
+    '<b>⚔️ 江湖倖存者</b>：到「小遊戲」分頁，點最右邊的 ⚔️ 就能開玩。撐過五個時辰（5 分鐘）、擊敗魔頭就過關；武功會自動出招，你只要負責走位',
+    '<b>五種角色</b>：劍客（飛劍訣）、拳師（降龍掌）、暗器手（漫天花雨）、毒師（蝕骨毒霧）、輪客（迴旋輪），各有專屬被動',
+    '<b>操作</b>：手機拖曳螢幕移動，電腦用 WASD；右下角「閃」可以閃避（會耗體力）、左下「停」可暫停或放棄本局',
+    '<b>升級與進化</b>：殺敵撿經驗升級，挑選武功與內功；武功滿級再配上指定內功，可以進化成絕學。路上還會遇到「奇遇」事件，二選一賭運氣',
+    '<b>修煉</b>：每局結算的銀兩可以在主頁「修煉」換永久強化（筋骨、內勁、身法、氣海、悟性、不死心法、財運、輕身、拾遺）'
   ],
   chg: [
-    '<b>時間規則</b>：剩餘時間最多累積到 90 秒，單局最長 120 秒，時間獎勵不會無限續命',
-    '<b>特殊方塊外觀</b>：行／列／十字方塊右下角會標出 ↔ ↕ ✚，一眼分得出是哪一種',
-    '<b>連鎖顯示</b>：第 2 波起才顯示連鎖倍率；產生特殊方塊或特殊組合時有專屬音效，特殊組合會顯示「✨ 特殊組合」',
-    '<b>動畫節奏</b>：交換、消除、掉落的動畫速度加快，連鎖打起來更爽快'
+    '<b>小遊戲分頁</b>：多了 ⚔️ 江湖倖存者 的入口；GM 總開關也能單獨開關這個遊戲',
+    '<b>注意</b>：江湖倖存者的銀兩與修煉進度只存在你自己的瀏覽器裡，跟遊戲內的 ✦ 沒有互通；清除瀏覽器資料就會歸零。開啟時會暫停背景音樂，返回後自動恢復'
   ],
   fix: [],
   en: {
-    title: 'Tarot Match-3 big update: the Fool wild tile, special combos, a starting card draw and time bonuses, plus smoother controls',
+    title: 'New minigame: ⚔️ Jianghu Survivors (wuxia survival action)',
     add: [
-      '<b>The Fool (wild)</b>: a straight line of 5 or more creates a 🃏 Fool. It cannot match on its own and is triggered by swapping; if caught in another blast, it clears the most common suit on the board',
-      '<b>Special combos</b>: swap two special tiles for a big effect. <b>Fool + normal tile</b> clears every tile of that suit; <b>Fool + row/column/cross</b> turns every tile of that suit into that special and detonates them all; <b>Fool + Fool</b> clears the whole board; <b>two row/column/cross tiles</b> clear both full rows and columns',
-      '<b>Starting draw</b>: before each run, draw 3 Major Arcana and take 1 into the run: The Star (+10 seconds at the start), Strength (+0.75 per chain wave, cap x4), The Devil (score x1.5 but -15 seconds), The Tower (a random row explodes every 20 seconds), The Magician (start with 2 Fools), The Sun (chain multiplier starts at x1.25)',
-      '<b>Time bonuses</b>: a 4-match gives +1 second, cross/Fool +2, special combos add more, reaching chain wave 4 gives +2 and each wave after that +1. A ⏱ pop-up shows each gain',
-      '<b>Hints</b>: after 5 seconds without a move, one possible move starts to flash',
-      '<b>Swipe controls</b>: press a tile and drag sideways to swap. Tapping two tiles still works'
+      '<b>⚔️ Jianghu Survivors</b>: open the Minigames tab and tap the ⚔️ tab on the far right. Survive five "hours" (5 minutes) and defeat the demon lord to win; your skills fire automatically, you just handle the movement',
+      '<b>Five heroes</b>: Swordsman (Flying Sword), Brawler (Dragon Palm), Dart Thrower (Flower Rain), Poisoner (Bone-Eating Mist) and Wheel Master (Boomerang Wheel), each with a unique passive',
+      '<b>Controls</b>: drag the screen on mobile, WASD on desktop; the 閃 button in the lower right dodges (costs stamina) and the 停 button in the lower left pauses or abandons the run',
+      '<b>Leveling and evolution</b>: collect XP to level up and pick skills and inner arts; a maxed skill plus its matching inner art evolves into an ultimate. Random "encounters" offer a two-way gamble',
+      '<b>Training</b>: silver earned at the end of each run buys permanent upgrades from the main page (health, power, speed, stamina, XP, revive, silver bonus, dodge cost, pickup range)'
     ],
     chg: [
-      '<b>Time rules</b>: remaining time is capped at 90 seconds and a run lasts at most 120 seconds, so bonuses cannot extend a run forever',
-      '<b>Special tile look</b>: row/column/cross tiles now show ↔ ↕ ✚ in the corner so you can tell them apart',
-      '<b>Chain display</b>: the chain multiplier shows from wave 2 on; creating specials and special combos have their own sound, and combos show "✨ Special combo"',
-      '<b>Animation pace</b>: swap, clear and fall animations are faster, so chains feel snappier'
+      '<b>Minigames tab</b>: added the ⚔️ Jianghu Survivors entry; the GM master switch can open or close this game on its own',
+      '<b>Note</b>: silver and training progress are stored only in your own browser and are separate from the in-game ✦; clearing browser data resets them. Background music pauses while it is open and resumes when you return'
     ],
     fix: []
   }

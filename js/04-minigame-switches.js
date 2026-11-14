@@ -9,6 +9,7 @@ const MG_LIST = [
   { id: "potion", icon: "⚗️", zh: "煉金藥水排序", en: "Alchemy Sort" },
   { id: "ballpit", icon: "🎱", zh: "塔羅彈珠", en: "Tarot Ball Pit" },
   { id: "backpack", icon: "🎒", zh: "塔羅背包亂鬥", en: "Backpack Brawl" },
+  { id: "survivor", icon: "⚔️", zh: "江湖倖存者", en: "Jianghu Survivors" },
   { id: "starrace", icon: "🐎", zh: "賽馬場", en: "Star Race" },
   { id: "roulette", icon: "🎡", zh: "塔羅輪盤", en: "Tarot Roulette" },
   { id: "appraise", icon: "🔍", zh: "古董鑒定", en: "Antique Appraisal" }
@@ -177,6 +178,46 @@ async function bpOpenAsync() {
   x.onclick = close; window.addEventListener("message", onMsg); document.addEventListener("keydown", onKey);
 }
 window.bpOpenOverlay = bpOpenOverlay;
+
+/* ===== ⚔️ 江湖倖存者：做法跟背包亂鬥一樣，在小遊戲分頁內以全螢幕 iframe 開啟（survivor/index.html，單檔獨立遊戲）=====
+   - 開啟前先重新讀一次 GM 開關（mgFresh，id = survivor）；GM 本人不受影響，一般玩家被關閉時只顯示提示。
+   - 開啟時暫停主遊戲背景音樂，關閉後（原本在播的話）恢復。遊戲自己的存檔（銀兩、修煉）放在 localStorage 的 wxs1 / wxs_mute，跟主遊戲互不干擾。
+   - 關閉方式：上方 ✕ 返回、Esc、或 iframe 內 postMessage({src:"survivor",type:"close"})。 */
+function svOpenOverlay(ev) { if (ev && ev.preventDefault) ev.preventDefault(); svOpenAsync(); return false; }
+async function svOpenAsync() {
+  if (document.getElementById("sv-overlay")) return;
+  let ok = true; try { ok = await mgFresh("survivor"); } catch (e) { }
+  if (!ok) { mgLinkClick("survivor"); return; }
+  if (document.getElementById("sv-overlay")) return;
+  const bgm = document.getElementById("bgm-audio"); const bgmWas = !!(bgm && !bgm.paused);
+  if (bgmWas) { try { bgm.pause(); } catch (e) { } }
+  if (!document.getElementById("sv-overlay-css")) {
+    const st = document.createElement("style"); st.id = "sv-overlay-css";
+    st.textContent = "#sv-overlay{position:fixed;inset:0;z-index:3000;background:#a9b8a6;display:flex;flex-direction:column}" +
+      "#sv-overlay .sv-bar{flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 10px;background:#120a1e;border-bottom:1px solid #4a3a20;color:#e8c468;font:600 13px/1.2 Cinzel,'Noto Sans TC',serif}" +
+      "#sv-overlay .sv-x{cursor:pointer;border:1px solid #c9a24a;background:transparent;color:#e8c468;border-radius:8px;padding:4px 12px;font:inherit}" +
+      "#sv-overlay iframe{flex:1 1 auto;width:100%;border:0;background:#a9b8a6}" +
+      "body.sv-open{overflow:hidden}";
+    document.head.appendChild(st);
+  }
+  const box = document.createElement("div"); box.id = "sv-overlay";
+  const bar = document.createElement("div"); bar.className = "sv-bar";
+  const ttl = document.createElement("span"); ttl.textContent = "⚔️ " + dc("江湖倖存者", "Jianghu Survivors");
+  const x = document.createElement("button"); x.className = "sv-x"; x.textContent = "✕ " + dc("返回", "Back");
+  bar.appendChild(ttl); bar.appendChild(x);
+  const fr = document.createElement("iframe"); fr.title = "Jianghu Survivors"; fr.allow = "autoplay";
+  fr.src = "survivor/index.html?embed=1" + (ku() ? "&gm=1" : "") + "&t=" + Date.now();
+  box.appendChild(bar); box.appendChild(fr); document.body.appendChild(box); document.body.classList.add("sv-open");
+  const close = () => {
+    window.removeEventListener("message", onMsg); document.removeEventListener("keydown", onKey);
+    box.remove(); document.body.classList.remove("sv-open");
+    if (bgmWas && bgm) { try { bgm.play().catch(() => { }); } catch (e) { } }
+  };
+  const onMsg = e => { if (e.origin === location.origin && e.source === fr.contentWindow && e.data && e.data.src === "survivor" && e.data.type === "close") close(); };
+  const onKey = e => { if (e.key === "Escape") close(); };
+  x.onclick = close; window.addEventListener("message", onMsg); document.addEventListener("keydown", onKey);
+}
+window.svOpenOverlay = svOpenOverlay;
 
 /* ===== 延後載入 Lazy-load：塔羅三消 / 煉金藥水 / 塔羅彈珠（三個檔合計約 270KB）=====
    玩家第一次點進該小遊戲才下載。index.html 裡用「type=text/plain 且帶 data-lazy=m3|pot|bp 的 script 標記」
