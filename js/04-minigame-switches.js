@@ -240,7 +240,7 @@ async function svBoard() {
    所以較舊的裝置不會把進度蓋回去。強化等級、銀兩上限在這裡驗證。 ---- */
 const SV_SAVE_PREFIX = "survivor_save:";
 const SV_UPG = { hp: [60, 5], atk: [80, 5], spd: [60, 5], sta: [60, 5], exp: [80, 5], rev: [300, 2], gold: [70, 5], dash: [70, 4], pick: [50, 5],
-  b_crit: [90, 5], b_cdmg: [90, 5], b_chain: [90, 5], c_asura: [600, 1], b_arm: [90, 5], b_heal: [90, 5], b_last: [90, 5], c_gold: [600, 1] };   // [單價, 等級上限]，要跟 survivor/index.html 的 UP / UPB 一致
+  b_crit: [90, 5], b_cdmg: [90, 5], b_chain: [90, 5], c_asura: [600, 1], b_arm: [90, 5], b_heal: [90, 5], b_last: [90, 5], c_gold: [600, 1], wu: [100, 3] };   // [單價, 等級上限]，要跟 survivor/index.html 的 UP / UPB 一致
 function svCleanSave(m) {
   if (!m || typeof m !== "object") return null;
   const g = Math.floor(Number(m.g)); if (!(g >= 0 && g <= 20000000)) return null;
