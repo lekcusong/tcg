@@ -8,15 +8,20 @@
    英文版是選填：沒寫 en 的話，英文介面也顯示中文。
    這個是「每個版本一次」的更新說明；原本 GM 面板的「📜 公告 / GM 留言」另外照舊，兩者互不影響。 */
 const ANNOUNCE = {
-  v: '2026-11-20',
+  v: '2026-11-20b',
   title: '🌙 新小遊戲「月影塔羅舖」上線：累計營業送神秘碎片、有排行榜',
   add: [
     '<b>月影塔羅舖</b>：在「小遊戲」分頁點 🌙 進入。經營一間塔羅小店，白天接待客人、打烊後外出進貨與合成，每天都是一次新的經營',
     '<b>營業里程碑</b>：累計營業天數<b>第一次</b>達到 <b>10、20、30 天</b>，各送 <b>🧩神秘碎片 ×10</b>（直接放進背包，信箱也會通知）。重開新局會接著累計，每個里程碑只送一次',
     '<b>排行榜</b>：遊戲主頁和打烊畫面都有「🏆 排行榜與里程碑」，可看累計天數榜、賺錢榜（累計營業額，是店內金幣），前 20 名＋你的名次',
-    '<b>雲端存檔</b>：存檔、圖鑑、結局會自動同步，手機和電腦登入同一個帳號就能接著玩'
+    '<b>雲端存檔</b>：存檔、圖鑑、結局會自動同步，手機和電腦登入同一個帳號就能接著玩',
+    '<b>新手教學</b>：第一次開店會有圖示引導，帶你走完背包、開店、賣貨、打烊；右上角「？」可以重看'
   ],
-  chg: [],
+  chg: [
+    '月影塔羅舖：<b>點一下貨品＝查看貨品資料</b>（種類、等級、格數、基礎價值、進價），手機也看得到；備貨時資料卡上有「↻ 旋轉」按鈕',
+    '月影塔羅舖：營業中貨品<b>只能拖到櫃檯</b>賣出，點一下不會再直接上櫃檯，避免誤觸',
+    '「🎒 塔羅背包亂鬥」已從小遊戲分頁移除'
+  ],
   fix: [],
   en: {
     title: '🌙 New minigame "Moonshadow Tarot Shop": Mystery Shards for total days played, with leaderboards',
@@ -24,9 +29,14 @@ const ANNOUNCE = {
       '<b>Moonshadow Tarot Shop</b>: tap 🌙 in the Minigames tab. Run a small tarot shop: serve customers by day, restock and craft after closing',
       '<b>Milestones</b>: the <b>first time</b> your total days open reaches <b>10, 20 and 30</b>, you get <b>🧩 Mystery Shard x10</b> each (added to your inventory, with a mailbox notice). Days keep adding up across new runs; each milestone pays once',
       '<b>Leaderboards</b>: tap "🏆 排行榜與里程碑" on the main page or the closing screen for the total-days board and the earnings board (total revenue in shop coins), top 20 plus your rank',
-      '<b>Cloud save</b>: saves, the codex and endings sync automatically, so you can continue on another device with the same account'
+      '<b>Cloud save</b>: saves, the codex and endings sync automatically, so you can continue on another device with the same account',
+      '<b>Tutorial</b>: your first shop day now has a guided walkthrough (bag, opening, selling, closing); replay it with the "?" button'
     ],
-    chg: [],
+    chg: [
+      'Moonshadow Tarot Shop: <b>tap an item to see its details</b> (type, tier, size, base value, cost), including on phones; while stocking, the card has a "↻ Rotate" button',
+      'Moonshadow Tarot Shop: while selling, items can <b>only be dragged</b> to the counter; tapping no longer places them, so no more accidental picks',
+      '"🎒 Backpack Brawl" has been removed from the Minigames tab'
+    ],
     fix: []
   }
 };

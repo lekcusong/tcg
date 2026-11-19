@@ -41,7 +41,7 @@ button.c{text-align:center;background:linear-gradient(#e8c46a,#c99a3c);color:#2a
 .shelf{display:grid;grid-template-columns:repeat(6,1fr);grid-auto-rows:40px;gap:3px;background:#0007;padding:4px;border-radius:8px;margin-bottom:8px}
 .blk{display:flex;align-items:center;justify-content:center;font-size:22px;border:1px solid #e8c46a77;border-radius:6px;background:#3b1d5c;cursor:pointer;overflow:hidden}.blk img{max-width:90%;max-height:90%}.blk.mt{border-color:#7bd88f}.blk.dim{opacity:.35;cursor:default}
 .bag{position:relative;width:100%;max-width:340px;margin:0 auto 8px;background:#0007;border:1px solid #e8c46a55;border-radius:8px}.cells{position:absolute;inset:0;display:grid;grid-template-columns:repeat(6,1fr)}.cells i{border:1px solid #f1e4c814}.bag .blk{position:absolute}#hl{position:absolute;display:none;pointer-events:none;z-index:5;border-radius:6px}
-.tray{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}.blk{touch-action:none;user-select:none;-webkit-touch-callout:none}#lptip{position:fixed;z-index:120;background:#2a1445f2;color:#f6ecd0;border:1px solid #e8c46a;border-radius:8px;padding:7px 10px;font-size:12px;line-height:1.6;pointer-events:none;box-shadow:0 4px 14px #000a;white-space:nowrap}.blk.ghost{opacity:.85;box-shadow:0 0 14px #ffb55a}#cz{border:1px dashed #e8c46a88}
+.tray{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}.blk{touch-action:none;user-select:none;-webkit-touch-callout:none}#lptip{position:fixed;z-index:120;background:#2a1445f2;color:#f6ecd0;border:1px solid #e8c46a;border-radius:8px;padding:7px 10px;font-size:12px;line-height:1.6;box-shadow:0 4px 14px #000a;white-space:nowrap}#lptip button{margin-top:4px;padding:3px 10px;font-size:12px}.blk.ghost{opacity:.85;box-shadow:0 0 14px #ffb55a}#cz{border:1px dashed #e8c46a88}
 #snd{padding:1px 8px;text-align:center;font-size:14px;background:#0005}
 .fl{position:absolute;left:50%;top:38%;font-size:20px;font-weight:700;color:#ffd978;text-shadow:0 0 8px #000;pointer-events:none;z-index:6;white-space:nowrap;animation:fl 1.3s ease-out forwards}
 @keyframes fl{from{transform:translate(-50%,0);opacity:1}to{transform:translate(-50%,-80px);opacity:0}}
@@ -179,34 +179,36 @@ function canPut(o,x,y,ign){if(x<0||y<0||x+o.w>GW||y+o.h>rows())return false;retu
 function autoPlace(o){for(const [w,h] of [[o.w,o.h],[o.h,o.w]])for(let y=0;y<rows();y++)for(let x=0;x<GW;x++){const t={...o,w,h};if(canPut(t,x,y)){bag.push({...t,x,y});return true}}return false}
 function offFrom(){off={};cord.forEach(u=>{const o=bag.find(b=>b.u===u);off[o.id]=(off[o.id]||0)+1})}
 function bagH(){const R=rows(),cats=MODE==="sell"&&Q[qi].w?Q[qi].w.map(x=>x.cat):[];
- return `<div id="bag" class="bag" style="aspect-ratio:${GW}/${R}"><div class="cells" style="grid-template-rows:repeat(${R},1fr)">${"<i></i>".repeat(GW*R)}</div><div id="hl"></div>`+bag.filter(o=>!cord.includes(o.u)).map(o=>{const i=IT.find(x=>x.id===o.id);return `<div class="blk${cats.includes(i.cat)?" mt":""}" data-u="${o.u}" title="${i.n}\n${CAT[i.cat]}・${TL[i.t]}　${SZ[i.id][0]}×${SZ[i.id][1]}格\n基礎價值 ${i.p}　進價 ${i.cost}" style="left:${o.x/GW*100}%;top:${o.y/R*100}%;width:${o.w/GW*100}%;height:${o.h/R*100}%">${IC(i)}</div>`}).join("")+`</div>`}
+ return `<div id="bag" class="bag" style="aspect-ratio:${GW}/${R}"><div class="cells" style="grid-template-rows:repeat(${R},1fr)">${"<i></i>".repeat(GW*R)}</div><div id="hl"></div>`+bag.filter(o=>!cord.includes(o.u)).map(o=>{const i=IT.find(x=>x.id===o.id);return `<div class="blk${cats.includes(i.cat)?" mt":""}" data-u="${o.u}" style="left:${o.x/GW*100}%;top:${o.y/R*100}%;width:${o.w/GW*100}%;height:${o.h/R*100}%">${IC(i)}</div>`}).join("")+`</div>`}
 function trayH(){const sp=MODE==="sup",pool=sp?sup:tray;
- return pool.length?`<div class="h">${sp?"供貨商的貨（拖進背包＝買下，點一下旋轉，長按看資訊）":"待擺放（拖進背包，點一下旋轉，長按看資訊）"}</div><div class="tray">`+pool.map(o=>{const i=IT.find(x=>x.id===o.id);return `<div class="blk${sp?"":" t"}"${sp?' data-s="1"':""} data-u="${o.u}" style="width:${o.w*40}px;height:${o.h*40}px;position:relative">${IC(i)}</div>`}).join("")+`</div>`:""}
+ return pool.length?`<div class="h">${sp?"供貨商的貨（拖進背包＝買下，點一下看資料與旋轉）":"待擺放（拖進背包，點一下看資料與旋轉）"}</div><div class="tray">`+pool.map(o=>{const i=IT.find(x=>x.id===o.id);return `<div class="blk${sp?"":" t"}"${sp?' data-s="1"':""} data-u="${o.u}" style="width:${o.w*40}px;height:${o.h*40}px;position:relative">${IC(i)}</div>`}).join("")+`</div>`:""}
 function redraw(){sync();if($("bagw")){$("trayw").innerHTML=trayH();$("bagw").innerHTML=bagH();wire()}hud();if($("sl"))$("sl").textContent=cap()-free();document.querySelectorAll(".q").forEach(e=>e.textContent=stock[e.id.slice(2)]||0)}
 function refresh(){sync();MODE==="sup"?supply():MODE==="sell"?sell():redraw()}
 let LPT=0;
 function lpHide(){clearTimeout(LPT);const t=$("lptip");if(t)t.remove()}
-function lpShow(el,o,src){const i=IT.find(x=>x.id===o.id);if(!i)return;lpHide();const t=document.createElement("div");t.id="lptip";
- t.innerHTML=`<b>${ESC(i.n)}</b><br>${CAT[i.cat]}・${TL[i.t]}　${SZ[i.id][0]}×${SZ[i.id][1]}格<br>基礎價值 ${i.p}　進價 ${i.cost}`;
+function lpShow(el,o,src){const i=IT.find(x=>x.id===o.id);if(!i)return;lpHide();const t=document.createElement("div");t.id="lptip";const rotOk=MODE!=="sell";
+ t.innerHTML=`<b>${ESC(i.n)}</b><br>${CAT[i.cat]}・${TL[i.t]}　${SZ[i.id][0]}×${SZ[i.id][1]}格<br>基礎價值 ${i.p}　進價 ${i.cost}`+(rotOk?`<br><button type="button" id="lprot">↻ 旋轉</button>`:"");
  document.body.appendChild(t);const r=el.getBoundingClientRect(),w=t.offsetWidth,h=t.offsetHeight;
- let x=r.left+r.width/2-w/2,y=r.top-h-8;if(y<4)y=r.bottom+8;x=Math.max(4,Math.min(innerWidth-w-4,x));t.style.left=x+"px";t.style.top=y+"px";try{navigator.vibrate&&navigator.vibrate(12)}catch(e){}}
+ let x=r.left+r.width/2-w/2,y=r.top-h-8;if(y<4)y=r.bottom+8;x=Math.max(4,Math.min(innerWidth-w-4,x));t.style.left=x+"px";t.style.top=y+"px";
+ const rb=$("lprot");if(rb)rb.onclick=()=>{lpHide();rot(o,src)};LPT=setTimeout(lpHide,5000)}
 function wire(){document.querySelectorAll(".blk").forEach(el=>el.onpointerdown=e=>{
  const u=+el.dataset.u,src=el.dataset.s?"s":el.classList.contains("t")?"t":"b",o=(src==="s"?sup:src==="t"?tray:bag).find(x=>x.u===u);if(!o)return;
  SFX.p("click");e.preventDefault();const r=el.getBoundingClientRect(),b=$("bag").getBoundingClientRect(),cw=b.width/GW,ch=b.height/rows(),g=el.cloneNode(true),W=o.w*cw,H=o.h*ch;
  g.className="blk ghost";g.style.cssText=`position:fixed;left:${r.left}px;top:${r.top}px;width:${W}px;height:${H}px;pointer-events:none;z-index:99;display:flex`;
- document.body.appendChild(g);drag={o,src,g,ox:(e.clientX-r.left)/r.width*W,oy:(e.clientY-r.top)/r.height*H,sx:e.clientX,sy:e.clientY,moved:0,ow:o.w,oh:o.h,el};drag.g.style.left=e.clientX-drag.ox+"px";drag.g.style.top=e.clientY-drag.oy+"px";el.style.opacity=.3;const dd=drag;clearTimeout(LPT);LPT=setTimeout(()=>{if(drag===dd&&!dd.moved){dd.lp=1;dd.g.style.display="none";el.style.opacity=1;lpShow(el,o,src)}},380)})}
+ document.body.appendChild(g);drag={o,src,g,ox:(e.clientX-r.left)/r.width*W,oy:(e.clientY-r.top)/r.height*H,sx:e.clientX,sy:e.clientY,moved:0,ow:o.w,oh:o.h,el};drag.g.style.left=e.clientX-drag.ox+"px";drag.g.style.top=e.clientY-drag.oy+"px";el.style.opacity=.3})}
 function cellAt(e,d){const b=$("bag");if(!b)return null;const r=b.getBoundingClientRect(),cw=r.width/GW,ch=r.height/rows();
  return{x:Math.round((e.clientX-d.ox-r.left)/cw),y:Math.round((e.clientY-d.oy-r.top)/ch),inside:e.clientX>=r.left&&e.clientX<=r.right&&e.clientY>=r.top&&e.clientY<=r.bottom}}
 function rot(o,src){const w=o.w,h=o.h;o.w=h;o.h=w;if(src==="b"&&!canPut(o,o.x,o.y,o)){o.w=w;o.h=h}refresh()}
 function toCounter(o){const c=Q[qi],i=IT.find(x=>x.id===o.id);offFrom();if(pr(i,c)>left(c)){say("超出這位客人的預算了。");return}cord.push(o.u);sell()}
-document.addEventListener("pointermove",e=>{const d=drag;if(!d||d.lp)return;if(Math.abs(e.clientX-d.sx)+Math.abs(e.clientY-d.sy)>6)d.moved=1;
+document.addEventListener("pointermove",e=>{const d=drag;if(!d)return;if(Math.abs(e.clientX-d.sx)+Math.abs(e.clientY-d.sy)>6)d.moved=1;
  d.g.style.left=e.clientX-d.ox+"px";d.g.style.top=e.clientY-d.oy+"px";const h=$("hl"),c=cellAt(e,d);
  if(h&&c&&d.moved){const ok=c.inside&&canPut(d.o,c.x,c.y,d.src==="b"?d.o:null);h.style.cssText=`display:block;left:${c.x/GW*100}%;top:${c.y/rows()*100}%;width:${d.o.w/GW*100}%;height:${d.o.h/rows()*100}%;background:${ok?"#7bd88f66":"#e0555588"}`}});
+document.addEventListener("pointerdown",e=>{if(!(e.target.closest&&e.target.closest("#lptip")))lpHide()},true);
 document.addEventListener("contextmenu",e=>{if(e.target.closest&&e.target.closest(".blk"))e.preventDefault()});
-document.addEventListener("pointercancel",()=>{const d=drag;if(!d)return;drag=null;d.g.remove();clearTimeout(LPT);d.el.style.opacity=1;lpHide();refresh()});
+document.addEventListener("pointercancel",()=>{const d=drag;if(!d)return;drag=null;d.g.remove();d.el.style.opacity=1;refresh()});
 document.addEventListener("keydown",e=>{const d=drag;if(!d||e.key.toLowerCase()!=="r")return;const o=d.o,w=o.w;o.w=o.h;o.h=w;const t=d.g.style.width;d.g.style.width=d.g.style.height;d.g.style.height=t});
-document.addEventListener("pointerup",e=>{const d=drag;if(!d)return;drag=null;d.g.remove();clearTimeout(LPT);if(d.lp){d.el.style.opacity=1;setTimeout(lpHide,1600);return}const o=d.o;
- if(!d.moved){if(MODE==="sell"&&d.src==="b")return toCounter(o);return rot(o,d.src)}
+document.addEventListener("pointerup",e=>{const d=drag;if(!d)return;drag=null;d.g.remove();const o=d.o;
+ if(!d.moved){d.el.style.opacity=1;lpShow(d.el,o,d.src);return}
  const c=cellAt(e,d),cz=$("cz"),z=cz&&cz.getBoundingClientRect();
  if(c&&c.inside&&canPut(o,c.x,c.y,d.src==="b"?o:null)){
   if(d.src==="b"){o.x=c.x;o.y=c.y}
@@ -392,7 +394,7 @@ const COT={
  1:[["#bagw"],"這是你的<b>背包</b>。今天能賣的貨都放在這裡，貨品大小不同，會佔不同格數。","1/6","below","下一步"],
  2:[["#open"],"貨都放好了，按<b>開店</b>，客人就會一位一位上門。","2/6","above",""],
  3:[["#cz"],"客人想買的是這幾類（<b>興趣標籤</b>）。看看背包裡有沒有對得上的貨。","3/6","below","下一步"],
- 4:[["#cz"],"把客人要的貨從背包<b>拖到這個櫃檯區</b>（點一下貨品也可以）。第一件是展示位，價格 +10%。","4/6","above",""],
+ 4:[["#cz","#bagw"],"把客人要的貨從下面的背包<b>拖到上方櫃檯區</b>（點一下是看貨品資料，要賣請拖過去）。第一件是展示位，價格 +10%。","4/6","above",""],
  5:[["#ok"],"櫃檯上的貨加起來<b>不能超過客人的預算</b>。滿意了就按<b>成交</b>。","5/6","above",""],
  6:[["#counter .fc"],"成交！賺到金幣，還會增加客人的<b>好感</b>和你的<b>口碑</b>。好感高的熟客會變成回頭客。","6/6","below","知道了"],
  7:[["#nx"],"客人都招待完就<b>打烊</b>。接著外出收貨，補明天要賣的貨。","結尾","above","完成"]};
