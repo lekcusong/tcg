@@ -8,7 +8,6 @@ const MG_LIST = [
   { id: "match3", icon: "🔮", zh: "塔羅三消", en: "Tarot Match-3" },
   { id: "potion", icon: "⚗️", zh: "煉金藥水排序", en: "Alchemy Sort" },
   { id: "ballpit", icon: "🎱", zh: "塔羅彈珠", en: "Tarot Ball Pit" },
-  { id: "backpack", icon: "🎒", zh: "塔羅背包亂鬥", en: "Backpack Brawl" },
   { id: "survivor", icon: "⚔️", zh: "江湖倖存者", en: "Jianghu Survivors" },
   { id: "tarotshop", icon: "🌙", zh: "月影塔羅舖", en: "Moonshadow Tarot Shop" },
   { id: "starrace", icon: "🐎", zh: "賽馬場", en: "Star Race" },
@@ -40,7 +39,7 @@ function mgSyncNav(root) {
 async function mgGate(id, root) { await mgLoad(); mgSyncNav(root); return mgOn(id) || ku(); }
 // 開新局前一定重新讀一次最新開關（不吃 10 秒快取），避免 GM 剛關掉還能開新局
 async function mgFresh(id) { await mgLoad(true); return mgOn(id) || ku(); }
-// 外接連結型小遊戲（例如背包亂鬥）：被 GM 關閉時，點下去不開新分頁，改顯示提示
+// 外接連結型小遊戲（例如江湖倖存者）：被 GM 關閉時，點下去不開新分頁，改顯示提示
 function mgLinkClick(id, ev) {
   if (mgOn(id) || ku()) return true;
   if (ev && ev.preventDefault) ev.preventDefault();
@@ -139,48 +138,7 @@ async function mgSetAll(on) {
 // 整支遊戲包在 !function(){...}() 裡，面板按鈕的 inline onclick 要靠 window 才找得到函式
 window.mgToggle = mgToggle; window.mgSetAll = mgSetAll; window.mgLinkClick = mgLinkClick;
 
-/* ===== 🎒 塔羅背包亂鬥：在小遊戲分頁內以全螢幕 iframe 開啟（backpack/index.html，獨立頁面、獨立程式，互不污染全域）=====
-   - 開啟前先重新讀一次 GM 開關（mgFresh）；GM 本人帶 gm=1 不受影響，一般玩家被關閉時只顯示提示。
-   - 開啟時暫停主遊戲背景音樂，關閉後（原本在播的話）恢復。語言用 app-lang 傳進去。
-   - 關閉方式：上方 ✕、Esc、或 iframe 內 postMessage({src:"backpack",type:"close"})。 */
-function bpOpenOverlay(ev) { if (ev && ev.preventDefault) ev.preventDefault(); bpOpenAsync(); return false; }
-async function bpOpenAsync() {
-  if (document.getElementById("bp-overlay")) return;
-  let ok = true; try { ok = await mgFresh("backpack"); } catch (e) { }
-  if (!ok) { mgLinkClick("backpack"); return; }
-  if (document.getElementById("bp-overlay")) return;
-  const lang = (() => { try { return localStorage.getItem("app-lang") === "en" ? "en" : "zh"; } catch (e) { return "zh"; } })();
-  const bgm = document.getElementById("bgm-audio"); const bgmWas = !!(bgm && !bgm.paused);
-  if (bgmWas) { try { bgm.pause(); } catch (e) { } }
-  if (!document.getElementById("bp-overlay-css")) {
-    const st = document.createElement("style"); st.id = "bp-overlay-css";
-    st.textContent = "#bp-overlay{position:fixed;inset:0;z-index:3000;background:#0a0614;display:flex;flex-direction:column}" +
-      "#bp-overlay .bp-bar{flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 10px;background:#120a1e;border-bottom:1px solid #4a3a20;color:#e8c468;font:600 13px/1.2 Cinzel,'Noto Sans TC',serif}" +
-      "#bp-overlay .bp-x{cursor:pointer;border:1px solid #c9a24a;background:transparent;color:#e8c468;border-radius:8px;padding:4px 12px;font:inherit}" +
-      "#bp-overlay iframe{flex:1 1 auto;width:100%;border:0;background:#0a0614}" +
-      "body.bp-open{overflow:hidden}";
-    document.head.appendChild(st);
-  }
-  const box = document.createElement("div"); box.id = "bp-overlay";
-  const bar = document.createElement("div"); bar.className = "bp-bar";
-  const ttl = document.createElement("span"); ttl.textContent = "🎒 " + dc("塔羅背包亂鬥", "Backpack Brawl");
-  const x = document.createElement("button"); x.className = "bp-x"; x.textContent = "✕ " + dc("返回", "Back");
-  bar.appendChild(ttl); bar.appendChild(x);
-  const fr = document.createElement("iframe"); fr.title = "Backpack Brawl"; fr.allow = "autoplay";
-  fr.src = "backpack/index.html?embed=1&lang=" + lang + (ku() ? "&gm=1" : "") + "&t=" + Date.now();
-  box.appendChild(bar); box.appendChild(fr); document.body.appendChild(box); document.body.classList.add("bp-open");
-  const close = () => {
-    window.removeEventListener("message", onMsg); document.removeEventListener("keydown", onKey);
-    box.remove(); document.body.classList.remove("bp-open");
-    if (bgmWas && bgm) { try { bgm.play().catch(() => { }); } catch (e) { } }
-  };
-  const onMsg = e => { if (e.origin === location.origin && e.source === fr.contentWindow && e.data && e.data.src === "backpack" && e.data.type === "close") close(); };
-  const onKey = e => { if (e.key === "Escape") close(); };
-  x.onclick = close; window.addEventListener("message", onMsg); document.addEventListener("keydown", onKey);
-}
-window.bpOpenOverlay = bpOpenOverlay;
-
-/* ===== ⚔️ 江湖倖存者：做法跟背包亂鬥一樣，在小遊戲分頁內以全螢幕 iframe 開啟（survivor/index.html，單檔獨立遊戲）=====
+/* ===== ⚔️ 江湖倖存者：在小遊戲分頁內以全螢幕 iframe 開啟（survivor/index.html，單檔獨立遊戲）=====
    - 開啟前先重新讀一次 GM 開關（mgFresh，id = survivor）；GM 本人不受影響，一般玩家被關閉時只顯示提示。
    - 開啟時暫停主遊戲背景音樂，關閉後（原本在播的話）恢復。遊戲自己的存檔（銀兩、修煉）放在 localStorage 的 wxs1 / wxs_mute，另外會同步到雲端 survivor_save:<暱稱>（見下方雲端存檔），跟主遊戲帳號資料互不干擾。
    - 關閉方式：上方 ✕ 返回、Esc、或 iframe 內 postMessage({src:"survivor",type:"close"})。 */
