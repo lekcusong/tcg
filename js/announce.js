@@ -8,33 +8,25 @@
    英文版是選填：沒寫 en 的話，英文介面也顯示中文。
    這個是「每個版本一次」的更新說明；原本 GM 面板的「📜 公告 / GM 留言」另外照舊，兩者互不影響。 */
 const ANNOUNCE = {
-  v: '2026-11-15c',
-  title: '⚔️ 江湖倖存者更新：Boss 分階段換招、精英詞綴、技能圖示列、結算統計、簡化模式',
+  v: '2026-11-20',
+  title: '🌙 新小遊戲「月影塔羅舖」上線：累計營業送神秘碎片、有排行榜',
   add: [
-    '<b>Boss 分階段</b>：「梟」與「魔頭」血量降到 60%、30% 會換招並跳出公告。梟會射羽箭、召喚更多小怪，後段還會衝撞（地上有紅線預警）；魔頭會放螺旋彈幕，後段加上震地和更密的彈幕。血條上有 60%、30% 刻度',
-    '<b>精英詞綴</b>：精英怪會帶「疾、盾、毒」，頭上標示。<b>疾</b>＝移速大增；<b>盾</b>＝先破護盾才傷得到血；<b>毒</b>＝沿途留下毒瘴。3 分鐘後精英會同時帶兩個詞綴',
-    '<b>技能圖示列</b>：上方改成武功圖示加等級點，進化後變金色；兩門武功各練到第 3 重、合擊成立時，對應圖示會發光',
-    '<b>結算頁本局統計</b>：顯示總傷害、精英擊殺、打到哪個 Boss，以及各武功的傷害占比與擊殺數，方便下一局換搭配',
-    '<b>簡化模式</b>：主頁與暫停選單可設定「傷害數字」（全部／只顯暴擊／關閉）與「畫面特效」（標準／精簡）。精簡會關掉震屏、白閃與多數粒子，畫面更清楚、低階手機更順'
+    '<b>月影塔羅舖</b>：在「小遊戲」分頁點 🌙 進入。經營一間塔羅小店，白天接待客人、打烊後外出進貨與合成，每天都是一次新的經營',
+    '<b>營業里程碑</b>：累計營業天數<b>第一次</b>達到 <b>10、20、30 天</b>，各送 <b>🧩神秘碎片 ×10</b>（直接放進背包，信箱也會通知）。重開新局會接著累計，每個里程碑只送一次',
+    '<b>排行榜</b>：遊戲主頁和打烊畫面都有「🏆 排行榜與里程碑」，可看累計天數榜、賺錢榜（累計營業額，是店內金幣），前 20 名＋你的名次',
+    '<b>雲端存檔</b>：存檔、圖鑑、結局會自動同步，手機和電腦登入同一個帳號就能接著玩'
   ],
-  chg: [
-    '切到別的視窗或分頁時，遊戲會自動暫停，不會被打死',
-    '結算與選單畫面內容較長時，現在可以捲動，上方不會再被切掉'
-  ],
+  chg: [],
   fix: [],
   en: {
-    title: '⚔️ Jianghu Survivors update: boss phases, elite affixes, skill icon bar, run stats, simple mode',
+    title: '🌙 New minigame "Moonshadow Tarot Shop": Mystery Shards for total days played, with leaderboards',
     add: [
-      '<b>Boss phases</b>: the two bosses change moves at 60% and 30% HP, with an on-screen notice. The first boss fires feather volleys, summons more minions and later charges (a red line warns you); the final boss adds spiral bullet patterns, then ground slams and denser barrages. The boss bar shows the 60% / 30% marks',
-      '<b>Elite affixes</b>: elites now carry <b>Swift</b> (much faster), <b>Shield</b> (break the shield before you can hurt them) or <b>Venom</b> (leaves poison pools). After 3 minutes they carry two at once',
-      '<b>Skill icon bar</b>: skills are shown as icons with level dots (gold when evolved), and the icons glow when a combo is active',
-      '<b>Run stats on the result screen</b>: total damage, elites slain, which boss you reached, and each skill\'s damage share and kills',
-      '<b>Simple mode</b>: in the menu and pause screen, set damage numbers (all / crits only / off) and visual effects (standard / reduced). Reduced mode removes screen shake, flashes and most particles for a cleaner screen and smoother play on low-end phones'
+      '<b>Moonshadow Tarot Shop</b>: tap 🌙 in the Minigames tab. Run a small tarot shop: serve customers by day, restock and craft after closing',
+      '<b>Milestones</b>: the <b>first time</b> your total days open reaches <b>10, 20 and 30</b>, you get <b>🧩 Mystery Shard x10</b> each (added to your inventory, with a mailbox notice). Days keep adding up across new runs; each milestone pays once',
+      '<b>Leaderboards</b>: tap "🏆 排行榜與里程碑" on the main page or the closing screen for the total-days board and the earnings board (total revenue in shop coins), top 20 plus your rank',
+      '<b>Cloud save</b>: saves, the codex and endings sync automatically, so you can continue on another device with the same account'
     ],
-    chg: [
-      'The game now pauses automatically when you switch windows or tabs',
-      'Long menu and result screens can now be scrolled instead of being cut off at the top'
-    ],
+    chg: [],
     fix: []
   }
 };
